@@ -81,6 +81,13 @@ const fs = require('fs');
     throw new Error('FAIL: uploaded resource did not appear in the resource list');
   }
 
+  // Captured now (list is markdown-only at this point) rather than later,
+  // since a later upload (the test image) sorts before it by added_at and
+  // would otherwise make "the first .resource-name" ambiguous.
+  const markdownResourceId = await window.$eval('#resource-list li', (el) =>
+    Number(el.dataset.resourceId)
+  );
+
   // Click the filename (not a separate button) to open the in-app preview.
   // Safe to actually click here — markdown preview renders in-app, unlike
   // "Open in default app" which would launch a real external application.
@@ -102,6 +109,53 @@ const fs = require('fs');
   if (!(await window.isHidden('#preview-overlay'))) {
     throw new Error('FAIL: preview overlay did not close');
   }
+
+  // Image preview: centering + zoom controls. Swap ATLAS_TEST_UPLOAD_PATH
+  // mid-run via app.evaluate (mutates the running main process's env
+  // directly, which the upload handler re-reads on every call).
+  const testImagePath = path.join(testDataDir, 'test-image.png');
+  fs.writeFileSync(
+    testImagePath,
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    )
+  );
+  await app.evaluate((_electron, filePath) => {
+    process.env.ATLAS_TEST_UPLOAD_PATH = filePath;
+  }, testImagePath);
+  await window.click('#upload-button');
+  await window.waitForTimeout(300);
+  await window.click('#resource-list .resource-name >> nth=0'); // newest upload, sorted first
+  await window.waitForTimeout(300);
+
+  const zoomControlsVisible = !(await window.isHidden('#zoom-controls'));
+  console.log('zoom controls visible for image:', zoomControlsVisible);
+  if (!zoomControlsVisible) throw new Error('FAIL: zoom controls did not show for an image preview');
+
+  const bodyClass = await window.getAttribute('#preview-body', 'class');
+  if (!bodyClass || !bodyClass.includes('centered')) {
+    throw new Error('FAIL: preview-body missing "centered" class for image preview');
+  }
+
+  await window.click('#zoom-in');
+  await window.click('#zoom-in');
+  const zoomedLevel = await window.textContent('#zoom-level');
+  console.log('zoom level after 2 zoom-in clicks:', zoomedLevel);
+  if (zoomedLevel !== '150%') throw new Error(`FAIL: expected 150% zoom, got ${zoomedLevel}`);
+
+  const imgTransform = await window.$eval('#preview-body img', (el) => el.style.transform);
+  if (!imgTransform.includes('1.5')) {
+    throw new Error(`FAIL: image transform did not reflect zoom level (${imgTransform})`);
+  }
+
+  await window.click('#zoom-reset');
+  await window.waitForTimeout(150);
+  const resetLevel = await window.textContent('#zoom-level');
+  if (resetLevel !== '100%') throw new Error(`FAIL: zoom reset did not return to 100%, got ${resetLevel}`);
+
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
 
   // Icon view toggle.
   await window.click('#view-icons');
@@ -139,10 +193,7 @@ const fs = require('fs');
   // directly (via the same window.atlas.* API the context menu's "Delete"
   // item calls), rather than the native menu interaction itself. The
   // right-click -> menu -> click path needs a manual check by the user.
-  const resourceId = await window.$eval('#resource-list li', (el) =>
-    Number(el.dataset.resourceId)
-  );
-  await window.evaluate((id) => window.atlas.deleteResource(id), resourceId);
+  await window.evaluate((id) => window.atlas.deleteResource(id), markdownResourceId);
   await window.click('#course-list li'); // reselect to force a resources refresh
   await window.waitForTimeout(300);
   const resourcesAfterDelete = await window.$$eval('#resource-list li', (els) =>

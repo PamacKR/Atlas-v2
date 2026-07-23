@@ -216,14 +216,33 @@ function setViewMode(mode: 'list' | 'icons'): void {
   renderResources();
 }
 
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.25;
+let imageZoom = 1;
+
+function applyImageZoom(): void {
+  document.getElementById('zoom-level')!.textContent = `${Math.round(imageZoom * 100)}%`;
+  const img = document.querySelector('#preview-body img') as HTMLImageElement | null;
+  if (img) img.style.transform = `scale(${imageZoom})`;
+}
+
+function setImageZoom(zoom: number): void {
+  imageZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+  applyImageZoom();
+}
+
 async function openPreview(resource: Resource): Promise<void> {
   const overlay = document.getElementById('preview-overlay')!;
   const title = document.getElementById('preview-title')!;
   const note = document.getElementById('preview-note') as HTMLParagraphElement;
   const body = document.getElementById('preview-body')!;
+  const zoomControls = document.getElementById('zoom-controls')!;
 
   title.textContent = resource.title;
   note.hidden = true;
+  zoomControls.hidden = true;
+  body.classList.remove('centered');
   body.innerHTML = '<p class="muted">Loading preview…</p>';
   overlay.hidden = false;
 
@@ -239,6 +258,10 @@ async function openPreview(resource: Resource): Promise<void> {
       const img = document.createElement('img');
       img.src = preview.url;
       body.appendChild(img);
+      body.classList.add('centered');
+      imageZoom = 1;
+      zoomControls.hidden = false;
+      applyImageZoom();
     }
   } else if (preview.type === 'html') {
     const container = document.createElement('div');
@@ -324,6 +347,22 @@ async function init(): Promise<void> {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closePreview();
   });
+
+  document.getElementById('zoom-in')!.addEventListener('click', () => setImageZoom(imageZoom + ZOOM_STEP));
+  document.getElementById('zoom-out')!.addEventListener('click', () => setImageZoom(imageZoom - ZOOM_STEP));
+  document.getElementById('zoom-reset')!.addEventListener('click', () => setImageZoom(1));
+
+  // Ctrl+scroll to zoom, same convention as browsers/image viewers.
+  document.getElementById('preview-body')!.addEventListener(
+    'wheel',
+    (e) => {
+      if (!e.ctrlKey) return;
+      if (!document.querySelector('#preview-body img')) return;
+      e.preventDefault();
+      setImageZoom(imageZoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+    },
+    { passive: false }
+  );
 
   atlasApi.onContextMenuDelete(async (resourceId) => {
     if (!(await showConfirm("Delete this resource? This can't be undone."))) return;

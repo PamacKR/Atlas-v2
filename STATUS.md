@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 13)
+**Last updated:** 2026-07-23 (session 14)
 
 ## Where things stand
 
@@ -37,6 +37,13 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 14 additions
+
+- **Images now center both horizontally and vertically** in the preview panel (`#preview-body.centered`, flex-centered), not just horizontally as before.
+- **Zoom controls added for image previews**: −/+/Reset buttons plus Ctrl+scroll-wheel (`#zoom-controls`, 25%–400% range, 25% steps), implemented via CSS `transform: scale()` on the `<img>`. Zoom resets to 100% every time a new preview opens. Not added for PDF — Chromium's built-in PDF viewer already has its own zoom controls (per the user's own observation).
+- **`scripts/verify-app.js` now uploads two resources** (markdown + a tiny embedded-base64 test PNG) and covers the zoom/centering behavior end-to-end. Caught and fixed a real bug in the test script itself while adding this: the resource-delete step grabbed "whatever `.resource-name` is first" to get an ID, which broke once a second (newer) upload sorted before the markdown one — fixed by capturing the markdown resource's ID right after its own upload instead of relying on list order later.
+- User decided to hold off on giving UI direction until more features are built; current visual state is considered acceptable for continued feature work in the meantime.
 
 ## Session 13 additions
 

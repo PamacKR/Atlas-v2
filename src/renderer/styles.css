@@ -269,6 +269,12 @@ form#course-form button {
   padding: 1rem;
 }
 
+#preview-body.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 #preview-body iframe {
   width: 100%;
   height: 100%;
@@ -278,8 +284,46 @@ form#course-form button {
 
 #preview-body img {
   max-width: 100%;
+  max-height: 100%;
   display: block;
-  margin: 0 auto;
+  transform-origin: center center;
+  transition: transform 0.1s ease-out;
+}
+
+#zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: #8a919c;
+  font-size: 0.85rem;
+}
+
+#zoom-controls button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+  line-height: 1;
+}
+
+#zoom-reset {
+  width: auto !important;
+  padding: 0 0.6rem !important;
+  font-size: 0.78rem;
+}
+
+#zoom-controls button:hover {
+  background: #262c34;
+}
+
+#zoom-level {
+  min-width: 3.2em;
+  text-align: center;
 }
 
 #preview-body pre {
