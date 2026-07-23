@@ -8,6 +8,10 @@ import * as os from 'os';
 // happens to live under Downloads) so dev/git operations never touch real
 // user data. See ARCHITECTURE.md §2 and docs/open-questions.md #6.
 export function getDataDir(): string {
+  // Override for automated verification (scripts/verify-app.js), so test
+  // runs never touch the user's real Downloads/Atlas-Storage data.
+  if (process.env.ATLAS_DATA_DIR) return process.env.ATLAS_DATA_DIR;
+
   const downloads = app.getPath('downloads') || path.join(os.homedir(), 'Downloads');
   return path.join(downloads, 'Atlas-Storage');
 }

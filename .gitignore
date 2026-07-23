@@ -16,3 +16,6 @@ atlas.db
 atlas.db-shm
 atlas.db-wal
 /files/
+
+# Output of scripts/verify-app.js (Playwright self-test)
+verify-screenshot.png

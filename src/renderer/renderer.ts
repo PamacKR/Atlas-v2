@@ -1,18 +1,28 @@
-import type { Course } from '../preload/preload';
-
-declare global {
-  interface Window {
-    atlas: {
-      listCourses: () => Promise<Course[]>;
-      createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
-      getDataDir: () => Promise<string>;
-    };
-  }
+interface Course {
+  id: number;
+  name: string;
+  code: string | null;
+  term: string | null;
+  archived: number;
+  created_at: string;
 }
+
+interface AtlasApi {
+  listCourses: () => Promise<Course[]>;
+  createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
+  getDataDir: () => Promise<string>;
+}
+
+// Deliberately not using `import`/`export`/`declare global` here: any of
+// those make TypeScript treat this file as an ES module and emit a
+// CommonJS `exports` boilerplate header, which throws in a plain
+// non-module <script> tag (no `exports` object exists) and silently kills
+// the whole script. Casting through `any` keeps this file a plain script.
+const atlasApi: AtlasApi = (window as any).atlas;
 
 async function renderCourses(): Promise<void> {
   const list = document.getElementById('course-list')!;
-  const courses = await window.atlas.listCourses();
+  const courses = await atlasApi.listCourses();
   list.innerHTML = '';
   for (const course of courses) {
     const li = document.createElement('li');
@@ -29,7 +39,7 @@ async function renderCourses(): Promise<void> {
 
 async function init(): Promise<void> {
   const dataDirEl = document.getElementById('data-dir')!;
-  dataDirEl.textContent = `Data folder: ${await window.atlas.getDataDir()}`;
+  dataDirEl.textContent = `Data folder: ${await atlasApi.getDataDir()}`;
 
   await renderCourses();
 
@@ -41,7 +51,7 @@ async function init(): Promise<void> {
     const term = (document.getElementById('course-term') as HTMLInputElement).value.trim() || null;
     if (!name) return;
 
-    await window.atlas.createCourse(name, code, term);
+    await atlasApi.createCourse(name, code, term);
     form.reset();
     await renderCourses();
   });

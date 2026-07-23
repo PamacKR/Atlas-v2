@@ -7,13 +7,15 @@
   "scripts": {
     "build": "tsc -b && node scripts/copy-assets.js",
     "start": "npm run build && electron .",
-    "watch": "tsc -b -w"
+    "watch": "tsc -b -w",
+    "verify": "npm run build && node scripts/verify-app.js"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.10.2",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "playwright": "^1.61.1",
     "typescript": "^5.7.2"
   },
   "dependencies": {
