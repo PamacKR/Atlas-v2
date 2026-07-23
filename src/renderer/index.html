@@ -14,8 +14,6 @@
 
     <section>
       <h2>Courses</h2>
-      <ul id="course-list"></ul>
-
       <form id="course-form">
         <input id="course-name" type="text" placeholder="Course name" required />
         <input id="course-code" type="text" placeholder="Code (optional)" />
@@ -28,6 +26,8 @@
         </select>
         <button type="submit">Add course</button>
       </form>
+
+      <ul id="course-list"></ul>
     </section>
 
     <section id="resources-section" hidden>
@@ -47,7 +47,10 @@
     <div id="preview-panel">
       <div id="preview-panel-header">
         <span id="preview-title"></span>
-        <button id="preview-close" type="button">Close</button>
+        <div id="preview-panel-actions">
+          <button id="preview-fullscreen" type="button">Fullscreen</button>
+          <button id="preview-close" type="button">Close</button>
+        </div>
       </div>
       <p id="preview-note" class="muted" hidden></p>
       <div id="preview-body"></div>

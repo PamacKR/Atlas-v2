@@ -222,3 +222,19 @@ ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   if (resource) fs.rmSync(resource.file_path, { force: true });
   db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
 });
+
+// Course row has no "open in default app" equivalent — just Delete, but
+// kept as a native menu (rather than an in-page button) for consistency
+// with the resource context menu.
+ipcMain.on('resources:courseContextMenu', (event, courseId: number) => {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Delete',
+      click: () => {
+        event.sender.send('resources:courseContextMenuDelete', courseId);
+      },
+    },
+  ]);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) menu.popup({ window: win });
+});

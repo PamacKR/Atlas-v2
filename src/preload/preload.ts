@@ -47,4 +47,9 @@ contextBridge.exposeInMainWorld('atlas', {
   onContextMenuDelete: (handler: (resourceId: number) => void): void => {
     ipcRenderer.on('resources:contextMenuDelete', (_event, resourceId: number) => handler(resourceId));
   },
+  showCourseContextMenu: (courseId: number): void =>
+    ipcRenderer.send('resources:courseContextMenu', courseId),
+  onCourseContextMenuDelete: (handler: (courseId: number) => void): void => {
+    ipcRenderer.on('resources:courseContextMenuDelete', (_event, courseId: number) => handler(courseId));
+  },
 });

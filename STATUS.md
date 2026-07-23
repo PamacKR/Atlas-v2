@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 11)
+**Last updated:** 2026-07-23 (session 12)
 
 ## Where things stand
 
@@ -37,6 +37,14 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 12 additions
+
+- **Add-course form now sits above the course list** (was below).
+- **Fullscreen toggle added to the preview panel** (`#preview-fullscreen` button) — expands the panel edge-to-edge; resets to non-fullscreen every time the preview is closed and reopened.
+- **All visible Delete buttons removed** — deleting a course or resource is now right-click-only (native Electron `Menu`, same as "Open in default app" already was for resources). Added the equivalent native context menu for courses (`resources:courseContextMenu` IPC in `main.ts`, `showCourseContextMenu`/`onCourseContextMenuDelete` in preload). The in-app confirm modal (session 11) still gates both.
+- **Test coverage tradeoff, worth knowing:** since delete is now exclusively behind a native OS context menu, `scripts/verify-app.js` can no longer click a "Delete" button to test the flow — Playwright cannot drive native menus. It now calls `window.atlas.deleteResource()`/`deleteCourse()` directly (the same underlying API the menu's "Delete" item calls) to verify the delete + list-refresh logic, but the actual right-click → menu → click interaction is **not covered by the automated suite** and needs a manual check from the user occasionally.
+- User asked to leave the seeded "Test Course" (in their real `Downloads/Atlas-Storage`) alone for now while they test — noted, will only delete/modify on explicit instruction. (`Verify Script Test Course` is unrelated — that name only ever exists transiently inside `scripts/verify-app.js`'s throwaway temp directories, never in real storage.)
 
 ## Session 11 additions
 

@@ -62,6 +62,8 @@ const fs = require('fs');
   await window.click('#course-list li');
   await window.waitForTimeout(200);
 
+  const courseId = await window.$eval('#course-list li', (el) => Number(el.dataset.courseId));
+
   const resourcesHeading = await window.textContent('#resources-heading');
   console.log('resources heading:', resourcesHeading);
   if (!resourcesHeading || !resourcesHeading.includes('Verify Script Test Course')) {
@@ -131,27 +133,17 @@ const fs = require('fs');
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
 
-  // Cancel path: opening the confirm modal and clicking Cancel must leave
-  // the resource untouched.
-  await window.click('#resource-list button.delete-button');
-  await window.waitForTimeout(200);
-  await window.click('#confirm-cancel');
-  await window.waitForTimeout(200);
-  const resourcesAfterCancel = await window.$$eval('#resource-list li', (els) =>
-    els.map((e) => e.textContent)
+  // Delete is now right-click-only (native OS context menu), which
+  // Playwright cannot drive — there's no in-page element left to click.
+  // So this exercises the underlying delete IPC + list-refresh path
+  // directly (via the same window.atlas.* API the context menu's "Delete"
+  // item calls), rather than the native menu interaction itself. The
+  // right-click -> menu -> click path needs a manual check by the user.
+  const resourceId = await window.$eval('#resource-list li', (el) =>
+    Number(el.dataset.resourceId)
   );
-  if (!resourcesAfterCancel.some((t) => t && t.includes('sample-lecture-notes.md'))) {
-    throw new Error('FAIL: resource disappeared after clicking Cancel, not Delete');
-  }
-
-  // Delete the resource, then the course, via the in-app confirm modal
-  // (not a native dialog), confirming both disappear.
-  await window.click('#resource-list button.delete-button');
-  await window.waitForTimeout(200);
-  if (await window.isHidden('#confirm-overlay')) {
-    throw new Error('FAIL: in-app confirm modal did not open for resource delete');
-  }
-  await window.click('#confirm-yes');
+  await window.evaluate((id) => window.atlas.deleteResource(id), resourceId);
+  await window.click('#course-list li'); // reselect to force a resources refresh
   await window.waitForTimeout(300);
   const resourcesAfterDelete = await window.$$eval('#resource-list li', (els) =>
     els.map((e) => e.textContent)
@@ -161,13 +153,9 @@ const fs = require('fs');
     throw new Error('FAIL: resource still present after delete');
   }
 
-  await window.click('#course-list button.delete-button');
-  await window.waitForTimeout(200);
-  if (await window.isHidden('#confirm-overlay')) {
-    throw new Error('FAIL: in-app confirm modal did not open for course delete');
-  }
-  await window.click('#confirm-yes');
-  await window.waitForTimeout(300);
+  await window.evaluate((id) => window.atlas.deleteCourse(id), courseId);
+  await window.reload();
+  await window.waitForTimeout(500);
   const coursesAfterDelete = await window.$$eval('#course-list li', (els) =>
     els.map((e) => e.textContent)
   );

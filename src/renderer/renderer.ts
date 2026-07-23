@@ -37,7 +37,9 @@ interface AtlasApi {
   openResource: (resourceId: number) => Promise<void>;
   getPreview: (resourceId: number) => Promise<Preview>;
   showResourceContextMenu: (resourceId: number) => void;
+  showCourseContextMenu: (courseId: number) => void;
   onContextMenuDelete: (handler: (resourceId: number) => void) => void;
+  onCourseContextMenuDelete: (handler: (courseId: number) => void) => void;
 }
 
 // Deliberately not using `import`/`export`/`declare global` here: any of
@@ -61,18 +63,6 @@ const KIND_ICON: Record<string, string> = {
 let selectedCourse: Course | null = null;
 let viewMode: 'list' | 'icons' = 'list';
 
-function makeDeleteButton(onDelete: () => void): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'delete-button';
-  button.textContent = 'Delete';
-  button.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onDelete();
-  });
-  return button;
-}
-
 let confirmResolve: ((result: boolean) => void) | null = null;
 
 function showConfirm(message: string): Promise<boolean> {
@@ -92,12 +82,6 @@ function resolveConfirm(result: boolean): void {
     confirmResolve(result);
     confirmResolve = null;
   }
-}
-
-async function confirmAndDeleteResource(resource: Resource): Promise<void> {
-  if (!(await showConfirm(`Delete "${resource.title}"? This can't be undone.`))) return;
-  await atlasApi.deleteResource(resource.id);
-  await renderResources();
 }
 
 async function renderCourses(): Promise<void> {
@@ -123,18 +107,11 @@ async function renderCourses(): Promise<void> {
     if (selectedCourse && selectedCourse.id === course.id) {
       li.classList.add('selected');
     }
-    li.appendChild(
-      makeDeleteButton(async () => {
-        if (!(await showConfirm(`Delete "${course.name}" and all its resources? This can't be undone.`))) {
-          return;
-        }
-        await atlasApi.deleteCourse(course.id);
-        if (selectedCourse && selectedCourse.id === course.id) selectedCourse = null;
-        await renderCourses();
-        await renderResources();
-      })
-    );
     li.addEventListener('click', () => selectCourse(course));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showCourseContextMenu(course.id);
+    });
     list.appendChild(li);
   }
 }
@@ -146,6 +123,7 @@ function renderResourceListView(resources: Resource[]): void {
 
   for (const resource of resources) {
     const li = document.createElement('li');
+    li.dataset.resourceId = String(resource.id);
 
     const name = document.createElement('span');
     name.className = 'resource-name';
@@ -157,8 +135,6 @@ function renderResourceListView(resources: Resource[]): void {
     kind.className = 'code';
     kind.textContent = resource.kind;
     li.appendChild(kind);
-
-    li.appendChild(makeDeleteButton(() => confirmAndDeleteResource(resource)));
 
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -177,8 +153,7 @@ function renderResourceIconView(resources: Resource[]): void {
   for (const resource of resources) {
     const li = document.createElement('li');
     li.className = 'icon-tile';
-
-    li.appendChild(makeDeleteButton(() => confirmAndDeleteResource(resource)));
+    li.dataset.resourceId = String(resource.id);
 
     const icon = document.createElement('div');
     icon.className = 'icon-glyph';
@@ -290,7 +265,15 @@ function closePreview(): void {
   const overlay = document.getElementById('preview-overlay')!;
   const body = document.getElementById('preview-body')!;
   overlay.hidden = true;
+  overlay.classList.remove('fullscreen'); // always reopen non-fullscreen
   body.innerHTML = ''; // stop any iframe/media activity
+}
+
+function toggleFullscreenPreview(): void {
+  const overlay = document.getElementById('preview-overlay')!;
+  const button = document.getElementById('preview-fullscreen') as HTMLButtonElement;
+  const isFullscreen = overlay.classList.toggle('fullscreen');
+  button.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
 }
 
 async function init(): Promise<void> {
@@ -323,6 +306,7 @@ async function init(): Promise<void> {
   document.getElementById('view-icons')!.addEventListener('click', () => setViewMode('icons'));
 
   document.getElementById('preview-close')!.addEventListener('click', closePreview);
+  document.getElementById('preview-fullscreen')!.addEventListener('click', toggleFullscreenPreview);
   document.getElementById('preview-overlay')!.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closePreview();
   });
@@ -333,6 +317,14 @@ async function init(): Promise<void> {
   atlasApi.onContextMenuDelete(async (resourceId) => {
     if (!(await showConfirm("Delete this resource? This can't be undone."))) return;
     await atlasApi.deleteResource(resourceId);
+    await renderResources();
+  });
+
+  atlasApi.onCourseContextMenuDelete(async (courseId) => {
+    if (!(await showConfirm("Delete this course and all its resources? This can't be undone."))) return;
+    await atlasApi.deleteCourse(courseId);
+    if (selectedCourse && selectedCourse.id === courseId) selectedCourse = null;
+    await renderCourses();
     await renderResources();
   });
 
