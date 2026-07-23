@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 2)
+**Last updated:** 2026-07-23 (session 3)
 
 ## Where things stand
 
@@ -25,11 +25,11 @@ Living snapshot of where the project actually is. This is the first thing to rea
 
 ## Genuinely open (needs a decision, don't assume)
 
-See `docs/open-questions.md` for full detail. The one still consequential right now:
+See `docs/open-questions.md` for full detail. Nothing blocking right now — all previously-blocking items are resolved:
 
-- **#8 College Google Workspace access** — the user's primary Classroom/Gmail account is a college Workspace-for-Education account; school admins often block third-party OAuth apps regardless of cost. User is testing via Google's OAuth 2.0 Playground (Classroom + Gmail read scopes, signed in with the college account) to check. Not yet reported back. This blocks detailed Phase 3 (sync) planning until resolved.
+- **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
-Also still open, lower urgency: notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
 
 ## What's next
 

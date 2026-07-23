@@ -54,9 +54,9 @@ Classroom/Gmail/Drive all need Google Cloud credentials. Does the user bring the
 
 The user's primary account for Classroom/Gmail is a **college Google Workspace for Education account**, not their personal Google account. Workspace admins commonly restrict which third-party/custom OAuth apps can access Classroom, Gmail, or Drive API scopes for accounts on the domain — independent of cost, this can block API access outright regardless of what Atlas builds.
 
-Context: the user has already built a separate app that logs into the college portal via their college Gmail account — but it's unconfirmed whether that used Google as an SSO identity provider only (no bearing on API scope access) or an actual Google API OAuth consent (which would be a positive signal). Not treated as resolved on that basis alone.
+**Status:** Resolved (verified 2026-07-23) — tested directly via Google's OAuth 2.0 Playground, signed into the college account, requesting both Classroom read/write scopes and `gmail.readonly`. Both completed with a normal `HTTP 302` redirect and authorization code — no `admin_policy_enforced` or app-blocked error, which is what a Workspace admin restriction would produce. The college domain allows third-party OAuth apps to access Classroom and Gmail API scopes. Phase 3 (Classroom/Gmail sync) can be scoped against the college account without a fallback plan for this specific risk.
 
-**Status:** Open, and blocking for detailed Phase 3 planning. User is testing directly via Google's OAuth 2.0 Playground (requesting Classroom + Gmail read scopes, signing in with the college account) to see whether the domain blocks third-party OAuth apps. If blocked, Phase 3 needs a fallback (e.g. manual export/import from Classroom, or scoping sync to the personal Google account only where relevant).
+Caveat: this confirms *consent* succeeds, not that every specific scope Atlas will eventually need is unrestricted (e.g. write scopes, or Drive scopes, weren't all exhaustively tested) — worth a quick recheck if Phase 3 scoping turns up a scope not covered by this test.
 
 ### 9. Personal Google "Pro" subscription and Claude Pro — do they help with anything here?
 
