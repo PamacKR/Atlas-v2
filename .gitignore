@@ -9,9 +9,9 @@ release/
 out/
 tsconfig.tsbuildinfo
 
-# Runtime data — the dev repo happens to live at Downloads/Atlas, the same
-# path as the app's managed data directory (ARCHITECTURE.md §2), so running
-# from source writes these directly into the repo folder. Never commit them.
+# Runtime data lives in Downloads/Atlas-Storage (a separate folder from this
+# repo, see ARCHITECTURE.md §2) and should never appear here, but these are
+# kept as a defensive backstop in case anything is ever run with a stale path.
 atlas.db
 atlas.db-shm
 atlas.db-wal

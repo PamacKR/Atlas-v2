@@ -44,7 +44,7 @@ SQLite (via `better-sqlite3`) is the store because:
 
 Binary blobs (original scans, PDFs, images) are **not** stored in SQLite — they stay on disk in a managed Atlas data directory, with SQLite holding the file paths, metadata, and extracted/searchable text. This keeps the database small and keeps original files trivially recoverable/inspectable outside the app.
 
-The managed data directory is `Downloads/Atlas/` (course subfolders inside it), not a hidden system app-data path — chosen deliberately so files stay somewhere the user can browse and manually add/remove from without digging through OS-hidden directories. The SQLite database and app config live alongside it under the same folder.
+The managed data directory is `Downloads/Atlas-Storage/` (course subfolders inside it), not a hidden system app-data path — chosen deliberately so files stay somewhere the user can browse and manually add/remove from without digging through OS-hidden directories. The SQLite database and app config live alongside it under the same folder. This is a **separate folder from the Atlas source repo** (which also happens to live under `Downloads`), specifically so dev/git operations (clone, clean, checkout) can never touch real user data.
 
 ## 3. OCR: local, offline (Tesseract.js)
 

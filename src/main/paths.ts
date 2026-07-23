@@ -2,12 +2,14 @@ import { app } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 
-// The managed data directory lives in Downloads/Atlas rather than a hidden
-// app-data path, so the user can browse/add/remove files by hand.
-// See ARCHITECTURE.md §2 and docs/open-questions.md #6.
+// The managed data directory lives in Downloads/Atlas-Storage rather than a
+// hidden app-data path, so the user can browse/add/remove files by hand.
+// Deliberately a *separate* folder from the Atlas source repo (which also
+// happens to live under Downloads) so dev/git operations never touch real
+// user data. See ARCHITECTURE.md §2 and docs/open-questions.md #6.
 export function getDataDir(): string {
   const downloads = app.getPath('downloads') || path.join(os.homedir(), 'Downloads');
-  return path.join(downloads, 'Atlas');
+  return path.join(downloads, 'Atlas-Storage');
 }
 
 export function getDbPath(): string {

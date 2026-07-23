@@ -32,6 +32,4 @@ npx @electron/rebuild -f -w better-sqlite3   # only needed after a fresh install
 npm start
 ```
 
-`better-sqlite3` is a native module and needs to be rebuilt against Electron's ABI (not your system Node) after `npm install` — `npm start` alone will fail with a module version mismatch if you skip that step. On first launch, Atlas creates its data folder at `Downloads/Atlas` (database + synced/uploaded files) — see `ARCHITECTURE.md` §2.
-
-Note: if you're running from this source checkout and it happens to live at `Downloads/Atlas` itself (as it does by default), the database/files folder is created inside the repo directory. That's harmless (and gitignored) — it's only a quirk of running from source at that particular path, not something that affects a packaged build.
+`better-sqlite3` is a native module and needs to be rebuilt against Electron's ABI (not your system Node) after `npm install` — `npm start` alone will fail with a module version mismatch if you skip that step. On first launch, Atlas creates its data folder at `Downloads/Atlas-Storage` (database + synced/uploaded files) — see `ARCHITECTURE.md` §2. This is intentionally a separate folder from this repo, so nothing about running/developing the app can ever touch real data through git operations.

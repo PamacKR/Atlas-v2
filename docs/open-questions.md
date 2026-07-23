@@ -42,7 +42,7 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 
 Where do original files (scans, PDFs, uploads) live on disk relative to the SQLite database and app config?
 
-**Status:** Resolved — `Downloads/Atlas/` is the managed data folder (course subfolders inside it), chosen over a hidden app-data location so the user can easily browse/add/remove files by hand. The SQLite database and app config live alongside it (e.g. `Downloads/Atlas/atlas.db`, `Downloads/Atlas/config/`) rather than in a separate system config directory — exact sub-layout to be finalized at Phase 1 scaffolding time.
+**Status:** Resolved (updated 2026-07-23) — `Downloads/Atlas-Storage/` is the managed data folder (course subfolders inside it), chosen over a hidden app-data location so the user can easily browse/add/remove files by hand. The SQLite database and app config live alongside it (e.g. `Downloads/Atlas-Storage/atlas.db`, `Downloads/Atlas-Storage/config/`) rather than in a separate system config directory. It's deliberately a different folder from the Atlas source repo (`Downloads/Atlas/`) — an earlier version of this decision used the same name as the repo folder, which caused the dev database to be written directly inside the git working directory; renamed specifically to avoid that overlap.
 
 ### 7. Google API credential handling
 
