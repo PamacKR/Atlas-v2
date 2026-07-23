@@ -20,6 +20,12 @@ interface Resource {
   synced_at: string | null;
 }
 
+type Preview =
+  | { type: 'pdf' | 'image'; url: string }
+  | { type: 'html'; html: string; note?: string }
+  | { type: 'text'; text: string }
+  | { type: 'unsupported'; reason?: string };
+
 interface AtlasApi {
   listCourses: () => Promise<Course[]>;
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
@@ -29,6 +35,9 @@ interface AtlasApi {
   deleteCourse: (courseId: number) => Promise<void>;
   deleteResource: (resourceId: number) => Promise<void>;
   openResource: (resourceId: number) => Promise<void>;
+  getPreview: (resourceId: number) => Promise<Preview>;
+  showResourceContextMenu: (resourceId: number) => void;
+  onContextMenuDelete: (handler: (resourceId: number) => void) => void;
 }
 
 // Deliberately not using `import`/`export`/`declare global` here: any of
@@ -38,7 +47,19 @@ interface AtlasApi {
 // the whole script. Casting through `any` keeps this file a plain script.
 const atlasApi: AtlasApi = (window as any).atlas;
 
+const KIND_ICON: Record<string, string> = {
+  pdf: '📄',
+  pptx: '📊',
+  docx: '📝',
+  image: '🖼️',
+  text: '📃',
+  markdown: '📃',
+  zip: '🗜️',
+  other: '📁',
+};
+
 let selectedCourse: Course | null = null;
+let viewMode: 'list' | 'icons' = 'list';
 
 function makeDeleteButton(onDelete: () => void): HTMLButtonElement {
   const button = document.createElement('button');
@@ -52,16 +73,10 @@ function makeDeleteButton(onDelete: () => void): HTMLButtonElement {
   return button;
 }
 
-function makeOpenButton(onOpen: () => void): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'open-button';
-  button.textContent = 'Open';
-  button.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onOpen();
-  });
-  return button;
+async function confirmAndDeleteResource(resource: Resource): Promise<void> {
+  if (!window.confirm(`Delete "${resource.title}"? This can't be undone.`)) return;
+  await atlasApi.deleteResource(resource.id);
+  await renderResources();
 }
 
 async function renderCourses(): Promise<void> {
@@ -103,6 +118,67 @@ async function renderCourses(): Promise<void> {
   }
 }
 
+function renderResourceListView(resources: Resource[]): void {
+  const list = document.getElementById('resource-list')!;
+  list.className = 'view-list';
+  list.innerHTML = '';
+
+  for (const resource of resources) {
+    const li = document.createElement('li');
+
+    const name = document.createElement('span');
+    name.className = 'resource-name';
+    name.textContent = resource.title;
+    name.addEventListener('click', () => openPreview(resource));
+    li.appendChild(name);
+
+    const kind = document.createElement('span');
+    kind.className = 'code';
+    kind.textContent = resource.kind;
+    li.appendChild(kind);
+
+    li.appendChild(makeDeleteButton(() => confirmAndDeleteResource(resource)));
+
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showResourceContextMenu(resource.id);
+    });
+
+    list.appendChild(li);
+  }
+}
+
+function renderResourceIconView(resources: Resource[]): void {
+  const list = document.getElementById('resource-list')!;
+  list.className = 'view-icons';
+  list.innerHTML = '';
+
+  for (const resource of resources) {
+    const li = document.createElement('li');
+    li.className = 'icon-tile';
+
+    li.appendChild(makeDeleteButton(() => confirmAndDeleteResource(resource)));
+
+    const icon = document.createElement('div');
+    icon.className = 'icon-glyph';
+    icon.textContent = KIND_ICON[resource.kind] ?? KIND_ICON.other;
+    li.appendChild(icon);
+
+    const name = document.createElement('div');
+    name.className = 'icon-name';
+    name.textContent = resource.title;
+    li.appendChild(name);
+
+    li.addEventListener('click', () => openPreview(resource));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showResourceContextMenu(resource.id);
+    });
+
+    list.appendChild(li);
+  }
+}
+
 async function renderResources(): Promise<void> {
   const section = document.getElementById('resources-section')!;
   const heading = document.getElementById('resources-heading')!;
@@ -117,37 +193,83 @@ async function renderResources(): Promise<void> {
   heading.textContent = `Resources — ${selectedCourse.name}`;
 
   const resources = await atlasApi.listResources(selectedCourse.id);
-  list.innerHTML = '';
   if (resources.length === 0) {
+    list.className = 'view-list';
+    list.innerHTML = '';
     const li = document.createElement('li');
     li.className = 'muted';
     li.textContent = 'No resources yet.';
     list.appendChild(li);
     return;
   }
-  for (const resource of resources) {
-    const li = document.createElement('li');
-    li.textContent = resource.title;
-    const kind = document.createElement('span');
-    kind.className = 'code';
-    kind.textContent = resource.kind;
-    li.appendChild(kind);
-    li.appendChild(makeOpenButton(() => atlasApi.openResource(resource.id)));
-    li.appendChild(
-      makeDeleteButton(async () => {
-        if (!window.confirm(`Delete "${resource.title}"? This can't be undone.`)) return;
-        await atlasApi.deleteResource(resource.id);
-        await renderResources();
-      })
-    );
-    list.appendChild(li);
-  }
+
+  if (viewMode === 'list') renderResourceListView(resources);
+  else renderResourceIconView(resources);
 }
 
 async function selectCourse(course: Course): Promise<void> {
   selectedCourse = course;
   await renderCourses();
   await renderResources();
+}
+
+function setViewMode(mode: 'list' | 'icons'): void {
+  viewMode = mode;
+  document.getElementById('view-list')!.classList.toggle('active', mode === 'list');
+  document.getElementById('view-icons')!.classList.toggle('active', mode === 'icons');
+  renderResources();
+}
+
+async function openPreview(resource: Resource): Promise<void> {
+  const overlay = document.getElementById('preview-overlay')!;
+  const title = document.getElementById('preview-title')!;
+  const note = document.getElementById('preview-note') as HTMLParagraphElement;
+  const body = document.getElementById('preview-body')!;
+
+  title.textContent = resource.title;
+  note.hidden = true;
+  body.innerHTML = '<p class="muted">Loading preview…</p>';
+  overlay.hidden = false;
+
+  const preview = await atlasApi.getPreview(resource.id);
+  body.innerHTML = '';
+
+  if (preview.type === 'pdf' || preview.type === 'image') {
+    if (preview.type === 'pdf') {
+      const iframe = document.createElement('iframe');
+      iframe.src = preview.url;
+      body.appendChild(iframe);
+    } else {
+      const img = document.createElement('img');
+      img.src = preview.url;
+      body.appendChild(img);
+    }
+  } else if (preview.type === 'html') {
+    const container = document.createElement('div');
+    container.className = 'preview-html';
+    container.innerHTML = preview.html;
+    body.appendChild(container);
+    if (preview.note) {
+      note.textContent = preview.note;
+      note.hidden = false;
+    }
+  } else if (preview.type === 'text') {
+    const pre = document.createElement('pre');
+    pre.textContent = preview.text;
+    body.appendChild(pre);
+  } else if (preview.type === 'unsupported') {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = preview.reason ?? 'No in-app preview available for this file type.';
+    body.appendChild(p);
+  }
+}
+
+function closePreview(): void {
+  const overlay = document.getElementById('preview-overlay')!;
+  const body = document.getElementById('preview-body')!;
+  overlay.hidden = true;
+  body.innerHTML = ''; // stop any iframe/media activity
 }
 
 async function init(): Promise<void> {
@@ -174,6 +296,23 @@ async function init(): Promise<void> {
     if (!selectedCourse) return;
     const resource = await atlasApi.uploadResource(selectedCourse.id);
     if (resource) await renderResources();
+  });
+
+  document.getElementById('view-list')!.addEventListener('click', () => setViewMode('list'));
+  document.getElementById('view-icons')!.addEventListener('click', () => setViewMode('icons'));
+
+  document.getElementById('preview-close')!.addEventListener('click', closePreview);
+  document.getElementById('preview-overlay')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closePreview();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePreview();
+  });
+
+  atlasApi.onContextMenuDelete(async (resourceId) => {
+    if (!window.confirm("Delete this resource? This can't be undone.")) return;
+    await atlasApi.deleteResource(resourceId);
+    await renderResources();
   });
 }
 

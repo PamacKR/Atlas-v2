@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getDb, closeDb } from './db/database';
 import { getDataDir, getFilesDir } from './paths';
+import { getPreview } from './preview';
 
 const KIND_BY_EXTENSION: Record<string, string> = {
   '.pdf': 'pdf',
@@ -165,6 +166,38 @@ ipcMain.handle('resources:open', async (_event, resourceId: number) => {
     | undefined;
   if (!resource) return;
   await shell.openPath(resource.file_path);
+});
+
+ipcMain.handle('resources:getPreview', async (_event, resourceId: number) => {
+  const db = getDb();
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
+    | { kind: string; file_path: string }
+    | undefined;
+  if (!resource) return { type: 'unsupported' };
+  return getPreview(resource.kind, resource.file_path);
+});
+
+// Native right-click menu, so "Open in default app" feels like a real file
+// manager rather than another in-page button.
+ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
+  const db = getDb();
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
+    | { file_path: string; title: string }
+    | undefined;
+  if (!resource) return;
+
+  const menu = Menu.buildFromTemplate([
+    { label: 'Open in default app', click: () => shell.openPath(resource.file_path) },
+    { type: 'separator' },
+    {
+      label: 'Delete',
+      click: () => {
+        event.sender.send('resources:contextMenuDelete', resourceId);
+      },
+    },
+  ]);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) menu.popup({ window: win });
 });
 
 ipcMain.handle('courses:delete', (_event, courseId: number) => {

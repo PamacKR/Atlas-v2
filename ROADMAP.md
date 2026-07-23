@@ -14,11 +14,12 @@ This roadmap sequences the PRD into buildable phases. Nothing here is committed 
 Goal: Atlas is useful *before* any external sync exists.
 
 - [x] Canonical SQLite schema: courses, resources, notes, deadlines, announcements, assignments
-- [x] Manual upload (PDF, PPTX, DOCX, images, text, markdown) — file picker, copies into `Downloads/Atlas-Storage/files/course-<id>/`, kind auto-detected from extension
+- [x] Manual upload (PDF, PPTX, DOCX, images, text, markdown) — file picker, copies into `Downloads/Atlas-Storage/files/<course name>/` (folder named after the course, original filename kept), kind auto-detected from extension
+- [x] Resource Viewer: in-app preview for PDF (native Chromium rendering), image, markdown (rendered), text, and DOCX (via `mammoth`); PPTX gets a text-only slide outline (no layout fidelity — no good free library renders real slide layout); right-click → "Open in default app" as the full-fidelity fallback for any type, native OS file manager style
+- [x] List/icon view toggle for the resource list, file-manager style
 - Local folder watching (Downloads, lecture/semester folders) with new-file detection
 - Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings
 - Unified Resource Library (single view regardless of source)
-- Resource Viewer: PDF, image, markdown, text — fallback to system default app
 - Notes: format decision resolved (see `docs/open-questions.md`), typed notes, embedded files/images
 - Dashboard v1: upcoming deadlines, recently added resources, "what changed today"
 - Global search (SQLite FTS5) across courses, resources, notes
@@ -26,7 +27,7 @@ Goal: Atlas is useful *before* any external sync exists.
 ## Phase 2 — Handwritten notes
 
 - Import flow: photos, scans, phone scans, tablet exports
-- OCR pipeline (Google Cloud Vision), storing both original image and extracted text
+- OCR pipeline (local, offline via Tesseract.js — see `ARCHITECTURE.md` §3), storing both original image and extracted text
 - Handwritten notes searchable and surfaced identically to typed notes
 
 ## Phase 3 — External sync

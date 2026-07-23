@@ -72,9 +72,42 @@ const fs = require('fs');
   if (!resourceItems.some((t) => t && t.includes('sample-lecture-notes.md'))) {
     throw new Error('FAIL: uploaded resource did not appear in the resource list');
   }
-  if (!resourceItems.some((t) => t && t.includes('Open'))) {
-    throw new Error('FAIL: Open button missing from resource row');
+
+  // Click the filename (not a separate button) to open the in-app preview.
+  // Safe to actually click here — markdown preview renders in-app, unlike
+  // "Open in default app" which would launch a real external application.
+  await window.click('#resource-list .resource-name');
+  await window.waitForTimeout(300);
+
+  const previewVisible = !(await window.isHidden('#preview-overlay'));
+  console.log('preview overlay visible:', previewVisible);
+  if (!previewVisible) throw new Error('FAIL: preview overlay did not open on filename click');
+
+  const previewHtml = await window.innerHTML('#preview-body');
+  console.log('preview body contains "Sample lecture notes":', previewHtml.includes('Sample lecture notes'));
+  if (!previewHtml.includes('Sample lecture notes')) {
+    throw new Error('FAIL: markdown preview did not render expected content');
   }
+
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+  if (!(await window.isHidden('#preview-overlay'))) {
+    throw new Error('FAIL: preview overlay did not close');
+  }
+
+  // Icon view toggle.
+  await window.click('#view-icons');
+  await window.waitForTimeout(200);
+  const listClass = await window.getAttribute('#resource-list', 'class');
+  console.log('resource-list class in icon mode:', listClass);
+  if (!listClass || !listClass.includes('view-icons')) {
+    throw new Error('FAIL: icon view mode did not apply');
+  }
+  const iconTiles = await window.$$('li.icon-tile');
+  if (iconTiles.length === 0) throw new Error('FAIL: no icon tiles rendered in icon view');
+
+  await window.click('#view-list');
+  await window.waitForTimeout(200);
 
   // Confirm on-disk layout: course folder named after the course (not
   // course-<id>), and the uploaded file keeping its original filename.

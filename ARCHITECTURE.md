@@ -74,6 +74,18 @@ Why MCP over static file export:
 - The query/context-builder logic (section 16) has to exist regardless of transport. MCP is a thin protocol layer on top of that logic, not a parallel implementation.
 - A static "export context to file" mode is still kept as a secondary path (same underlying query layer) for use with AI tools that don't support MCP, satisfying the PRD's AI-provider-independence goal (open question 5).
 
+## 7. Resource Viewer: in-app preview, per file type
+
+PRD section 10 asks for in-app viewing "whenever practical," with an external-app fallback otherwise. Implementation, per resource kind:
+
+- **PDF, image** — rendered directly (`<iframe>`/`<img>` against a `file://` URL); Chromium's built-in PDF viewer handles PDFs with no extra library.
+- **Markdown** — rendered to HTML via `marked`. Deliberately pinned to `marked@12` — v13+ dropped the CommonJS build Atlas's main process needs (it's ESM-only from v13 on), which crashes with `ERR_REQUIRE_ESM` under `require()`.
+- **Text** — shown as-is.
+- **DOCX** — converted to HTML via `mammoth` (pure JS, no native compile step, no Word installation needed).
+- **PPTX** — **text-only** outline (each slide's text runs extracted from the raw XML inside the `.pptx` zip via `adm-zip`). There is no mature free/pure-JS library that renders real slide layout, images, or styling with good fidelity — attempting that would mean either a paid conversion API (ruled out by §0) or bundling a heavyweight rendering engine for uncertain payoff. This is a deliberate, documented scope line, not an oversight.
+
+Every resource also has a native right-click context menu (Electron `Menu`, not an in-page dropdown) with **"Open in default app"** — the full-fidelity fallback for any file type, especially PPTX and any kind without a real in-app renderer. This matches how a normal file manager behaves: primary click previews, right-click gives the "open externally" option.
+
 ## Layer summary
 
 ```

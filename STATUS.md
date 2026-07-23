@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 9)
+**Last updated:** 2026-07-23 (session 10)
 
 ## Where things stand
 
@@ -37,6 +37,16 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 10 additions
+
+- **In-app resource preview built** (`ARCHITECTURE.md` §7): click a filename to open a preview overlay — PDF/image render natively, markdown renders via `marked` (pinned to v12, since v13+ dropped the CJS build our CommonJS main process needs), DOCX converts to HTML via `mammoth`, PPTX gets a text-only slide outline (no free library renders real slide layout, so this is a deliberate scope line, not a bug — see `ARCHITECTURE.md` §7 for the full reasoning). Right-click any resource for a native context menu with "Open in default app" (the old separate "Open" button is gone — replaced by click-to-preview, matching how a real file manager behaves).
+- **List/icon view toggle** added above the resource list.
+- **Two real bugs hit and fixed while building this:**
+  1. `marked@18` (latest at install time) is ESM-only with no CJS export condition — `require('marked')` in the CommonJS main process threw `ERR_REQUIRE_ESM` at startup. Tried a dynamic `import()` as a workaround, but TypeScript (with `module: commonjs`) downlevels dynamic imports back into a `require()` call anyway, so it didn't help. Fixed by pinning to `marked@^12.0.2`, the last major with a working CJS build.
+  2. The preview overlay's CSS set `display: flex` directly on `#preview-overlay` (an ID selector), which outranked the browser's default `[hidden] { display: none }` rule — so the "hidden" overlay was actually still visible and intercepting clicks. Fixed with `#preview-overlay:not([hidden]) { display: flex; }` instead.
+- Manually verified (outside the permanent test suite, via throwaway fixture files) that DOCX and PPTX preview actually produce correct output — a minimal fixture `.docx` and `.pptx` were built with Python's `zipfile` and run through the real app; both rendered as expected. `scripts/verify-app.js` itself only exercises the markdown path end-to-end (safe to click in an automated run) plus the view toggle; it does not click "Open in default app" for the same reason as before — that would launch a real external OS application during an automated run.
+- **Fixed doc drift**: `ROADMAP.md` Phase 2 still said "OCR pipeline (Google Cloud Vision)" from before the OCR decision changed to local Tesseract.js — missed in an earlier session, caught and fixed now.
 
 ## Session 9 additions
 

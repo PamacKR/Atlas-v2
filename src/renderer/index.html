@@ -31,11 +31,29 @@
     </section>
 
     <section id="resources-section" hidden>
-      <h2 id="resources-heading">Resources</h2>
-      <ul id="resource-list"></ul>
+      <div class="resources-header">
+        <h2 id="resources-heading">Resources</h2>
+        <div class="view-toggle">
+          <button id="view-list" type="button" class="active">List</button>
+          <button id="view-icons" type="button">Icons</button>
+        </div>
+      </div>
+      <ul id="resource-list" class="view-list"></ul>
       <button id="upload-button" type="button">Upload file</button>
     </section>
   </div>
+
+  <div id="preview-overlay" hidden>
+    <div id="preview-panel">
+      <div id="preview-panel-header">
+        <span id="preview-title"></span>
+        <button id="preview-close" type="button">Close</button>
+      </div>
+      <p id="preview-note" class="muted" hidden></p>
+      <div id="preview-body"></div>
+    </div>
+  </div>
+
   <script src="renderer.js"></script>
 </body>
 </html>

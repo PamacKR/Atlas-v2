@@ -51,21 +51,6 @@ button.delete-button:hover {
   background: #3a1e1e;
 }
 
-button.open-button {
-  margin-left: auto;
-  padding: 0.3rem 0.7rem;
-  border-radius: 4px;
-  border: 1px solid #2a3f4a;
-  background: #1a2a2e;
-  color: #a3d6e6;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-button.open-button:hover {
-  background: #1e3a3e;
-}
-
 ul#course-list li.selected {
   outline: 2px solid #3b82f6;
 }
@@ -81,19 +66,98 @@ section#resources-section {
   margin-top: 2rem;
 }
 
+.resources-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.resources-header h2 {
+  margin: 0;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.view-toggle button {
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #8a919c;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.view-toggle button.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
 ul#resource-list {
   list-style: none;
   padding: 0;
   margin: 0 0 1rem 0;
 }
 
-ul#resource-list li {
+ul#resource-list.view-list li {
   padding: 0.6rem 0.8rem;
   background: #1a1e24;
   border-radius: 6px;
   margin-bottom: 0.4rem;
   display: flex;
   align-items: center;
+}
+
+.resource-name {
+  cursor: pointer;
+}
+
+.resource-name:hover {
+  text-decoration: underline;
+}
+
+ul#resource-list.view-list .delete-button {
+  margin-left: auto;
+}
+
+ul#resource-list.view-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.75rem;
+}
+
+li.icon-tile {
+  position: relative;
+  background: #1a1e24;
+  border-radius: 8px;
+  padding: 1rem 0.5rem 0.6rem 0.5rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+li.icon-tile .icon-glyph {
+  font-size: 2rem;
+  margin-bottom: 0.4rem;
+}
+
+li.icon-tile .icon-name {
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+li.icon-tile .delete-button {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
 }
 
 button#upload-button {
@@ -126,4 +190,91 @@ form#course-form button {
   background: #3b82f6;
   color: white;
   cursor: pointer;
+}
+
+#preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+/* The [hidden] attribute's default `display: none` must win over the flex
+   layout below — an ID selector setting `display` unconditionally would
+   otherwise outrank it and keep the overlay visible (and click-blocking)
+   even while hidden. */
+#preview-overlay:not([hidden]) {
+  display: flex;
+}
+
+#preview-panel {
+  background: #16191e;
+  border-radius: 8px;
+  border: 1px solid #2a2f37;
+  width: 100%;
+  height: 100%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+#preview-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+#preview-title {
+  font-weight: 600;
+}
+
+#preview-close {
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+#preview-body {
+  flex: 1;
+  overflow: auto;
+  background: #0d0f12;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+#preview-body iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
+#preview-body img {
+  max-width: 100%;
+  display: block;
+  margin: 0 auto;
+}
+
+#preview-body pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.preview-html {
+  background: white;
+  color: #111;
+  padding: 1rem;
+  border-radius: 4px;
+}
+
+.preview-html .slide {
+  border-bottom: 1px solid #ddd;
+  padding: 0.75rem 0;
 }
