@@ -2,6 +2,17 @@
 
 This document records the technical decisions behind Atlas and the reasoning for each, so future contributors (human or AI) don't have to re-derive them.
 
+## 0. Hard constraint: zero AI integration, zero API fees, anywhere
+
+Atlas itself never calls any LLM or AI API — not Anthropic, not OpenAI, not Google Gemini, nothing. The only reasoning engine is Claude Code, run as a separate process the user drives directly, covered entirely by their existing Claude subscription. This is not a cost-optimization detail to revisit later — it's the same "Atlas owns data, Claude owns reasoning" split from the PRD, made strict: if a feature would require Atlas to make an API call to an AI model, it's out of scope for Atlas, full stop.
+
+This also means every other integration in Atlas must run on a genuinely free tier, with no billing account enabled anywhere:
+
+- **Google Classroom / Gmail / Drive APIs** — free under normal read-scope usage via the user's own Google Cloud OAuth client (no Google Cloud billing account needs to be attached).
+- **OCR** — must be a local/offline engine, not a metered cloud API (see §3 below; this ruled out Cloud Vision).
+
+If a future feature seems to need a paid API, the answer is "cut the feature, don't add the cost" unless the user explicitly opts in later.
+
 ## 1. Application shell: Electron + TypeScript
 
 Atlas needs to, on one desktop app:
@@ -33,9 +44,13 @@ SQLite (via `better-sqlite3`) is the store because:
 
 Binary blobs (original scans, PDFs, images) are **not** stored in SQLite — they stay on disk in a managed Atlas data directory, with SQLite holding the file paths, metadata, and extracted/searchable text. This keeps the database small and keeps original files trivially recoverable/inspectable outside the app.
 
-## 3. OCR: cloud-based (Google Cloud Vision API)
+## 3. OCR: local, offline (Tesseract.js)
 
-Handwritten notes are first-class (PRD section 7). Local OCR engines (Tesseract) handle printed text well but handwriting recognition quality is poor. Since Atlas already integrates with Google APIs for Classroom/Gmail/Drive, Cloud Vision is one more credential on an existing integration surface rather than a new one. Both the original scanned image and the extracted OCR text are retained (per PRD section 7) — OCR failure or low confidence never discards the source image.
+Handwritten notes are first-class (PRD section 7). The originally considered option — Google Cloud Vision — is a metered, paid API and is ruled out by the zero-API-fees constraint (§0). Instead, OCR runs locally via Tesseract.js: free, offline, no request costs, no credentials.
+
+The honest tradeoff: Tesseract handles printed text well but handwriting recognition quality is meaningfully worse than a paid cloud OCR model. That's an accepted cost of the no-fees constraint, not an oversight. A possible future improvement, still zero-cost, is Windows' built-in ink/handwriting recognition (`Windows.UI.Input.Inking`), which runs on-device and ships with the OS — worth prototyping in Phase 2 if Tesseract's handwriting accuracy proves too poor to be useful, but not a Phase 2 blocker.
+
+Both the original scanned image and the extracted OCR text are retained regardless of engine (per PRD section 7) — OCR failure or low confidence never discards the source image.
 
 ## 4. Sync layer
 

@@ -46,6 +46,18 @@ Where do original files (scans, PDFs, uploads) live on disk relative to the SQLi
 
 ### 7. Google API credential handling
 
-Classroom/Gmail/Drive/Vision all need Google Cloud credentials. Does the user bring their own Google Cloud project (OAuth client), or does Atlas ship with one baked in?
+Classroom/Gmail/Drive all need Google Cloud credentials. Does the user bring their own Google Cloud project (OAuth client), or does Atlas ship with one baked in?
 
-**Status:** Open. Bringing-your-own is more work for the user but avoids Atlas being tied to a shared quota/credential; needs a decision before Phase 3.
+**Status:** Resolved — bring-your-own Google Cloud OAuth client, on the free tier, with no billing account attached (per the zero-API-fees constraint in `ARCHITECTURE.md` §0). OCR no longer needs a Google credential at all, since it moved to local Tesseract.js (`ARCHITECTURE.md` §3).
+
+### 8. College Google Workspace access — real risk, not yet verified
+
+The user's primary account for Classroom/Gmail is a **college Google Workspace for Education account**, not their personal Google account. Workspace admins commonly restrict which third-party/custom OAuth apps can access Classroom, Gmail, or Drive API scopes for accounts on the domain — independent of cost, this can block API access outright regardless of what Atlas builds.
+
+**Status:** Open, and blocking for Phase 3 planning. Needs to be checked directly (e.g. attempt a test OAuth consent flow against the college account, or check the school's Google Workspace admin/API-access policy) before Classroom/Gmail sync work is scoped in detail. If the college domain blocks custom OAuth apps, Phase 3 may need a fallback (e.g. manual export/import from Classroom, or scoping sync to the personal Google account only where relevant).
+
+### 9. Personal Google "Pro" subscription and Claude Pro — do they help with anything here?
+
+The user has a Google One/Google AI Pro-type subscription on their personal account and a Claude Pro subscription. Worth being explicit: neither grants API credits or billing-free API access — Google One's AI features are app/web-based (e.g. Gemini in Gmail/Docs), not API quota, and Claude Pro covers Claude.ai/Claude Code usage, not the separate Anthropic API. Since Atlas makes no AI API calls at all (`ARCHITECTURE.md` §0), this is moot for Atlas itself — noted here only so it isn't assumed to unlock some API budget later.
+
+**Status:** Resolved (informational) — not usable for API costs, and not needed given the zero-AI-integration constraint.

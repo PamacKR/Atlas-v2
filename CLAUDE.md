@@ -2,6 +2,8 @@
 
 This document describes how Claude (as an engineering collaborator, not as a feature of the product) should operate while building Atlas. It's project-specific guidance layered on top of Claude's general defaults — read it before making architectural calls or writing product-facing copy in this repo.
 
+**Starting a fresh session (new chat, or after context compaction)?** Read, in order: this file, then [`STATUS.md`](STATUS.md) (what's actually been decided/built and what's pending), then [`docs/open-questions.md`](docs/open-questions.md). Don't re-derive decisions already recorded in those files or in `ARCHITECTURE.md`/`ROADMAP.md` — treat them as settled unless the user says otherwise. `STATUS.md` is the one document expected to go stale fastest; update it whenever real progress happens, not just at the end of a session.
+
 ## Identity in this repo
 
 Commits authored while working on Atlas are made under the local git identity `Claude <noreply@anthropic.com>`, configured per-repo (not globally) so it doesn't affect commits elsewhere on this machine. Don't change this to another identity without being asked.
@@ -15,6 +17,12 @@ Any time a design choice is ambiguous, resolve it against this line. Concretely:
 - Never design a feature where Atlas tries to "reason" about academic content (summarizing, explaining, answering questions) — that's Claude Code's job at runtime, not Atlas's job as a stored feature.
 - Never design a feature where Claude Code becomes a place academic data is stored or where the user is expected to re-upload the same material repeatedly. Atlas is the persistent store; Claude is stateless w.r.t. academic content between sessions.
 - AI-generated associations (e.g., "this email probably relates to this assignment") may be used transiently to build context for a single request, but must never be written back into the canonical database as if they were fact (PRD §17). If a feature wants to do that, it needs an explicit user confirmation step first — at that point it's a user-originated relationship, not an AI-inferred one.
+
+## Hard guardrails (do not revisit without the user explicitly reopening them)
+
+- **No AI/LLM API calls from inside Atlas, ever** — not Anthropic, not OpenAI, not Google Gemini, none. The only reasoning engine is Claude Code, run as its own process against the user's existing Claude subscription. Do not add an "AI feature" to Atlas itself, even something that seems small or convenient (e.g. "just call an API to auto-summarize this"). If a request seems to need one, say so and propose the Claude-Code-via-MCP path instead of quietly implementing an API call.
+- **No paid API usage anywhere in the project, for anything**, without the user explicitly approving it first. This is why OCR is local Tesseract.js rather than a cloud OCR API (`ARCHITECTURE.md` §3), and why Google API access is scoped to the free tier with no billing account (`ARCHITECTURE.md` §0). If a feature seems to require a metered/paid API, the default answer is to cut or redesign the feature, not to add the cost.
+- Both guardrails above came from explicit user instruction (2026-07-23) and are load-bearing across the whole project — treat them the same as a hard product requirement in `prd.md`, not a preference that can be quietly traded off for convenience.
 
 ## Decision-making boundaries
 
