@@ -1,0 +1,23 @@
+{
+  "name": "atlas",
+  "version": "0.1.0",
+  "description": "Atlas — a centralized academic knowledge platform",
+  "private": true,
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc -b && node scripts/copy-assets.js",
+    "start": "npm run build && electron .",
+    "watch": "tsc -b -w"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.2",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "chokidar": "^4.0.3"
+  }
+}

@@ -2,14 +2,17 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 3)
+**Last updated:** 2026-07-23 (session 4)
 
 ## Where things stand
 
 - Repo created: [github.com/PamacKR/Atlas](https://github.com/PamacKR/Atlas), private, owned by the user (`PamacKR`).
 - Commits in this repo are authored locally as `Claude <noreply@anthropic.com>` (repo-local git config, not global) — the user does not want their `thehawkeye` identity on these commits. Don't change this without being asked.
-- No application code exists yet. Everything so far is documentation/planning (`ROADMAP.md` Phase 0).
-- Files in place: `README.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `CLAUDE.md`, `STATUS.md` (this file), `docs/open-questions.md`, `prd.md`.
+- Phase 0 (docs) is done. Phase 1 scaffolding has started and the app **runs end to end**: Electron main process, preload/contextBridge, SQLite schema (courses/resources/notes/deadlines/announcements/assignments + FTS5 search index), and a minimal renderer (course list + add-course form) all verified working together.
+- Verified: `npm install --ignore-scripts` then `npx @electron/rebuild -f -w better-sqlite3` gets a working native binary (no Visual Studio/build tools needed on this machine — a prebuilt Electron-ABI binary was available). Plain `npm install` fails here because there's no prebuilt `better-sqlite3` binary for the host Node version (v24.18.0) and no C++ build toolchain installed. Documented in `README.md` "Running it".
+- App launch confirmed: creates `Downloads/Atlas/atlas.db` + `files/` on first run, no runtime errors. Not yet visually inspected by the user in a real window (only verified programmatically — process ran, DB file appeared, no crash/log errors). Worth a manual look next session to confirm the UI actually renders as expected.
+- Known dev-mode quirk: this repo checkout lives at `Downloads/Atlas`, the same path the app's data folder resolves to (`ARCHITECTURE.md` §2) — so running from source writes `atlas.db`/`files/` directly into the repo directory. Gitignored, harmless, doesn't affect a packaged build, but don't be surprised to see it there.
+- Files in place: all Phase 0 docs, plus `package.json`, `tsconfig.json`, `scripts/copy-assets.js`, `.gitignore`, and `src/{main,preload,renderer}/*` (see `ROADMAP.md` Phase 1 for what's still missing: folder watching, resource viewers, notes UI beyond the stub, dashboard, global search UI).
 
 ## Decisions locked in (don't re-litigate)
 
@@ -33,4 +36,4 @@ Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. ric
 
 ## What's next
 
-Per `ROADMAP.md`, the next real step is Phase 1 scaffolding (Electron + TypeScript skeleton, SQLite schema v1) — but the user's last instruction was "docs and planning only" for this session, so no code has been written. Confirm with the user before starting Phase 1 implementation.
+User has the app running locally (`npm start`) and should take a look at the actual window to confirm the UI looks/behaves as expected — that hasn't been visually confirmed yet, only verified programmatically. After that, next Phase 1 work: local folder watching (chokidar), manual file upload flow, resource viewer (PDF/image/markdown/text), notes UI beyond the current course-list stub, dashboard, and global search UI wired to the FTS5 index. User has said to commit/push continuously without waiting for approval in this repo (see `CLAUDE.md` "Git workflow") — keep doing that.

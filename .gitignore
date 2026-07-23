@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local build artifacts / packaged app output
+release/
+out/
+tsconfig.tsbuildinfo
+
+# Runtime data — the dev repo happens to live at Downloads/Atlas, the same
+# path as the app's managed data directory (ARCHITECTURE.md §2), so running
+# from source writes these directly into the repo folder. Never commit them.
+atlas.db
+atlas.db-shm
+atlas.db-wal
+/files/

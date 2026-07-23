@@ -22,4 +22,16 @@ Atlas never tries to become an AI assistant. Claude never becomes responsible fo
 
 ## Status
 
-Pre-implementation. Currently in the documentation and planning phase — see [`ROADMAP.md`](ROADMAP.md) for what comes next.
+Phase 1 scaffolding in progress — see [`ROADMAP.md`](ROADMAP.md) and [`STATUS.md`](STATUS.md) for detail.
+
+## Running it
+
+```bash
+npm install
+npx @electron/rebuild -f -w better-sqlite3   # only needed after a fresh install
+npm start
+```
+
+`better-sqlite3` is a native module and needs to be rebuilt against Electron's ABI (not your system Node) after `npm install` — `npm start` alone will fail with a module version mismatch if you skip that step. On first launch, Atlas creates its data folder at `Downloads/Atlas` (database + synced/uploaded files) — see `ARCHITECTURE.md` §2.
+
+Note: if you're running from this source checkout and it happens to live at `Downloads/Atlas` itself (as it does by default), the database/files folder is created inside the repo directory. That's harmless (and gitignored) — it's only a quirk of running from source at that particular path, not something that affects a packaged build.

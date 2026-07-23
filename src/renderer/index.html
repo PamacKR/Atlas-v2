@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Atlas</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Atlas</h1>
+      <p id="data-dir" class="muted"></p>
+    </header>
+
+    <section>
+      <h2>Courses</h2>
+      <ul id="course-list"></ul>
+
+      <form id="course-form">
+        <input id="course-name" type="text" placeholder="Course name" required />
+        <input id="course-code" type="text" placeholder="Code (optional)" />
+        <input id="course-term" type="text" placeholder="Term (optional)" />
+        <button type="submit">Add course</button>
+      </form>
+    </section>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

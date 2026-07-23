@@ -37,6 +37,10 @@ Any time a design choice is ambiguous, resolve it against this line. Concretely:
 - Don't build ahead of the current roadmap phase (see `ROADMAP.md`) — e.g. don't start wiring Gmail sync while Phase 1 (local-only workflow) isn't done. Each phase should be a genuinely usable checkpoint on its own.
 - Follow Anthropic's general engineering defaults on top of this: no speculative abstraction, no unused config/feature flags, comments only where the *why* isn't obvious from the code, and don't add error handling for cases that can't occur.
 
+## Git workflow
+
+Commit and push to `github.com/PamacKR/Atlas` continuously as work happens — **don't wait for approval before committing/pushing** in this repo. The user explicitly opted into this (2026-07-23) on the reasoning that git history makes any bad change trivially reversible. Still use judgment on commit granularity (a coherent chunk of work, not every keystroke) and write real commit messages — the autonomy is about not blocking on a confirmation round-trip, not about being careless.
+
 ## Tone in user-facing product copy
 
 Atlas's own UI copy (empty states, dashboard labels, settings) should be plain and functional — this is a workspace tool, not a consumer app trying to be delightful. Favor clarity over personality in anything the *student* sees inside Atlas. This document's guidance is about Claude's engineering behavior; it does not mean the product itself should have a "voice."
