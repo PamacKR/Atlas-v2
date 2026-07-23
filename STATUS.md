@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 6)
+**Last updated:** 2026-07-23 (session 7)
 
 ## Where things stand
 
@@ -38,6 +38,10 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
 
-## What's next
+## What's next (updated session 7)
 
-User has the app running locally (`npm start`) and should take a look at the actual window to confirm the UI looks/behaves as expected — that hasn't been visually confirmed yet, only verified programmatically. After that, next Phase 1 work: local folder watching (chokidar), manual file upload flow, resource viewer (PDF/image/markdown/text), notes UI beyond the current course-list stub, dashboard, and global search UI wired to the FTS5 index. User has said to commit/push continuously without waiting for approval in this repo (see `CLAUDE.md` "Git workflow") — keep doing that.
+**Manual file upload is done and verified** (self-tested via `npm run verify`, screenshot confirmed): click a course to select it, "Upload file" opens a native file picker, the file is copied into `Downloads/Atlas-Storage/files/course-<id>/` with a timestamp prefix (collision-safe), a `resources` row is inserted with `kind` auto-detected from file extension, and the resource list re-renders under the selected course. `main.ts` has an `ATLAS_TEST_UPLOAD_PATH` env-var test hook so `scripts/verify-app.js` can drive the upload without needing to interact with the native OS file dialog (which Playwright can't click into).
+
+Remaining Phase 1 work, roughly in order: local folder watching (chokidar) — reuse the same "insert into resources" logic as manual upload; resource viewer (PDF/image/markdown/text, falling back to the OS default app); notes UI (typed notes, format still open per `docs/open-questions.md` #1); dashboard; global search UI wired to the existing FTS5 `search_index` table (not populated yet — decide when building search whether to backfill it retroactively for resources added via upload/folder-watch).
+
+User has said to commit/push continuously without waiting for approval in this repo (see `CLAUDE.md` "Git workflow") — keep doing that.

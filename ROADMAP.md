@@ -13,8 +13,8 @@ This roadmap sequences the PRD into buildable phases. Nothing here is committed 
 
 Goal: Atlas is useful *before* any external sync exists.
 
-- Canonical SQLite schema: courses, resources, notes, deadlines, announcements, assignments
-- Manual upload (PDF, PPTX, DOCX, images, text, markdown)
+- [x] Canonical SQLite schema: courses, resources, notes, deadlines, announcements, assignments
+- [x] Manual upload (PDF, PPTX, DOCX, images, text, markdown) — file picker, copies into `Downloads/Atlas-Storage/files/course-<id>/`, kind auto-detected from extension
 - Local folder watching (Downloads, lecture/semester folders) with new-file detection
 - Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings
 - Unified Resource Library (single view regardless of source)

@@ -31,12 +31,44 @@ ul#course-list li {
   background: #1a1e24;
   border-radius: 6px;
   margin-bottom: 0.4rem;
+  cursor: pointer;
 }
 
-ul#course-list li .code {
+ul#course-list li.selected {
+  outline: 2px solid #3b82f6;
+}
+
+ul#course-list li .code,
+ul#resource-list li .code {
   color: #8a919c;
   font-size: 0.8rem;
   margin-left: 0.5rem;
+}
+
+section#resources-section {
+  margin-top: 2rem;
+}
+
+ul#resource-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+}
+
+ul#resource-list li {
+  padding: 0.6rem 0.8rem;
+  background: #1a1e24;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+}
+
+button#upload-button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  cursor: pointer;
 }
 
 form#course-form {

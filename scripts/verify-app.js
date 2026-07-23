@@ -12,9 +12,14 @@ const fs = require('fs');
   // Downloads/Atlas-Storage — see ATLAS_DATA_DIR override in src/main/paths.ts.
   const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-verify-'));
 
+  // A throwaway file to "upload" — dialog.showOpenDialog can't be driven by
+  // Playwright, so main.ts has an ATLAS_TEST_UPLOAD_PATH escape hatch for tests.
+  const testUploadPath = path.join(testDataDir, 'sample-lecture-notes.md');
+  fs.writeFileSync(testUploadPath, '# Sample lecture notes\n\nUsed only by scripts/verify-app.js.');
+
   const app = await electron.launch({
     args: [path.join(__dirname, '..')],
-    env: { ...process.env, ATLAS_DATA_DIR: testDataDir },
+    env: { ...process.env, ATLAS_DATA_DIR: testDataDir, ATLAS_TEST_UPLOAD_PATH: testUploadPath },
   });
   const window = await app.firstWindow();
   window.on('console', (msg) => console.log('[renderer console]', msg.type(), msg.text()));
@@ -40,6 +45,27 @@ const fs = require('fs');
   console.log('courses after:', items);
   if (!items.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: added course did not appear in the list');
+  }
+
+  // Select the course, then upload a resource into it.
+  await window.click('#course-list li');
+  await window.waitForTimeout(200);
+
+  const resourcesHeading = await window.textContent('#resources-heading');
+  console.log('resources heading:', resourcesHeading);
+  if (!resourcesHeading || !resourcesHeading.includes('Verify Script Test Course')) {
+    throw new Error('FAIL: resources section did not show the selected course');
+  }
+
+  await window.click('#upload-button');
+  await window.waitForTimeout(300);
+
+  const resourceItems = await window.$$eval('#resource-list li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('resources after upload:', resourceItems);
+  if (!resourceItems.some((t) => t && t.includes('sample-lecture-notes.md'))) {
+    throw new Error('FAIL: uploaded resource did not appear in the resource list');
   }
 
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
