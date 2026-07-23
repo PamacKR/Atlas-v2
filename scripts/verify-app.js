@@ -24,6 +24,7 @@ const fs = require('fs');
   const window = await app.firstWindow();
   window.on('console', (msg) => console.log('[renderer console]', msg.type(), msg.text()));
   window.on('pageerror', (err) => console.log('[renderer error]', err));
+  window.on('dialog', (dialog) => dialog.accept()); // auto-confirm delete prompts
   await window.waitForLoadState('domcontentloaded');
   await window.waitForTimeout(500); // let the async init() finish
 
@@ -38,6 +39,7 @@ const fs = require('fs');
 
   await window.fill('#course-name', 'Verify Script Test Course');
   await window.fill('#course-code', 'VERIFY101');
+  await window.selectOption('#course-term', 'Monsoon 26');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
 
@@ -45,6 +47,9 @@ const fs = require('fs');
   console.log('courses after:', items);
   if (!items.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: added course did not appear in the list');
+  }
+  if (!items.some((t) => t && t.includes('Monsoon 26'))) {
+    throw new Error('FAIL: term dropdown value did not persist/display');
   }
 
   // Select the course, then upload a resource into it.
@@ -70,6 +75,27 @@ const fs = require('fs');
 
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
+
+  // Delete the resource, then the course, confirming both disappear.
+  await window.click('#resource-list button.delete-button');
+  await window.waitForTimeout(300);
+  const resourcesAfterDelete = await window.$$eval('#resource-list li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('resources after delete:', resourcesAfterDelete);
+  if (resourcesAfterDelete.some((t) => t && t.includes('sample-lecture-notes.md'))) {
+    throw new Error('FAIL: resource still present after delete');
+  }
+
+  await window.click('#course-list button.delete-button');
+  await window.waitForTimeout(300);
+  const coursesAfterDelete = await window.$$eval('#course-list li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('courses after delete:', coursesAfterDelete);
+  if (coursesAfterDelete.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error('FAIL: course still present after delete');
+  }
 
   await app.close();
 

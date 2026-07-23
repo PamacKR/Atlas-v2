@@ -113,3 +113,21 @@ ipcMain.handle('resources:upload', async (_event, courseId: number) => {
 
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 });
+
+ipcMain.handle('courses:delete', (_event, courseId: number) => {
+  const db = getDb();
+  // Remove the course's files from disk; the resources rows cascade-delete
+  // via the FK (foreign_keys pragma is on, see db/database.ts).
+  const courseFilesDir = path.join(getFilesDir(), `course-${courseId}`);
+  fs.rmSync(courseFilesDir, { recursive: true, force: true });
+  db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
+});
+
+ipcMain.handle('resources:delete', (_event, resourceId: number) => {
+  const db = getDb();
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
+    | { file_path: string }
+    | undefined;
+  if (resource) fs.rmSync(resource.file_path, { force: true });
+  db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
+});

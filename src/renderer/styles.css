@@ -32,6 +32,23 @@ ul#course-list li {
   border-radius: 6px;
   margin-bottom: 0.4rem;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+button.delete-button {
+  margin-left: auto;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid #4a2a2a;
+  background: #2a1a1a;
+  color: #e6a3a3;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+button.delete-button:hover {
+  background: #3a1e1e;
 }
 
 ul#course-list li.selected {
@@ -60,6 +77,8 @@ ul#resource-list li {
   background: #1a1e24;
   border-radius: 6px;
   margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
 }
 
 button#upload-button {
@@ -76,7 +95,8 @@ form#course-form {
   gap: 0.5rem;
 }
 
-form#course-form input {
+form#course-form input,
+form#course-form select {
   padding: 0.5rem;
   border-radius: 4px;
   border: 1px solid #2a2f37;

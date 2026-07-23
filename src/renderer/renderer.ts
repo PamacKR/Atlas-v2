@@ -25,6 +25,8 @@ interface AtlasApi {
   getDataDir: () => Promise<string>;
   listResources: (courseId: number) => Promise<Resource[]>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
+  deleteCourse: (courseId: number) => Promise<void>;
+  deleteResource: (resourceId: number) => Promise<void>;
 }
 
 // Deliberately not using `import`/`export`/`declare global` here: any of
@@ -35,6 +37,18 @@ interface AtlasApi {
 const atlasApi: AtlasApi = (window as any).atlas;
 
 let selectedCourse: Course | null = null;
+
+function makeDeleteButton(onDelete: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'delete-button';
+  button.textContent = 'Delete';
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onDelete();
+  });
+  return button;
+}
 
 async function renderCourses(): Promise<void> {
   const list = document.getElementById('course-list')!;
@@ -50,9 +64,26 @@ async function renderCourses(): Promise<void> {
       code.textContent = course.code;
       li.appendChild(code);
     }
+    if (course.term) {
+      const term = document.createElement('span');
+      term.className = 'code';
+      term.textContent = course.term;
+      li.appendChild(term);
+    }
     if (selectedCourse && selectedCourse.id === course.id) {
       li.classList.add('selected');
     }
+    li.appendChild(
+      makeDeleteButton(async () => {
+        if (!window.confirm(`Delete "${course.name}" and all its resources? This can't be undone.`)) {
+          return;
+        }
+        await atlasApi.deleteCourse(course.id);
+        if (selectedCourse && selectedCourse.id === course.id) selectedCourse = null;
+        await renderCourses();
+        await renderResources();
+      })
+    );
     li.addEventListener('click', () => selectCourse(course));
     list.appendChild(li);
   }
@@ -87,6 +118,13 @@ async function renderResources(): Promise<void> {
     kind.className = 'code';
     kind.textContent = resource.kind;
     li.appendChild(kind);
+    li.appendChild(
+      makeDeleteButton(async () => {
+        if (!window.confirm(`Delete "${resource.title}"? This can't be undone.`)) return;
+        await atlasApi.deleteResource(resource.id);
+        await renderResources();
+      })
+    );
     list.appendChild(li);
   }
 }
@@ -108,7 +146,7 @@ async function init(): Promise<void> {
     e.preventDefault();
     const name = (document.getElementById('course-name') as HTMLInputElement).value.trim();
     const code = (document.getElementById('course-code') as HTMLInputElement).value.trim() || null;
-    const term = (document.getElementById('course-term') as HTMLInputElement).value.trim() || null;
+    const term = (document.getElementById('course-term') as HTMLSelectElement).value || null;
     if (!name) return;
 
     await atlasApi.createCourse(name, code, term);
