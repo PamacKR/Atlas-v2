@@ -73,8 +73,29 @@ function makeDeleteButton(onDelete: () => void): HTMLButtonElement {
   return button;
 }
 
+let confirmResolve: ((result: boolean) => void) | null = null;
+
+function showConfirm(message: string): Promise<boolean> {
+  const overlay = document.getElementById('confirm-overlay')!;
+  const messageEl = document.getElementById('confirm-message')!;
+  messageEl.textContent = message;
+  overlay.hidden = false;
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+
+function resolveConfirm(result: boolean): void {
+  const overlay = document.getElementById('confirm-overlay')!;
+  overlay.hidden = true;
+  if (confirmResolve) {
+    confirmResolve(result);
+    confirmResolve = null;
+  }
+}
+
 async function confirmAndDeleteResource(resource: Resource): Promise<void> {
-  if (!window.confirm(`Delete "${resource.title}"? This can't be undone.`)) return;
+  if (!(await showConfirm(`Delete "${resource.title}"? This can't be undone.`))) return;
   await atlasApi.deleteResource(resource.id);
   await renderResources();
 }
@@ -104,7 +125,7 @@ async function renderCourses(): Promise<void> {
     }
     li.appendChild(
       makeDeleteButton(async () => {
-        if (!window.confirm(`Delete "${course.name}" and all its resources? This can't be undone.`)) {
+        if (!(await showConfirm(`Delete "${course.name}" and all its resources? This can't be undone.`))) {
           return;
         }
         await atlasApi.deleteCourse(course.id);
@@ -310,10 +331,13 @@ async function init(): Promise<void> {
   });
 
   atlasApi.onContextMenuDelete(async (resourceId) => {
-    if (!window.confirm("Delete this resource? This can't be undone.")) return;
+    if (!(await showConfirm("Delete this resource? This can't be undone."))) return;
     await atlasApi.deleteResource(resourceId);
     await renderResources();
   });
+
+  document.getElementById('confirm-cancel')!.addEventListener('click', () => resolveConfirm(false));
+  document.getElementById('confirm-yes')!.addEventListener('click', () => resolveConfirm(true));
 }
 
 init();

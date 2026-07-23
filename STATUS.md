@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 10)
+**Last updated:** 2026-07-23 (session 11)
 
 ## Where things stand
 
@@ -37,6 +37,11 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 11 additions
+
+- **Native `window.confirm()` replaced with an in-app modal** (`#confirm-overlay` in `index.html`, `showConfirm()`/`resolveConfirm()` in `renderer.ts`) — styled consistently with the rest of the UI instead of an OS-native dialog box. Same `[hidden]`-vs-ID-selector CSS specificity trap as the preview overlay (see session 10) applied here too; fixed the same way (`#confirm-overlay:not([hidden])`). `scripts/verify-app.js` updated to click `#confirm-yes`/`#confirm-cancel` instead of relying on Playwright's native-dialog auto-accept, and now also covers the Cancel path (resource must survive if Cancel is clicked).
+- **Real "Test Course" seeded into the user's actual `Downloads/Atlas-Storage`** with 7 sample resources — one of every supported kind, multi-page/multi-slide with realistic academic content (a sorting-algorithms lecture theme, consistent across files): a 5-page PDF (via `reportlab`), a multi-page DOCX with headings/lists/a code snippet (via `python-docx`, explicit page breaks), an 8-slide PPTX (via `python-pptx`), a generated PNG complexity chart, a plain-text raw-notes file, a Markdown study guide (table, code block, list), and a ZIP with a few starter files inside. Generated with Python (`python-docx`, `python-pptx`, `Pillow`, `reportlab` — installed via pip for this one-off generation task, not a project dependency) and uploaded into the real app via the existing `ATLAS_TEST_UPLOAD_PATH` test hook (same upload code path a real user upload takes, just skipping the native file-picker dialog). This is real seeded data in the user's actual storage, not a throwaway test — it's meant to stay there for them to click through.
 
 ## Session 10 additions
 

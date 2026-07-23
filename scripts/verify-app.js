@@ -24,7 +24,13 @@ const fs = require('fs');
   const window = await app.firstWindow();
   window.on('console', (msg) => console.log('[renderer console]', msg.type(), msg.text()));
   window.on('pageerror', (err) => console.log('[renderer error]', err));
-  window.on('dialog', (dialog) => dialog.accept()); // auto-confirm delete prompts
+  // Deletes now go through the in-app confirm modal (#confirm-overlay), not
+  // a native dialog — if one ever appears it's a regression, but dismiss it
+  // rather than leaving it open (which would hang the run) and log loudly.
+  window.on('dialog', (dialog) => {
+    console.error('UNEXPECTED native dialog (should be the in-app confirm modal):', dialog.message());
+    dialog.dismiss();
+  });
   await window.waitForLoadState('domcontentloaded');
   await window.waitForTimeout(500); // let the async init() finish
 
@@ -125,8 +131,27 @@ const fs = require('fs');
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
 
-  // Delete the resource, then the course, confirming both disappear.
+  // Cancel path: opening the confirm modal and clicking Cancel must leave
+  // the resource untouched.
   await window.click('#resource-list button.delete-button');
+  await window.waitForTimeout(200);
+  await window.click('#confirm-cancel');
+  await window.waitForTimeout(200);
+  const resourcesAfterCancel = await window.$$eval('#resource-list li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  if (!resourcesAfterCancel.some((t) => t && t.includes('sample-lecture-notes.md'))) {
+    throw new Error('FAIL: resource disappeared after clicking Cancel, not Delete');
+  }
+
+  // Delete the resource, then the course, via the in-app confirm modal
+  // (not a native dialog), confirming both disappear.
+  await window.click('#resource-list button.delete-button');
+  await window.waitForTimeout(200);
+  if (await window.isHidden('#confirm-overlay')) {
+    throw new Error('FAIL: in-app confirm modal did not open for resource delete');
+  }
+  await window.click('#confirm-yes');
   await window.waitForTimeout(300);
   const resourcesAfterDelete = await window.$$eval('#resource-list li', (els) =>
     els.map((e) => e.textContent)
@@ -137,6 +162,11 @@ const fs = require('fs');
   }
 
   await window.click('#course-list button.delete-button');
+  await window.waitForTimeout(200);
+  if (await window.isHidden('#confirm-overlay')) {
+    throw new Error('FAIL: in-app confirm modal did not open for course delete');
+  }
+  await window.click('#confirm-yes');
   await window.waitForTimeout(300);
   const coursesAfterDelete = await window.$$eval('#course-list li', (els) =>
     els.map((e) => e.textContent)

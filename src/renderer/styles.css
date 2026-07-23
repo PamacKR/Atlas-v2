@@ -278,3 +278,61 @@ form#course-form button {
   border-bottom: 1px solid #ddd;
   padding: 0.75rem 0;
 }
+
+#confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* Same reasoning as #preview-overlay above: an ID selector's `display`
+   must be conditioned on :not([hidden]), or it outranks the default
+   [hidden] rule and the "hidden" modal stays visible and click-blocking. */
+#confirm-overlay:not([hidden]) {
+  display: flex;
+}
+
+#confirm-panel {
+  background: #16191e;
+  border-radius: 8px;
+  border: 1px solid #2a2f37;
+  padding: 1.5rem;
+  max-width: 380px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+#confirm-message {
+  margin: 0 0 1.25rem 0;
+  line-height: 1.4;
+}
+
+#confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+#confirm-cancel {
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+#confirm-yes {
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid #6b2a2a;
+  background: #7a2e2e;
+  color: white;
+  cursor: pointer;
+}
+
+#confirm-yes:hover {
+  background: #8f3636;
+}
