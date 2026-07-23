@@ -370,7 +370,7 @@ async function init(): Promise<void> {
     'wheel',
     (e) => {
       if (!e.ctrlKey) return;
-      if (!document.querySelector('#preview-body img')) return;
+      if (!document.querySelector('#preview-body img.preview-image')) return;
       e.preventDefault();
       setImageZoom(imageZoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
     },

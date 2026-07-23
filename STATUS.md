@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 16)
+**Last updated:** 2026-07-23 (session 17)
 
 ## Where things stand
 
@@ -37,6 +37,10 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 17 additions
+
+- **Found and fixed the actual remaining leak** behind the user's repeated "scaling doesn't work / applies to other file types" report: session 15's scoping only covered the JS `applyImageZoom()` lookup and the zoom-controls *visibility* — two spots still used the generic, unscoped `#preview-body img` selector: (1) the CSS rule setting `max-height`/`transform-origin`/`transition`, which applied to *any* image including ones embedded in rendered docx/pptx/markdown HTML, and (2) the Ctrl+scroll wheel handler's guard check. Both now scoped strictly to `img.preview-image` (the dedicated class on the standalone image-preview `<img>`); embedded images inside `.preview-html` get a separate, transform-free `max-width: 100%` rule. Zoom (buttons, Ctrl+scroll, and its CSS) now provably cannot touch anything but a real image-kind resource.
 
 ## Session 16 additions
 
