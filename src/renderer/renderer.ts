@@ -264,16 +264,27 @@ async function openPreview(resource: Resource): Promise<void> {
 function closePreview(): void {
   const overlay = document.getElementById('preview-overlay')!;
   const body = document.getElementById('preview-body')!;
+  const fullscreenButton = document.getElementById('preview-fullscreen') as HTMLButtonElement;
   overlay.hidden = true;
   overlay.classList.remove('fullscreen'); // always reopen non-fullscreen
+  fullscreenButton.innerHTML = MAXIMIZE_ICON;
+  fullscreenButton.title = 'Fullscreen';
+  fullscreenButton.setAttribute('aria-label', 'Fullscreen');
   body.innerHTML = ''; // stop any iframe/media activity
 }
+
+const MAXIMIZE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+const MINIMIZE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
 
 function toggleFullscreenPreview(): void {
   const overlay = document.getElementById('preview-overlay')!;
   const button = document.getElementById('preview-fullscreen') as HTMLButtonElement;
   const isFullscreen = overlay.classList.toggle('fullscreen');
-  button.textContent = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+  button.innerHTML = isFullscreen ? MINIMIZE_ICON : MAXIMIZE_ICON;
+  button.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+  button.setAttribute('aria-label', button.title);
 }
 
 async function init(): Promise<void> {

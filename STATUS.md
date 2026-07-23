@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 12)
+**Last updated:** 2026-07-23 (session 13)
 
 ## Where things stand
 
@@ -37,6 +37,13 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 13 additions
+
+- User confirmed delete (via right-click) works correctly in real use.
+- **Fullscreen preview chrome tightened** — header bar and padding shrink significantly in fullscreen mode (was still leaving a lot of unused border/padding around the content).
+- **Fullscreen/Close buttons are now monochrome icon buttons** (inline SVG, `stroke="currentColor"`) instead of text labels — expand/compress icon toggles with fullscreen state, X for close. No icon library added; these are small inline SVGs directly in `index.html`/`renderer.ts`.
+- **UI direction question raised and answered**: recommended giving a rough visual direction now (palette/density/reference feel) rather than waiting until all features are built, to avoid restyling scaffolding twice — but held off on a full design pass until Phase 1 features are more complete. Still waiting on the user's actual direction as of this update.
 
 ## Session 12 additions
 
