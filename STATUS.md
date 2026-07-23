@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23
+**Last updated:** 2026-07-23 (session 2)
 
 ## Where things stand
 
@@ -16,6 +16,7 @@ Living snapshot of where the project actually is. This is the first thing to rea
 - **Stack:** Electron + TypeScript, SQLite (`better-sqlite3`, FTS5 for search). See `ARCHITECTURE.md` §1–2.
 - **OCR:** local/offline via Tesseract.js — explicitly *not* a cloud OCR API, because of the zero-API-fees constraint. Handwriting accuracy will be mediocre; that's an accepted tradeoff, not a bug. See `ARCHITECTURE.md` §3.
 - **Claude integration:** local MCP server exposing a Context Builder query layer; static file export kept as a fallback for non-MCP tools. See `ARCHITECTURE.md` §6.
+- **Data directory:** `Downloads/Atlas/` — an Atlas-managed folder, deliberately placed somewhere browsable rather than a hidden system path, so the user can manually add/remove files. DB and config live alongside it. See `ARCHITECTURE.md` §2 and `docs/open-questions.md` #6.
 - **Hard guardrails (user-mandated, 2026-07-23):**
   1. Atlas makes **zero AI/LLM API calls internally**, ever. Claude Code (external process, user's own subscription) is the only reasoning engine — this is why MCP was chosen over Atlas calling Claude's API itself.
   2. **Zero paid/metered API usage anywhere in the project**, for anything, without explicit user approval first. All Google API access must stay on the free tier with no billing account attached.
@@ -24,10 +25,9 @@ Living snapshot of where the project actually is. This is the first thing to rea
 
 ## Genuinely open (needs a decision, don't assume)
 
-See `docs/open-questions.md` for full detail. The two most consequential right now:
+See `docs/open-questions.md` for full detail. The one still consequential right now:
 
-- **#6 Data directory layout** — where original files/scans live on disk relative to the SQLite DB and app config. Needs deciding before Phase 1 scaffolding starts.
-- **#8 College Google Workspace access** — the user's primary Classroom/Gmail account is a college Workspace-for-Education account; school admins often block third-party OAuth apps regardless of cost. Not yet verified. This blocks detailed Phase 3 (sync) planning until checked.
+- **#8 College Google Workspace access** — the user's primary Classroom/Gmail account is a college Workspace-for-Education account; school admins often block third-party OAuth apps regardless of cost. User is testing via Google's OAuth 2.0 Playground (Classroom + Gmail read scopes, signed in with the college account) to check. Not yet reported back. This blocks detailed Phase 3 (sync) planning until resolved.
 
 Also still open, lower urgency: notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
 

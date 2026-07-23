@@ -44,6 +44,8 @@ SQLite (via `better-sqlite3`) is the store because:
 
 Binary blobs (original scans, PDFs, images) are **not** stored in SQLite — they stay on disk in a managed Atlas data directory, with SQLite holding the file paths, metadata, and extracted/searchable text. This keeps the database small and keeps original files trivially recoverable/inspectable outside the app.
 
+The managed data directory is `Downloads/Atlas/` (course subfolders inside it), not a hidden system app-data path — chosen deliberately so files stay somewhere the user can browse and manually add/remove from without digging through OS-hidden directories. The SQLite database and app config live alongside it under the same folder.
+
 ## 3. OCR: local, offline (Tesseract.js)
 
 Handwritten notes are first-class (PRD section 7). The originally considered option — Google Cloud Vision — is a metered, paid API and is ruled out by the zero-API-fees constraint (§0). Instead, OCR runs locally via Tesseract.js: free, offline, no request costs, no credentials.

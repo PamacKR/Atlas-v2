@@ -40,9 +40,9 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 
 ### 6. Data directory layout
 
-Where do original files (scans, PDFs, uploads) live on disk relative to the SQLite database and app config? Needs a decision before Phase 1 scaffolding starts.
+Where do original files (scans, PDFs, uploads) live on disk relative to the SQLite database and app config?
 
-**Status:** Open.
+**Status:** Resolved — `Downloads/Atlas/` is the managed data folder (course subfolders inside it), chosen over a hidden app-data location so the user can easily browse/add/remove files by hand. The SQLite database and app config live alongside it (e.g. `Downloads/Atlas/atlas.db`, `Downloads/Atlas/config/`) rather than in a separate system config directory — exact sub-layout to be finalized at Phase 1 scaffolding time.
 
 ### 7. Google API credential handling
 
@@ -54,7 +54,9 @@ Classroom/Gmail/Drive all need Google Cloud credentials. Does the user bring the
 
 The user's primary account for Classroom/Gmail is a **college Google Workspace for Education account**, not their personal Google account. Workspace admins commonly restrict which third-party/custom OAuth apps can access Classroom, Gmail, or Drive API scopes for accounts on the domain — independent of cost, this can block API access outright regardless of what Atlas builds.
 
-**Status:** Open, and blocking for Phase 3 planning. Needs to be checked directly (e.g. attempt a test OAuth consent flow against the college account, or check the school's Google Workspace admin/API-access policy) before Classroom/Gmail sync work is scoped in detail. If the college domain blocks custom OAuth apps, Phase 3 may need a fallback (e.g. manual export/import from Classroom, or scoping sync to the personal Google account only where relevant).
+Context: the user has already built a separate app that logs into the college portal via their college Gmail account — but it's unconfirmed whether that used Google as an SSO identity provider only (no bearing on API scope access) or an actual Google API OAuth consent (which would be a positive signal). Not treated as resolved on that basis alone.
+
+**Status:** Open, and blocking for detailed Phase 3 planning. User is testing directly via Google's OAuth 2.0 Playground (requesting Classroom + Gmail read scopes, signing in with the college account) to see whether the domain blocks third-party OAuth apps. If blocked, Phase 3 needs a fallback (e.g. manual export/import from Classroom, or scoping sync to the personal Google account only where relevant).
 
 ### 9. Personal Google "Pro" subscription and Claude Pro — do they help with anything here?
 
