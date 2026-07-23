@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 15)
+**Last updated:** 2026-07-23 (session 16)
 
 ## Where things stand
 
@@ -37,6 +37,11 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 16 additions
+
+- **Two persistent test courses seeded** into the user's real `Downloads/Atlas-Storage`, replacing the earlier single "Test Course": **Data Structures & Algorithms** (CS201, Monsoon 26 — the original sorting-algorithms set) and **Database Systems** (CS305, Spring 27 — a new normalization/joins/indexing set), 7 sample resources each (pdf, docx, pptx, image, txt, md, zip), all realistic and multi-page/multi-slide. This is the user's standing test data going forward — leave it alone unless told otherwise, same as before.
+- Confirmed for the user: the Desktop shortcut / `Launch Atlas.bat` always rebuilds (`npm start` = `npm run build && electron .`) before launching, so any code change is picked up automatically on next launch — no separate "deploy" step exists or is needed at this stage.
 
 ## Session 15 additions
 
