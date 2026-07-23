@@ -37,6 +37,22 @@ Any time a design choice is ambiguous, resolve it against this line. Concretely:
 - Don't build ahead of the current roadmap phase (see `ROADMAP.md`) — e.g. don't start wiring Gmail sync while Phase 1 (local-only workflow) isn't done. Each phase should be a genuinely usable checkpoint on its own.
 - Follow Anthropic's general engineering defaults on top of this: no speculative abstraction, no unused config/feature flags, comments only where the *why* isn't obvious from the code, and don't add error handling for cases that can't occur.
 
+### Documentation map — what gets updated, and when
+
+The user (2026-07-23) asked for this to be trackable so they can audit whether a doc update was missed. Use this table as the checklist:
+
+| Document | Update trigger | How the user can spot a miss |
+|---|---|---|
+| `STATUS.md` | Every session with real progress — features built, bugs found/fixed, decisions made. | Check the "Last updated" line matches the session just done. |
+| `docs/open-questions.md` | A question gets resolved, or a new one surfaces. | Any `**Status:** Open` item that was clearly decided in conversation but not closed out here. |
+| `ARCHITECTURE.md` | A technical/stack decision changes or a new one is made. | Code does something the doc doesn't describe (schema shape, new library, changed data flow). |
+| `ROADMAP.md` | Phases get reordered, descoped, or a milestone is completed (tick the checkbox). | `STATUS.md` says a phase item is done but its `ROADMAP.md` checkbox is unticked. |
+| `CLAUDE.md` | The user gives a new standing instruction about how Claude should work (rare). | Claude visibly behaves differently from what's written here, without the file changing. |
+| `README.md` | Setup/run instructions change (new dependency, new required step). | Following "Running it" from a clean checkout doesn't match reality. |
+| `prd.md` | Never touched by Claude — it's the user's original source document. | N/A. |
+
+Rule of thumb: `STATUS.md` and `docs/open-questions.md` should get touched almost every session; `ARCHITECTURE.md`/`ROADMAP.md` only on structural changes; `CLAUDE.md`/`README.md` only on workflow or setup changes.
+
 ## Testing UI changes yourself, don't just ask the user
 
 Atlas is an Electron desktop app, not a website — there's no browser tab to preview it in. But it doesn't have to be manual-only: `npm run verify` (`scripts/verify-app.js`) launches the actual built app via Playwright's Electron driver, drives the real DOM (click, fill, read text), and saves a screenshot — read that screenshot with the Read tool to visually confirm the change yourself. It runs against a throwaway temp data directory (`ATLAS_DATA_DIR` env override in `src/main/paths.ts`), never the user's real `Downloads/Atlas-Storage`, so it's safe to run freely.
