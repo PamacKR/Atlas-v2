@@ -33,6 +33,13 @@ function migrate(db: Database.Database): void {
   if (!courseColumns.includes('folder_name')) {
     db.exec("ALTER TABLE courses ADD COLUMN folder_name TEXT NOT NULL DEFAULT ''");
   }
+
+  const resourceColumns = (
+    db.prepare('PRAGMA table_info(resources)').all() as { name: string }[]
+  ).map((c) => c.name);
+  if (!resourceColumns.includes('zoom_level')) {
+    db.exec('ALTER TABLE resources ADD COLUMN zoom_level REAL');
+  }
 }
 
 export function closeDb(): void {

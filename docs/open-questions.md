@@ -63,3 +63,11 @@ Caveat: this confirms *consent* succeeds, not that every specific scope Atlas wi
 The user has a Google One/Google AI Pro-type subscription on their personal account and a Claude Pro subscription. Worth being explicit: neither grants API credits or billing-free API access — Google One's AI features are app/web-based (e.g. Gemini in Gmail/Docs), not API quota, and Claude Pro covers Claude.ai/Claude Code usage, not the separate Anthropic API. Since Atlas makes no AI API calls at all (`ARCHITECTURE.md` §0), this is moot for Atlas itself — noted here only so it isn't assumed to unlock some API budget later.
 
 **Status:** Resolved (informational) — not usable for API costs, and not needed given the zero-AI-integration constraint.
+
+### 10. Remembering zoom for PDF previews
+
+The user asked (2026-07-23) whether Atlas can remember each file's preferred preview zoom, using PDFs as the example ("for one pdf 100% would work, for another maybe 150%"). Per-resource zoom memory is now implemented for **image** previews (`resources.zoom_level`, restored automatically on reopen). PDFs are different: they render inside an `<iframe>` using Chromium's own built-in PDF viewer, which is a separate document — there's no scripting API to read back whatever zoom level the user sets inside it, and Ctrl+scroll can't reach into it either (confirmed why the user's "doesn't work on other file types" observation is expected, not a bug).
+
+The only lever available is one-directional: appending `#zoom=N` to the PDF's `file://` URL sets its *initial* zoom on load (a Chromium PDF-viewer convention), but we'd have to build our own separate control (outside the iframe) for the user to pick/save a preferred value — we can't observe what they actually change it to inside the native viewer afterward.
+
+**Status:** Open — needs a decision from the user on whether that one-way, "set an initial zoom via a separate small control, can't reflect live changes" approach is worth building for PDFs, given the real UX limitation. Not implemented yet.

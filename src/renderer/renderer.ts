@@ -21,7 +21,8 @@ interface Resource {
 }
 
 type Preview =
-  | { type: 'pdf' | 'image'; url: string }
+  | { type: 'pdf'; url: string }
+  | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
   | { type: 'unsupported'; reason?: string };
@@ -36,6 +37,7 @@ interface AtlasApi {
   deleteResource: (resourceId: number) => Promise<void>;
   openResource: (resourceId: number) => Promise<void>;
   getPreview: (resourceId: number) => Promise<Preview>;
+  setResourceZoom: (resourceId: number, zoom: number) => Promise<void>;
   showResourceContextMenu: (resourceId: number) => void;
   showCourseContextMenu: (courseId: number) => void;
   onContextMenuDelete: (handler: (resourceId: number) => void) => void;
@@ -220,16 +222,26 @@ const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.25;
 let imageZoom = 1;
+let currentPreviewResourceId: number | null = null;
 
 function applyImageZoom(): void {
   document.getElementById('zoom-level')!.textContent = `${Math.round(imageZoom * 100)}%`;
-  const img = document.querySelector('#preview-body img') as HTMLImageElement | null;
+  // Scoped to .preview-image specifically (the standalone image-preview
+  // <img>), not any embedded <img> that might appear inside rendered docx/
+  // pptx/markdown HTML — zoom must never touch those.
+  const img = document.querySelector('#preview-body img.preview-image') as HTMLImageElement | null;
   if (img) img.style.transform = `scale(${imageZoom})`;
 }
 
+// Remembered per-resource (courses.zoom_level in the DB), since some
+// images (e.g. a densely-packed diagram) are only readable zoomed in,
+// while most are fine at 100% — see docs/open-questions.md.
 function setImageZoom(zoom: number): void {
   imageZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
   applyImageZoom();
+  if (currentPreviewResourceId !== null) {
+    atlasApi.setResourceZoom(currentPreviewResourceId, imageZoom);
+  }
 }
 
 async function openPreview(resource: Resource): Promise<void> {
@@ -245,24 +257,24 @@ async function openPreview(resource: Resource): Promise<void> {
   body.classList.remove('centered');
   body.innerHTML = '<p class="muted">Loading preview…</p>';
   overlay.hidden = false;
+  currentPreviewResourceId = resource.id;
 
   const preview = await atlasApi.getPreview(resource.id);
   body.innerHTML = '';
 
-  if (preview.type === 'pdf' || preview.type === 'image') {
-    if (preview.type === 'pdf') {
-      const iframe = document.createElement('iframe');
-      iframe.src = preview.url;
-      body.appendChild(iframe);
-    } else {
-      const img = document.createElement('img');
-      img.src = preview.url;
-      body.appendChild(img);
-      body.classList.add('centered');
-      imageZoom = 1;
-      zoomControls.hidden = false;
-      applyImageZoom();
-    }
+  if (preview.type === 'pdf') {
+    const iframe = document.createElement('iframe');
+    iframe.src = preview.url;
+    body.appendChild(iframe);
+  } else if (preview.type === 'image') {
+    const img = document.createElement('img');
+    img.className = 'preview-image';
+    img.src = preview.url;
+    body.appendChild(img);
+    body.classList.add('centered');
+    imageZoom = preview.zoomLevel ?? 1;
+    zoomControls.hidden = false;
+    applyImageZoom();
   } else if (preview.type === 'html') {
     const container = document.createElement('div');
     container.className = 'preview-html';
@@ -294,6 +306,7 @@ function closePreview(): void {
   fullscreenButton.title = 'Fullscreen';
   fullscreenButton.setAttribute('aria-label', 'Fullscreen');
   body.innerHTML = ''; // stop any iframe/media activity
+  currentPreviewResourceId = null;
 }
 
 const MAXIMIZE_ICON =

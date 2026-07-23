@@ -23,7 +23,8 @@ export interface Resource {
 }
 
 export type Preview =
-  | { type: 'pdf' | 'image'; url: string }
+  | { type: 'pdf'; url: string }
+  | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
   | { type: 'unsupported'; reason?: string };
@@ -42,6 +43,8 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('resources:delete', resourceId),
   openResource: (resourceId: number): Promise<void> => ipcRenderer.invoke('resources:open', resourceId),
   getPreview: (resourceId: number): Promise<Preview> => ipcRenderer.invoke('resources:getPreview', resourceId),
+  setResourceZoom: (resourceId: number, zoom: number): Promise<void> =>
+    ipcRenderer.invoke('resources:setZoom', resourceId, zoom),
   showResourceContextMenu: (resourceId: number): void =>
     ipcRenderer.send('resources:contextMenu', resourceId),
   onContextMenuDelete: (handler: (resourceId: number) => void): void => {

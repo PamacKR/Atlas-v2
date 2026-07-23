@@ -5,7 +5,8 @@ import mammoth from 'mammoth';
 import AdmZip from 'adm-zip';
 
 export type Preview =
-  | { type: 'pdf' | 'image'; url: string }
+  | { type: 'pdf'; url: string }
+  | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
   | { type: 'unsupported'; reason?: string };
@@ -39,11 +40,17 @@ function extractPptxOutline(filePath: string): string {
     .join('\n');
 }
 
-export async function getPreview(kind: string, filePath: string): Promise<Preview> {
+export async function getPreview(
+  kind: string,
+  filePath: string,
+  zoomLevel: number | null = null
+): Promise<Preview> {
   switch (kind) {
     case 'pdf':
+      return { type: 'pdf', url: pathToFileURL(filePath).href };
+
     case 'image':
-      return { type: kind, url: pathToFileURL(filePath).href };
+      return { type: 'image', url: pathToFileURL(filePath).href, zoomLevel };
 
     case 'text':
       return { type: 'text', text: fs.readFileSync(filePath, 'utf-8') };

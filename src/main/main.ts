@@ -171,10 +171,15 @@ ipcMain.handle('resources:open', async (_event, resourceId: number) => {
 ipcMain.handle('resources:getPreview', async (_event, resourceId: number) => {
   const db = getDb();
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
-    | { kind: string; file_path: string }
+    | { kind: string; file_path: string; zoom_level: number | null }
     | undefined;
   if (!resource) return { type: 'unsupported' };
-  return getPreview(resource.kind, resource.file_path);
+  return getPreview(resource.kind, resource.file_path, resource.zoom_level);
+});
+
+ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) => {
+  const db = getDb();
+  db.prepare('UPDATE resources SET zoom_level = ? WHERE id = ?').run(zoom, resourceId);
 });
 
 // Native right-click menu, so "Open in default app" feels like a real file

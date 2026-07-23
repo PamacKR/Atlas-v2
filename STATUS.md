@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 14)
+**Last updated:** 2026-07-23 (session 15)
 
 ## Where things stand
 
@@ -37,6 +37,14 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 15 additions
+
+- **Zoom scoping tightened**: the `<img>` created for a standalone image preview now gets a dedicated `.preview-image` class, and all zoom logic (`applyImageZoom`, the wheel handler) targets `#preview-body img.preview-image` specifically — not just any `<img>`, which could otherwise have matched an image embedded inside rendered docx/pptx/markdown HTML. Zoom UI was already scoped to `preview.type === 'image'` only (PDF/other types never showed it); this closes a latent cross-contamination risk rather than fixing an observed bug — the user's report was almost certainly just PDF's built-in Chromium zoom not being ours (expected — iframe content is a separate document, our wheel handler can't reach it).
+- **Per-resource zoom is now remembered** — new `resources.zoom_level` column (migration added for existing DBs), set via `resources:setZoom` IPC whenever the user changes zoom (buttons or Ctrl+scroll), and restored automatically the next time that exact resource is previewed. Verified end-to-end in `scripts/verify-app.js` (zoom to 150%, close, reopen, confirm still 150%).
+- **Real "Test Course" and its 7 seeded files deleted** from the user's actual `Downloads/Atlas-Storage`, per explicit request — confirmed `files/` is now empty.
+- **One-click launcher added**: [`Launch Atlas.bat`](../Launch%20Atlas.bat) in the repo root (`cd`s to itself, runs `npm start`) plus an `Atlas` shortcut on the user's Desktop pointing to it (using Electron's own icon). Both tested working. Documented in `README.md` "Running it."
+- **Open question raised, not yet resolved**: the user's ask "remember the scaling for that exact file" used PDFs as the motivating example, but Chromium's built-in PDF viewer (used for PDF preview) runs in an isolated iframe with no scripting API we can read live zoom from — only a one-way `#zoom=N` URL-fragment hint is possible (sets initial zoom, can't observe what the user changes it to afterward, and would need its own separate control since Ctrl+scroll can't reach into the iframe). Implemented per-resource zoom memory for **images only** this round; PDF zoom-memory needs a decision from the user on whether that one-way, reload-based approach is worth building — see `docs/open-questions.md`.
 
 ## Session 14 additions
 

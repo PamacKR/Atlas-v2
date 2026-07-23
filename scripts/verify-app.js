@@ -149,6 +149,18 @@ const fs = require('fs');
     throw new Error(`FAIL: image transform did not reflect zoom level (${imgTransform})`);
   }
 
+  // Zoom is remembered per-resource: close and reopen the same image and
+  // confirm it comes back at 150%, not reset to 100%.
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+  await window.click('#resource-list .resource-name >> nth=0');
+  await window.waitForTimeout(300);
+  const reopenedLevel = await window.textContent('#zoom-level');
+  console.log('zoom level on reopen (should still be 150%):', reopenedLevel);
+  if (reopenedLevel !== '150%') {
+    throw new Error(`FAIL: zoom level did not persist across close/reopen, got ${reopenedLevel}`);
+  }
+
   await window.click('#zoom-reset');
   await window.waitForTimeout(150);
   const resetLevel = await window.textContent('#zoom-level');

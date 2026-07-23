@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS resources (
   file_path TEXT NOT NULL,
   original_filename TEXT,
   added_at TEXT NOT NULL DEFAULT (datetime('now')),
-  synced_at TEXT
+  synced_at TEXT,
+  -- Remembered image-preview zoom (1.0 = 100%), per resource. NULL means
+  -- "never set, use the default." Only meaningful for kind = 'image'.
+  zoom_level REAL
 );
 
 CREATE TABLE IF NOT EXISTS notes (
