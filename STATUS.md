@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 8)
+**Last updated:** 2026-07-23 (session 9)
 
 ## Where things stand
 
@@ -37,6 +37,12 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 9 additions
+
+- **Course folders are now named after the course** (e.g. "test123"), not `course-<id>`. `courses.folder_name` is a new column, computed once at course creation (sanitized for filesystem-invalid characters, disambiguated with `(2)`, `(3)`... on collision) and stored — deliberately *not* recomputed from the course name later, so a future rename feature won't silently break already-stored file paths. Existing dev databases get this column added automatically via a small migration in `src/main/db/database.ts` (`PRAGMA table_info` check + `ALTER TABLE`).
+- **Uploaded files keep their original filename** instead of a timestamp prefix — only disambiguated (`name (2).ext`) if that exact filename already exists in the course's folder.
+- **"Open" button added per resource** — uses `shell.openPath()` to open the file with the OS's default application. This is the PRD §10 fallback path ("if native viewing is unavailable, open the default external application"), not the proper in-app PDF/image/markdown viewer, which is still a separate upcoming Phase 1 item. Deliberately *not* exercised by `scripts/verify-app.js` (only checked for presence in the DOM) — actually invoking it would launch a real external OS application during an automated test run, which isn't safe/appropriate to trigger from a script.
 
 ## Session 8 additions
 

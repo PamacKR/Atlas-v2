@@ -46,6 +46,8 @@ Binary blobs (original scans, PDFs, images) are **not** stored in SQLite — the
 
 The managed data directory is `Downloads/Atlas-Storage/` (course subfolders inside it), not a hidden system app-data path — chosen deliberately so files stay somewhere the user can browse and manually add/remove from without digging through OS-hidden directories. The SQLite database and app config live alongside it under the same folder. This is a **separate folder from the Atlas source repo** (which also happens to live under `Downloads`), specifically so dev/git operations (clone, clean, checkout) can never touch real user data.
 
+Course subfolders under `files/` are named after the course itself (e.g. `files/Data Structures/`), not an opaque ID, so the folder structure stays human-browsable. The name is sanitized for filesystem-invalid characters and computed once at course creation (stored in `courses.folder_name`) rather than derived from the course name on every access — this keeps existing file paths valid even if course-renaming is added later. Uploaded files keep their original filename inside that folder, only disambiguated (`name (2).ext`) on an actual collision.
+
 ## 3. OCR: local, offline (Tesseract.js)
 
 Handwritten notes are first-class (PRD section 7). The originally considered option — Google Cloud Vision — is a metered, paid API and is ruled out by the zero-API-fees constraint (§0). Instead, OCR runs locally via Tesseract.js: free, offline, no request costs, no credentials.

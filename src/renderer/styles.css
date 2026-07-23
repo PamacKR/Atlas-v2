@@ -37,7 +37,7 @@ ul#course-list li {
 }
 
 button.delete-button {
-  margin-left: auto;
+  margin-left: 0.5rem;
   padding: 0.3rem 0.7rem;
   border-radius: 4px;
   border: 1px solid #4a2a2a;
@@ -49,6 +49,21 @@ button.delete-button {
 
 button.delete-button:hover {
   background: #3a1e1e;
+}
+
+button.open-button {
+  margin-left: auto;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid #2a3f4a;
+  background: #1a2a2e;
+  color: #a3d6e6;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+button.open-button:hover {
+  background: #1e3a3e;
 }
 
 ul#course-list li.selected {

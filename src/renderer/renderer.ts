@@ -3,6 +3,7 @@ interface Course {
   name: string;
   code: string | null;
   term: string | null;
+  folder_name: string;
   archived: number;
   created_at: string;
 }
@@ -27,6 +28,7 @@ interface AtlasApi {
   uploadResource: (courseId: number) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
   deleteResource: (resourceId: number) => Promise<void>;
+  openResource: (resourceId: number) => Promise<void>;
 }
 
 // Deliberately not using `import`/`export`/`declare global` here: any of
@@ -46,6 +48,18 @@ function makeDeleteButton(onDelete: () => void): HTMLButtonElement {
   button.addEventListener('click', (e) => {
     e.stopPropagation();
     onDelete();
+  });
+  return button;
+}
+
+function makeOpenButton(onOpen: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'open-button';
+  button.textContent = 'Open';
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onOpen();
   });
   return button;
 }
@@ -118,6 +132,7 @@ async function renderResources(): Promise<void> {
     kind.className = 'code';
     kind.textContent = resource.kind;
     li.appendChild(kind);
+    li.appendChild(makeOpenButton(() => atlasApi.openResource(resource.id)));
     li.appendChild(
       makeDeleteButton(async () => {
         if (!window.confirm(`Delete "${resource.title}"? This can't be undone.`)) return;

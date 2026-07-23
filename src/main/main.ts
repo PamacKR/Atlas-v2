@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getDb, closeDb } from './db/database';
@@ -23,6 +23,41 @@ const KIND_BY_EXTENSION: Record<string, string> = {
 
 function kindFromExtension(filePath: string): string {
   return KIND_BY_EXTENSION[path.extname(filePath).toLowerCase()] ?? 'other';
+}
+
+// Windows forbids \ / : * ? " < > | in filenames; replace with '-' and trim
+// the trailing dots/spaces Windows also disallows at the end of a name.
+function sanitizeFolderName(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|]/g, '-').trim().replace(/[. ]+$/, '');
+  return cleaned || 'course';
+}
+
+// Course folder names are computed once at creation (see courses:create) and
+// must not collide with an existing folder on disk from another course.
+function uniqueCourseFolderName(desired: string, filesDir: string): string {
+  if (!fs.existsSync(path.join(filesDir, desired))) return desired;
+  let counter = 2;
+  let candidate = `${desired} (${counter})`;
+  while (fs.existsSync(path.join(filesDir, candidate))) {
+    counter++;
+    candidate = `${desired} (${counter})`;
+  }
+  return candidate;
+}
+
+// Uploaded files keep their original filename; only disambiguated (Windows
+// Explorer style, "name (2).ext") if that exact name already exists in the
+// course's folder.
+function uniqueDestPath(dir: string, filename: string): string {
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  let candidate = filename;
+  let counter = 2;
+  while (fs.existsSync(path.join(dir, candidate))) {
+    candidate = `${base} (${counter})${ext}`;
+    counter++;
+  }
+  return path.join(dir, candidate);
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -64,10 +99,15 @@ ipcMain.handle('courses:list', () => {
 
 ipcMain.handle('courses:create', (_event, name: string, code: string | null, term: string | null) => {
   const db = getDb();
-  const result = db
-    .prepare('INSERT INTO courses (name, code, term) VALUES (?, ?, ?)')
-    .run(name, code, term);
-  return db.prepare('SELECT * FROM courses WHERE id = ?').get(result.lastInsertRowid);
+  const insertResult = db
+    .prepare('INSERT INTO courses (name, code, term, folder_name) VALUES (?, ?, ?, ?)')
+    .run(name, code, term, '');
+  const courseId = insertResult.lastInsertRowid;
+
+  const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
+  db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
+
+  return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
 
 ipcMain.handle('app:dataDir', () => getDataDir());
@@ -94,16 +134,20 @@ ipcMain.handle('resources:upload', async (_event, courseId: number) => {
     if (result.canceled || result.filePaths.length === 0) return null;
     sourcePath = result.filePaths[0];
   }
-  const originalFilename = path.basename(sourcePath);
-  const courseFilesDir = path.join(getFilesDir(), `course-${courseId}`);
-  fs.mkdirSync(courseFilesDir, { recursive: true });
-
-  // Prefix with a timestamp so re-uploading a same-named file never collides.
-  const destFilename = `${Date.now()}-${originalFilename}`;
-  const destPath = path.join(courseFilesDir, destFilename);
-  fs.copyFileSync(sourcePath, destPath);
 
   const db = getDb();
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
+  if (!course) return null;
+
+  const originalFilename = path.basename(sourcePath);
+  const courseFilesDir = path.join(getFilesDir(), course.folder_name);
+  fs.mkdirSync(courseFilesDir, { recursive: true });
+
+  const destPath = uniqueDestPath(courseFilesDir, originalFilename);
+  fs.copyFileSync(sourcePath, destPath);
+
   const insertResult = db
     .prepare(
       `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename)
@@ -114,12 +158,26 @@ ipcMain.handle('resources:upload', async (_event, courseId: number) => {
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 });
 
+ipcMain.handle('resources:open', async (_event, resourceId: number) => {
+  const db = getDb();
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
+    | { file_path: string }
+    | undefined;
+  if (!resource) return;
+  await shell.openPath(resource.file_path);
+});
+
 ipcMain.handle('courses:delete', (_event, courseId: number) => {
   const db = getDb();
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
   // Remove the course's files from disk; the resources rows cascade-delete
   // via the FK (foreign_keys pragma is on, see db/database.ts).
-  const courseFilesDir = path.join(getFilesDir(), `course-${courseId}`);
-  fs.rmSync(courseFilesDir, { recursive: true, force: true });
+  if (course) {
+    const courseFilesDir = path.join(getFilesDir(), course.folder_name);
+    fs.rmSync(courseFilesDir, { recursive: true, force: true });
+  }
   db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
 });
 

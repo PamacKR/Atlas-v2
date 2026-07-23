@@ -5,6 +5,7 @@ export interface Course {
   name: string;
   code: string | null;
   term: string | null;
+  folder_name: string;
   archived: number;
   created_at: string;
 }
@@ -33,4 +34,5 @@ contextBridge.exposeInMainWorld('atlas', {
   deleteCourse: (courseId: number): Promise<void> => ipcRenderer.invoke('courses:delete', courseId),
   deleteResource: (resourceId: number): Promise<void> =>
     ipcRenderer.invoke('resources:delete', resourceId),
+  openResource: (resourceId: number): Promise<void> => ipcRenderer.invoke('resources:open', resourceId),
 });

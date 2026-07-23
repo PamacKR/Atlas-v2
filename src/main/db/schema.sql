@@ -6,6 +6,10 @@ CREATE TABLE IF NOT EXISTS courses (
   name TEXT NOT NULL,
   code TEXT,
   term TEXT,
+  -- Sanitized, on-disk folder name under files/ — computed once at course
+  -- creation (see main.ts) and kept stable even if the course is renamed
+  -- later, so file paths already stored in `resources` never break.
+  folder_name TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

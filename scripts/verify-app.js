@@ -72,6 +72,22 @@ const fs = require('fs');
   if (!resourceItems.some((t) => t && t.includes('sample-lecture-notes.md'))) {
     throw new Error('FAIL: uploaded resource did not appear in the resource list');
   }
+  if (!resourceItems.some((t) => t && t.includes('Open'))) {
+    throw new Error('FAIL: Open button missing from resource row');
+  }
+
+  // Confirm on-disk layout: course folder named after the course (not
+  // course-<id>), and the uploaded file keeping its original filename.
+  const expectedFilePath = path.join(
+    testDataDir,
+    'files',
+    'Verify Script Test Course',
+    'sample-lecture-notes.md'
+  );
+  console.log('expecting file at:', expectedFilePath);
+  if (!fs.existsSync(expectedFilePath)) {
+    throw new Error(`FAIL: expected file not found at ${expectedFilePath}`);
+  }
 
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
