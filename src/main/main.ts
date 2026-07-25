@@ -610,26 +610,19 @@ function exportNoteToFile(noteId: number): void {
     `${sanitizeNoteFilename(note.title)}.md`,
     note.exported_path
   );
-  const assetsDirName = `${path.basename(desiredPath, '.md')}.assets`;
 
-  const noteImagesDir = getNoteImagesDir();
-  const referencedFilenames = new Set<string>();
+  // Relative link straight back to the shared note-images/ store, not a
+  // per-note copy — one physical file, not two. Trade-off, chosen
+  // deliberately over duplication: this only resolves correctly as long as
+  // the exported .md stays somewhere under Atlas-Storage (or note-images/
+  // travels with it) — copying a single note file completely on its own
+  // elsewhere would leave the image link broken. Forward slashes always,
+  // regardless of OS, since that's what Markdown/browsers expect in a link.
+  const relativeImagesPath = path.relative(notesDir, getNoteImagesDir()).split(path.sep).join('/');
   const rewritten = note.content_markdown.replace(
     /http:\/\/127\.0\.0\.1:\d+\/note-image\/([\w-]+\.\w+)/g,
-    (_whole, filename) => {
-      referencedFilenames.add(filename);
-      return `./${assetsDirName}/${filename}`;
-    }
+    (_whole, filename) => `${relativeImagesPath}/${filename}`
   );
-
-  if (referencedFilenames.size > 0) {
-    const assetsDir = path.join(notesDir, assetsDirName);
-    fs.mkdirSync(assetsDir, { recursive: true });
-    for (const filename of referencedFilenames) {
-      const src = path.join(noteImagesDir, filename);
-      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(assetsDir, filename));
-    }
-  }
 
   if (note.exported_path && note.exported_path !== desiredPath && fs.existsSync(note.exported_path)) {
     removeNoteExport(note.exported_path);
@@ -667,9 +660,14 @@ function stripInlineFormatting(text: string): string {
 
 function deriveTitleFromMarkdown(markdown: string): string {
   for (const line of markdown.split('\n')) {
+    const trimmedLine = line.trim();
+    // A line that's only an image (e.g. right after inserting one with no
+    // caption yet) isn't meaningful title material — skip to the next line
+    // rather than turning the image's alt text/URL into the title.
+    if (/^!\[[^\]]*\]\([^)]*\)$/.test(trimmedLine)) continue;
+
     const stripped = stripInlineFormatting(
-      line
-        .trim()
+      trimmedLine
         .replace(/^#{1,6}\s+/, '')
         .replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '')
         .replace(/^\d+\.\s+/, '')

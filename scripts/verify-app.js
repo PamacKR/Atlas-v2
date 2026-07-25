@@ -655,6 +655,37 @@ const fs = require('fs');
   await window.waitForTimeout(300);
   const imageNoteId = await window.$eval('#note-list li', (el) => Number(el.dataset.noteId));
 
+  // The exported .md file must link back to the shared note-images/ store
+  // via a relative path, not a per-note copy — no duplicated image bytes.
+  const exportedNoteFiles = fs.readdirSync(path.join(testDataDir, 'files', 'Watch Test Course', 'notes'));
+  console.log('files in notes/ after image insert (should be just the .md, no .assets folder):', exportedNoteFiles);
+  if (exportedNoteFiles.some((f) => f.endsWith('.assets'))) {
+    throw new Error('FAIL: a per-note .assets folder was created — images should be linked, not duplicated');
+  }
+  const exportedMdWithImage = exportedNoteFiles.find((f) => f.endsWith('.md'));
+  // Regression guard: a note whose first line is only an image (no other
+  // text yet) must not derive a title/filename from the image's alt
+  // text/URL — this produced a garbage filename during development.
+  if (exportedMdWithImage.includes('http') || exportedMdWithImage.includes('note-image')) {
+    throw new Error(`FAIL: exported filename derived from image markup, not skipped: ${exportedMdWithImage}`);
+  }
+  const exportedMdContent = fs.readFileSync(
+    path.join(testDataDir, 'files', 'Watch Test Course', 'notes', exportedMdWithImage),
+    'utf-8'
+  );
+  const relativeImageLinkMatch = exportedMdContent.match(/\]\(([^)]+)\)/);
+  console.log('relative image link in exported file:', relativeImageLinkMatch && relativeImageLinkMatch[1]);
+  if (!relativeImageLinkMatch || !relativeImageLinkMatch[1].startsWith('../../../note-images/')) {
+    throw new Error(`FAIL: exported note does not link to the shared note-images/ store: ${exportedMdContent}`);
+  }
+  const resolvedImagePath = path.resolve(
+    path.join(testDataDir, 'files', 'Watch Test Course', 'notes'),
+    relativeImageLinkMatch[1]
+  );
+  if (!fs.existsSync(resolvedImagePath)) {
+    throw new Error(`FAIL: relative image link does not resolve to a real file: ${resolvedImagePath}`);
+  }
+
   // Leave the view mode on icons, then fully relaunch the app against the
   // same data dir — this is the actual scenario the user asked about
   // ("even after a fresh launch"), not just that the setting persists in
