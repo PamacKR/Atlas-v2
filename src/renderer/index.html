@@ -64,6 +64,27 @@
       <button id="new-note-button" type="button">New note</button>
     </section>
 
+    <section id="deadlines-section" hidden>
+      <div class="resources-header">
+        <h2 id="deadlines-heading">Deadlines</h2>
+      </div>
+      <ul id="deadline-list"></ul>
+      <form id="deadline-form">
+        <input id="deadline-title" type="text" placeholder="Title" required />
+        <select id="deadline-kind">
+          <option value="assignment">Assignment</option>
+          <option value="reading">Reading</option>
+          <option value="quiz">Quiz</option>
+          <option value="lab">Lab</option>
+          <option value="project">Project</option>
+          <option value="exam">Exam</option>
+          <option value="manual">Other</option>
+        </select>
+        <input id="deadline-due" type="date" />
+        <button type="submit">Add deadline</button>
+      </form>
+    </section>
+
     <section id="watched-folders-section" hidden>
       <h3>Watched folders</h3>
       <p class="muted">Files added to a watched folder are copied in automatically.</p>

@@ -883,3 +883,60 @@ ipcMain.on('notes:contextMenu', (event, noteId: number) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) menu.popup({ window: win });
 });
+
+// --- IPC: deadlines ---
+// One unified per-course timeline (PRD §12) — assignments/readings/quizzes/
+// labs/projects/exams/manual tasks all live in the same `deadlines` table,
+// distinguished by `kind`, rather than a separate "Assignments" concept.
+// The schema also has a distinct `assignments` table, but that one's real
+// purpose is holding synced Google Classroom data (title/description/
+// submission status) in Phase 3 — building a second, overlapping manual-entry
+// UI for it now would just be busywork today with no sync to populate the
+// status field it exists for. Deferred; see docs/open-questions.md #13.
+
+ipcMain.handle('deadlines:listByCourse', (_event, courseId: number) => {
+  const db = getDb();
+  // Incomplete first, then soonest due date first within each group; items
+  // with no due date sort after ones that have one, in the same group.
+  return db
+    .prepare(
+      `SELECT * FROM deadlines
+       WHERE course_id = ?
+       ORDER BY completed ASC, (due_at IS NULL) ASC, due_at ASC`
+    )
+    .all(courseId);
+});
+
+ipcMain.handle(
+  'deadlines:create',
+  (_event, courseId: number, title: string, kind: string, dueAt: string | null) => {
+    const db = getDb();
+    const insertResult = db
+      .prepare('INSERT INTO deadlines (course_id, title, kind, due_at) VALUES (?, ?, ?, ?)')
+      .run(courseId, title, kind, dueAt);
+    return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(insertResult.lastInsertRowid);
+  }
+);
+
+ipcMain.handle('deadlines:setCompleted', (_event, deadlineId: number, completed: boolean) => {
+  const db = getDb();
+  db.prepare('UPDATE deadlines SET completed = ? WHERE id = ?').run(completed ? 1 : 0, deadlineId);
+});
+
+ipcMain.handle('deadlines:delete', (_event, deadlineId: number) => {
+  const db = getDb();
+  db.prepare('DELETE FROM deadlines WHERE id = ?').run(deadlineId);
+});
+
+ipcMain.on('deadlines:contextMenu', (event, deadlineId: number) => {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Delete',
+      click: () => {
+        event.sender.send('deadlines:contextMenuDelete', deadlineId);
+      },
+    },
+  ]);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) menu.popup({ window: win });
+});

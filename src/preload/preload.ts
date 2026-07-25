@@ -48,6 +48,16 @@ export interface Note {
   updated_at: string;
 }
 
+export interface Deadline {
+  id: number;
+  course_id: number;
+  title: string;
+  kind: string;
+  due_at: string | null;
+  completed: number;
+  source: string;
+}
+
 export interface SearchResult {
   entityType: 'note' | 'resource' | 'announcement' | 'assignment';
   entityId: number;
@@ -113,4 +123,15 @@ contextBridge.exposeInMainWorld('atlas', {
   saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string): Promise<string> =>
     ipcRenderer.invoke('notes:saveImage', courseId, buffer, extension),
   search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('search:query', query),
+  listDeadlines: (courseId: number): Promise<Deadline[]> =>
+    ipcRenderer.invoke('deadlines:listByCourse', courseId),
+  createDeadline: (courseId: number, title: string, kind: string, dueAt: string | null): Promise<Deadline> =>
+    ipcRenderer.invoke('deadlines:create', courseId, title, kind, dueAt),
+  setDeadlineCompleted: (deadlineId: number, completed: boolean): Promise<void> =>
+    ipcRenderer.invoke('deadlines:setCompleted', deadlineId, completed),
+  deleteDeadline: (deadlineId: number): Promise<void> => ipcRenderer.invoke('deadlines:delete', deadlineId),
+  showDeadlineContextMenu: (deadlineId: number): void => ipcRenderer.send('deadlines:contextMenu', deadlineId),
+  onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void): void => {
+    ipcRenderer.on('deadlines:contextMenuDelete', (_event, deadlineId: number) => handler(deadlineId));
+  },
 });

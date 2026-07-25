@@ -614,6 +614,68 @@ button#new-note-button {
   cursor: pointer;
 }
 
+section#deadlines-section {
+  margin-top: 2rem;
+}
+
+ul#deadline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+}
+
+ul#deadline-list li.deadline-item {
+  padding: 0.6rem 0.8rem;
+  background: #1a1e24;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+ul#deadline-list li.deadline-item .deadline-title {
+  flex: 1;
+}
+
+ul#deadline-list li.deadline-item .deadline-due {
+  color: #8a919c;
+  font-size: 0.8rem;
+}
+
+ul#deadline-list li.deadline-item.completed .deadline-title {
+  text-decoration: line-through;
+  color: #8a919c;
+}
+
+form#deadline-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+form#deadline-form input,
+form#deadline-form select {
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+}
+
+form#deadline-form input#deadline-title {
+  flex: 1;
+}
+
+form#deadline-form button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  cursor: pointer;
+}
+
 #note-editor-overlay {
   position: fixed;
   inset: 0;

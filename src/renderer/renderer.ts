@@ -39,6 +39,16 @@ interface Note {
   updated_at: string;
 }
 
+interface Deadline {
+  id: number;
+  course_id: number;
+  title: string;
+  kind: string;
+  due_at: string | null;
+  completed: number;
+  source: string;
+}
+
 interface SearchResult {
   entityType: 'note' | 'resource' | 'announcement' | 'assignment';
   entityId: number;
@@ -88,6 +98,12 @@ interface AtlasApi {
   getNoteBrowserUrl: (noteId: number) => Promise<string>;
   saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string) => Promise<string>;
   search: (query: string) => Promise<SearchResult[]>;
+  listDeadlines: (courseId: number) => Promise<Deadline[]>;
+  createDeadline: (courseId: number, title: string, kind: string, dueAt: string | null) => Promise<Deadline>;
+  setDeadlineCompleted: (deadlineId: number, completed: boolean) => Promise<void>;
+  deleteDeadline: (deadlineId: number) => Promise<void>;
+  showDeadlineContextMenu: (deadlineId: number) => void;
+  onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void) => void;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -125,6 +141,16 @@ const KIND_ICON: Record<string, string> = {
   markdown: '📃',
   zip: '🗜️',
   other: '📁',
+};
+
+const DEADLINE_KIND_LABEL: Record<string, string> = {
+  assignment: 'Assignment',
+  reading: 'Reading',
+  quiz: 'Quiz',
+  lab: 'Lab',
+  project: 'Project',
+  exam: 'Exam',
+  manual: 'Other',
 };
 
 let selectedCourse: Course | null = null;
@@ -389,6 +415,87 @@ async function renderNotes(): Promise<void> {
   else renderNoteIconView(notes);
 }
 
+// `due_at` is stored as a plain "YYYY-MM-DD" string (an HTML date input's
+// value) — parsed with explicit year/month/day rather than `new Date(str)`
+// to avoid the browser interpreting a bare date string as UTC midnight and
+// displaying the day before in negative-UTC-offset timezones.
+function formatDueDate(dueAt: string | null): string {
+  if (!dueAt) return 'No due date';
+  const [year, month, day] = dueAt.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
+function renderDeadlineListView(deadlines: Deadline[]): void {
+  const list = document.getElementById('deadline-list')!;
+  list.innerHTML = '';
+
+  for (const deadline of deadlines) {
+    const li = document.createElement('li');
+    li.className = 'deadline-item';
+    if (deadline.completed) li.classList.add('completed');
+    li.dataset.deadlineId = String(deadline.id);
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = !!deadline.completed;
+    checkbox.addEventListener('click', (e) => e.stopPropagation());
+    checkbox.addEventListener('change', async () => {
+      await atlasApi.setDeadlineCompleted(deadline.id, checkbox.checked);
+      await renderDeadlines();
+    });
+    li.appendChild(checkbox);
+
+    const title = document.createElement('span');
+    title.className = 'deadline-title';
+    title.textContent = deadline.title;
+    li.appendChild(title);
+
+    const kind = document.createElement('span');
+    kind.className = 'code';
+    kind.textContent = DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
+    li.appendChild(kind);
+
+    const due = document.createElement('span');
+    due.className = 'deadline-due';
+    due.textContent = formatDueDate(deadline.due_at);
+    li.appendChild(due);
+
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showDeadlineContextMenu(deadline.id);
+    });
+
+    list.appendChild(li);
+  }
+}
+
+async function renderDeadlines(): Promise<void> {
+  const section = document.getElementById('deadlines-section')!;
+  const heading = document.getElementById('deadlines-heading')!;
+  const list = document.getElementById('deadline-list')!;
+
+  if (!selectedCourse) {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  heading.textContent = `Deadlines — ${selectedCourse.name}`;
+
+  const deadlines = await atlasApi.listDeadlines(selectedCourse.id);
+  if (deadlines.length === 0) {
+    list.innerHTML = '';
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No deadlines yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  renderDeadlineListView(deadlines);
+}
+
 let noteEditorInstance: Crepe | null = null;
 let currentNoteId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -548,8 +655,9 @@ async function selectCourse(course: Course): Promise<void> {
   selectedCourse = course;
   await renderCourses();
   await renderResources();
-  await renderWatchedFolders();
   await renderNotes();
+  await renderDeadlines();
+  await renderWatchedFolders();
 }
 
 async function setSemesterFilter(term: string, persist = true): Promise<void> {
@@ -561,8 +669,9 @@ async function setSemesterFilter(term: string, persist = true): Promise<void> {
   }
   await renderCourses();
   await renderResources();
-  await renderWatchedFolders();
   await renderNotes();
+  await renderDeadlines();
+  await renderWatchedFolders();
   if (persist) atlasApi.setSetting('semesterFilter', term);
 }
 
@@ -926,6 +1035,27 @@ async function init(): Promise<void> {
     await renderCourses();
     await renderResources();
     await renderNotes();
+    await renderDeadlines();
+  });
+
+  const deadlineForm = document.getElementById('deadline-form') as HTMLFormElement;
+  deadlineForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!selectedCourse) return;
+    const title = (document.getElementById('deadline-title') as HTMLInputElement).value.trim();
+    const kind = (document.getElementById('deadline-kind') as HTMLSelectElement).value;
+    const dueAt = (document.getElementById('deadline-due') as HTMLInputElement).value || null;
+    if (!title) return;
+
+    await atlasApi.createDeadline(selectedCourse.id, title, kind, dueAt);
+    deadlineForm.reset();
+    await renderDeadlines();
+  });
+
+  atlasApi.onDeadlineContextMenuDelete(async (deadlineId) => {
+    if (!(await showConfirm("Delete this deadline? This can't be undone."))) return;
+    await atlasApi.deleteDeadline(deadlineId);
+    await renderDeadlines();
   });
 
   document.getElementById('confirm-cancel')!.addEventListener('click', () => resolveConfirm(false));

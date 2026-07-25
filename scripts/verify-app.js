@@ -533,6 +533,69 @@ const fs = require('fs');
   await window.fill('#search-input', '');
   await window.keyboard.press('Escape');
 
+  // Deadlines: one unified per-course timeline (assignment/reading/quiz/
+  // .../manual), sorted incomplete-first then soonest-due-first, with
+  // completed items struck through. No separate "Assignments" tab was
+  // built — see docs/open-questions.md #13 for why that's deferred.
+  await window.fill('#deadline-title', 'Midterm exam');
+  await window.selectOption('#deadline-kind', 'exam');
+  await window.fill('#deadline-due', '2026-08-15');
+  await window.click('#deadline-form button[type="submit"]');
+  await window.waitForTimeout(300);
+
+  await window.fill('#deadline-title', 'Homework 1');
+  await window.selectOption('#deadline-kind', 'assignment');
+  await window.fill('#deadline-due', '2026-08-01');
+  await window.click('#deadline-form button[type="submit"]');
+  await window.waitForTimeout(300);
+
+  await window.fill('#deadline-title', 'Read syllabus');
+  await window.selectOption('#deadline-kind', 'reading');
+  await window.click('#deadline-form button[type="submit"]'); // no due date
+  await window.waitForTimeout(300);
+
+  const deadlineTitlesInOrder = await window.$$eval('#deadline-list li.deadline-item .deadline-title', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('deadline order (soonest due date first, no-due-date last):', deadlineTitlesInOrder);
+  if (JSON.stringify(deadlineTitlesInOrder) !== JSON.stringify(['Homework 1', 'Midterm exam', 'Read syllabus'])) {
+    throw new Error(`FAIL: unexpected deadline order: ${JSON.stringify(deadlineTitlesInOrder)}`);
+  }
+
+  const deadlineIds = await window.$$eval('#deadline-list li.deadline-item', (els) =>
+    els.map((e) => Number(e.dataset.deadlineId))
+  );
+  // Complete the soonest one (Homework 1) and confirm it both shows
+  // struck-through and re-sorts to the bottom (incomplete-first ordering).
+  await window.click(`li[data-deadline-id="${deadlineIds[0]}"] input[type="checkbox"]`);
+  await window.waitForTimeout(300);
+  const deadlineTitlesAfterComplete = await window.$$eval(
+    '#deadline-list li.deadline-item .deadline-title',
+    (els) => els.map((e) => e.textContent)
+  );
+  console.log('deadline order after completing "Homework 1":', deadlineTitlesAfterComplete);
+  if (deadlineTitlesAfterComplete[deadlineTitlesAfterComplete.length - 1] !== 'Homework 1') {
+    throw new Error(
+      `FAIL: completed deadline did not sort to the bottom: ${JSON.stringify(deadlineTitlesAfterComplete)}`
+    );
+  }
+  const completedItemClass = await window.getAttribute(`li[data-deadline-id="${deadlineIds[0]}"]`, 'class');
+  if (!completedItemClass || !completedItemClass.includes('completed')) {
+    throw new Error('FAIL: completed deadline is missing the "completed" styling class');
+  }
+
+  await window.evaluate((id) => window.atlas.deleteDeadline(id), deadlineIds[1]); // "Midterm exam"
+  await window.click('#course-list li'); // reselect to force a refresh
+  await window.waitForTimeout(300);
+  const deadlineTitlesAfterDelete = await window.$$eval(
+    '#deadline-list li.deadline-item .deadline-title',
+    (els) => els.map((e) => e.textContent)
+  );
+  console.log('deadlines after delete:', deadlineTitlesAfterDelete);
+  if (deadlineTitlesAfterDelete.some((t) => t === 'Midterm exam')) {
+    throw new Error('FAIL: deadline still present after delete');
+  }
+
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
 

@@ -149,6 +149,16 @@ A single search box in the header (`#search-input`) queries across every course 
 - Debounced 250ms after the last keystroke, closes on Escape or a click outside the search box, and shows an explicit "No matches" state (rather than an empty or hidden dropdown) so an unproductive search doesn't look like search silently did nothing.
 - **Keyboard-navigable, not mouse-only** — Arrow Down/Up move an `.active` highlight through the results (mouse hover sets it too, so the two stay in sync rather than fighting each other), and Enter opens whichever result is active, defaulting to the top result if the user hasn't arrowed to one yet. Added per the user's explicit preference to minimize mouse use wherever reasonable.
 
+## 10. Deadlines: one unified per-course timeline, not a separate Assignments tab
+
+Per-course "Deadlines" section (`#deadlines-section`) — title, kind, optional due date, complete/incomplete — backed by the `deadlines` table that already existed in the schema.
+
+- **No separate "Assignments" tab built**, even though PRD §8 lists Assignments and Deadlines as distinct course-workspace tabs, and the schema has a distinct `assignments` table (title/description/status: open/submitted/graded). Asked the user directly, since a manually-added "Homework 3 due Friday" could plausibly go in either one with no sync built yet — they chose Deadlines only. `deadlines.kind` already includes `'assignment'` as one of its values (alongside reading/quiz/lab/project/exam/manual), so a manual assignment due date is already representable there; the `assignments` table's real purpose is holding synced Google Classroom data in Phase 3, where the description/status fields actually matter. See `docs/open-questions.md` #13.
+- **Sort order: incomplete first, then soonest due date, with no-due-date items last within each group** (`ORDER BY completed ASC, (due_at IS NULL) ASC, due_at ASC`) — surfaces what's actually actionable (not yet done, coming up soonest) at the top, rather than plain chronological or creation order.
+- **Due date is date-only** (an HTML `<input type="date">`, stored as a plain `YYYY-MM-DD` string), not date+time — matches how the PRD's example entries (readings, quizzes, exams) are usually communicated ("due Friday," not "due Friday at 11:47pm"), and avoids timezone-conversion complexity for a single-user local app where the due date's meaning is unambiguous either way. Parsed back out with explicit year/month/day components (`formatDueDate()` in `renderer.ts`), not `new Date(str)` directly — the latter treats a bare `YYYY-MM-DD` string as UTC midnight, which renders as the *previous* day in any negative-UTC-offset timezone.
+- **Completing a deadline is a checkbox, not a delete** — completed items stay visible (struck through, sorted to the bottom) rather than disappearing, so there's still a record of what was due and done. Deleting is the same native right-click → confirm pattern as every other list in the app (resources, notes, watched folders).
+- Not wired into global search (`search_index`) — deadlines are a todo-style overwrite-in-place list, not the kind of longform content (notes, resource files) search is meant to help you re-find.
+
 ## Layer summary
 
 ```
