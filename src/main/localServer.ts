@@ -1,6 +1,8 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import { marked } from 'marked';
+import katex from 'katex';
 import { getDb } from './db/database';
 import { getPreview } from './preview';
 
@@ -20,12 +22,16 @@ const CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
-function wrapHtml(title: string, bodyHtml: string, note?: string): string {
+const KATEX_CSS_PATH = require.resolve('katex/dist/katex.min.css');
+const KATEX_FONTS_DIR = path.join(path.dirname(KATEX_CSS_PATH), 'fonts');
+
+function wrapHtml(title: string, bodyHtml: string, note?: string, includeKatex = false): string {
   return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
 <title>${title}</title>
+${includeKatex ? '<link rel="stylesheet" href="/katex.css" />' : ''}
 <style>
   body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; color: #111; }
   .note { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
@@ -42,7 +48,82 @@ ${bodyHtml}
 </html>`;
 }
 
+// Renders a note's markdown (Crepe/remark-math syntax: $...$ inline,
+// $$...$$ block) to HTML, with math typeset via KaTeX — `marked` alone has
+// no concept of math syntax, so equations are extracted, rendered, and
+// spliced back in around the regular markdown pass.
+function renderNoteMarkdown(markdownText: string): string {
+  const mathHtml: string[] = [];
+  const stash = (html: string) => `@@MATH${mathHtml.push(html) - 1}@@`;
+
+  let text = markdownText.replace(/\$\$([\s\S]+?)\$\$/g, (whole, expr) => {
+    try {
+      return stash(katex.renderToString(expr.trim(), { throwOnError: false, displayMode: true }));
+    } catch {
+      return whole;
+    }
+  });
+  text = text.replace(/\$([^$\n]+?)\$/g, (whole, expr) => {
+    try {
+      return stash(katex.renderToString(expr.trim(), { throwOnError: false, displayMode: false }));
+    } catch {
+      return whole;
+    }
+  });
+
+  const html = marked.parse(text) as string;
+  return html.replace(/@@MATH(\d+)@@/g, (_whole, index) => mathHtml[Number(index)]);
+}
+
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  if (req.url === '/katex.css') {
+    // KaTeX's CSS references font files via relative "fonts/..." URLs —
+    // point those at the /katex-fonts/ route below instead.
+    const css = fs.readFileSync(KATEX_CSS_PATH, 'utf-8').replace(/url\(fonts\//g, 'url(/katex-fonts/');
+    res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+    res.end(css);
+    return;
+  }
+
+  const fontMatch = (req.url ?? '').match(/^\/katex-fonts\/([\w.-]+)$/);
+  if (fontMatch) {
+    const fontPath = path.join(KATEX_FONTS_DIR, fontMatch[1]);
+    if (!fontPath.startsWith(KATEX_FONTS_DIR) || !fs.existsSync(fontPath)) {
+      res.writeHead(404).end('Not found');
+      return;
+    }
+    const fontContentType: Record<string, string> = {
+      '.woff2': 'font/woff2',
+      '.woff': 'font/woff',
+      '.ttf': 'font/ttf',
+    };
+    res.writeHead(200, { 'Content-Type': fontContentType[path.extname(fontPath)] ?? 'application/octet-stream' });
+    fs.createReadStream(fontPath).pipe(res);
+    return;
+  }
+
+  const noteMatch = (req.url ?? '').match(/^\/note\/(\d+)$/);
+  if (noteMatch) {
+    const db = getDb();
+    const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(Number(noteMatch[1])) as
+      | { title: string; content_markdown: string }
+      | undefined;
+    if (!note) {
+      res.writeHead(404).end('Note not found');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(
+      wrapHtml(
+        note.title,
+        renderNoteMarkdown(note.content_markdown),
+        'Read-only — edit this note from Atlas itself; this view is for reading/reference alongside other browser tabs.',
+        true
+      )
+    );
+    return;
+  }
+
   const match = (req.url ?? '').match(/^\/resource\/(\d+)$/);
   if (!match) {
     res.writeHead(404).end('Not found');
@@ -128,4 +209,8 @@ export function stopLocalServer(): void {
 
 export function getResourceBrowserUrl(resourceId: number): string {
   return `http://127.0.0.1:${port}/resource/${resourceId}`;
+}
+
+export function getNoteBrowserUrl(noteId: number): string {
+  return `http://127.0.0.1:${port}/note/${noteId}`;
 }

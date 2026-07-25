@@ -91,7 +91,7 @@ contextBridge.exposeInMainWorld('atlas', {
   },
   listNotes: (courseId: number): Promise<Note[]> => ipcRenderer.invoke('notes:listByCourse', courseId),
   createNote: (courseId: number): Promise<Note> => ipcRenderer.invoke('notes:create', courseId),
-  updateNoteContent: (noteId: number, contentMarkdown: string): Promise<void> =>
+  updateNoteContent: (noteId: number, contentMarkdown: string): Promise<{ title: string | null } | null> =>
     ipcRenderer.invoke('notes:updateContent', noteId, contentMarkdown),
   updateNoteTitle: (noteId: number, title: string): Promise<void> =>
     ipcRenderer.invoke('notes:updateTitle', noteId, title),
@@ -100,4 +100,5 @@ contextBridge.exposeInMainWorld('atlas', {
   onNoteContextMenuDelete: (handler: (noteId: number) => void): void => {
     ipcRenderer.on('notes:contextMenuDelete', (_event, noteId: number) => handler(noteId));
   },
+  getNoteBrowserUrl: (noteId: number): Promise<string> => ipcRenderer.invoke('notes:browserUrl', noteId),
 });

@@ -162,10 +162,8 @@ button#upload-button {
   cursor: pointer;
 }
 
-#watched-folders-section {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid #2a2f37;
+section#watched-folders-section {
+  margin-top: 2rem;
 }
 
 #watched-folders-section h3 {
@@ -636,4 +634,18 @@ button#new-note-button {
 #note-editor-root .milkdown {
   height: 100%;
   min-height: 100%;
+}
+
+/* Crepe's default theme uses a serif font for headings/quotes — override to
+   match the sans-serif look of the rest of the app. Code blocks/inline code
+   keep their monospace font (not selected here). */
+#note-editor-root .milkdown,
+#note-editor-root .milkdown h1,
+#note-editor-root .milkdown h2,
+#note-editor-root .milkdown h3,
+#note-editor-root .milkdown h4,
+#note-editor-root .milkdown h5,
+#note-editor-root .milkdown h6,
+#note-editor-root .milkdown blockquote {
+  font-family: -apple-system, Segoe UI, Roboto, sans-serif;
 }

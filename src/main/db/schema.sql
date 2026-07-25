@@ -54,7 +54,11 @@ CREATE TABLE IF NOT EXISTS notes (
   image_path TEXT, -- original scan, if handwritten
   ocr_text TEXT,   -- extracted text, if handwritten (Tesseract.js, see ARCHITECTURE.md §3)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Google-Docs-style title behavior: while 0, the title auto-follows the
+  -- note's first line on every save. Set to 1 the moment the user edits the
+  -- title field directly, permanently decoupling it from the content.
+  title_is_manual INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS deadlines (

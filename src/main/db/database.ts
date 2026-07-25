@@ -43,6 +43,13 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('watch_source_path')) {
     db.exec('ALTER TABLE resources ADD COLUMN watch_source_path TEXT');
   }
+
+  const noteColumns = (db.prepare('PRAGMA table_info(notes)').all() as { name: string }[]).map(
+    (c) => c.name
+  );
+  if (!noteColumns.includes('title_is_manual')) {
+    db.exec('ALTER TABLE notes ADD COLUMN title_is_manual INTEGER NOT NULL DEFAULT 0');
+  }
 }
 
 export function closeDb(): void {

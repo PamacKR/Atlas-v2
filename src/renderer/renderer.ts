@@ -71,11 +71,12 @@ interface AtlasApi {
   onResourcesChanged: (handler: (courseId: number) => void) => void;
   listNotes: (courseId: number) => Promise<Note[]>;
   createNote: (courseId: number) => Promise<Note>;
-  updateNoteContent: (noteId: number, contentMarkdown: string) => Promise<void>;
+  updateNoteContent: (noteId: number, contentMarkdown: string) => Promise<{ title: string | null } | null>;
   updateNoteTitle: (noteId: number, title: string) => Promise<void>;
   deleteNote: (noteId: number) => Promise<void>;
   showNoteContextMenu: (noteId: number) => void;
   onNoteContextMenuDelete: (handler: (noteId: number) => void) => void;
+  getNoteBrowserUrl: (noteId: number) => Promise<string>;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -259,9 +260,15 @@ async function renderResources(): Promise<void> {
 }
 
 async function renderWatchedFolders(): Promise<void> {
+  const section = document.getElementById('watched-folders-section')!;
   const list = document.getElementById('watched-folder-list')!;
   list.innerHTML = '';
-  if (!selectedCourse) return;
+
+  if (!selectedCourse) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
 
   const folders = await atlasApi.listWatchedFolders(selectedCourse.id);
   for (const folder of folders) {
@@ -334,13 +341,25 @@ let currentNoteId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let noteTitleBeforeEdit = '';
 
+// Reflects the derived-from-first-line title (Google-Docs style, see
+// notes:updateContent in main.ts) back into the title input — but only when
+// the user isn't actively typing in that field, so an in-progress manual
+// rename is never clobbered by an autosave landing mid-edit.
+function applyDerivedTitle(title: string | null): void {
+  if (title === null) return;
+  const titleInput = document.getElementById('note-title-input') as HTMLInputElement;
+  if (document.activeElement === titleInput) return;
+  titleInput.value = title;
+}
+
 function scheduleNoteSave(): void {
   const statusEl = document.getElementById('note-save-status')!;
   statusEl.textContent = 'Saving…';
   if (noteSaveTimer) clearTimeout(noteSaveTimer);
   noteSaveTimer = setTimeout(async () => {
     if (currentNoteId === null || !noteEditorInstance) return;
-    await atlasApi.updateNoteContent(currentNoteId, noteEditorInstance.getMarkdown());
+    const result = await atlasApi.updateNoteContent(currentNoteId, noteEditorInstance.getMarkdown());
+    if (result) applyDerivedTitle(result.title);
     statusEl.textContent = 'Saved';
   }, 600);
 }
@@ -615,7 +634,14 @@ async function init(): Promise<void> {
   });
   noteTitleInput.addEventListener('blur', async () => {
     if (currentNoteId === null) return;
-    await atlasApi.updateNoteTitle(currentNoteId, noteTitleInput.value.trim());
+    const newTitle = noteTitleInput.value.trim();
+    // Only a real edit switches the note into "manual title" mode (see
+    // notes:updateTitle) — clicking into the field and clicking away
+    // without typing anything shouldn't stop the title from following the
+    // note's first line.
+    if (newTitle === noteTitleBeforeEdit) return;
+    await atlasApi.updateNoteTitle(currentNoteId, newTitle);
+    await renderNotes();
   });
   noteTitleInput.addEventListener('keydown', (e) => {
     // Enter confirms the rename; Escape cancels editing the title (reverts

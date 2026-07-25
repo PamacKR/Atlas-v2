@@ -5,7 +5,7 @@ import { watch, FSWatcher } from 'chokidar';
 import { getDb, closeDb } from './db/database';
 import { getDataDir, getFilesDir } from './paths';
 import { getPreview } from './preview';
-import { startLocalServer, stopLocalServer, getResourceBrowserUrl } from './localServer';
+import { startLocalServer, stopLocalServer, getResourceBrowserUrl, getNoteBrowserUrl } from './localServer';
 
 const KIND_BY_EXTENSION: Record<string, string> = {
   '.pdf': 'pdf',
@@ -546,20 +546,49 @@ ipcMain.handle('notes:create', (_event, courseId: number) => {
   return db.prepare('SELECT * FROM notes WHERE id = ?').get(insertResult.lastInsertRowid);
 });
 
+// Google-Docs-style default title: the first non-empty line, with common
+// markdown prefixes (heading marks, list/checkbox markers, blockquote)
+// stripped, so "# W1L1" or "- W1L1" both just become "W1L1".
+function deriveTitleFromMarkdown(markdown: string): string {
+  for (const line of markdown.split('\n')) {
+    const stripped = line
+      .trim()
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '')
+      .replace(/^\d+\.\s+/, '')
+      .replace(/^>\s+/, '')
+      .trim();
+    if (stripped) return stripped.slice(0, 100);
+  }
+  return 'Untitled';
+}
+
 ipcMain.handle('notes:updateContent', (_event, noteId: number, contentMarkdown: string) => {
   const db = getDb();
-  db.prepare("UPDATE notes SET content_markdown = ?, updated_at = datetime('now') WHERE id = ?").run(
-    contentMarkdown,
-    noteId
-  );
+  const note = db.prepare('SELECT title_is_manual FROM notes WHERE id = ?').get(noteId) as
+    | { title_is_manual: number }
+    | undefined;
+  if (!note) return null;
+
+  const title = note.title_is_manual ? undefined : deriveTitleFromMarkdown(contentMarkdown);
+  if (title !== undefined) {
+    db.prepare(
+      "UPDATE notes SET content_markdown = ?, title = ?, updated_at = datetime('now') WHERE id = ?"
+    ).run(contentMarkdown, title, noteId);
+  } else {
+    db.prepare("UPDATE notes SET content_markdown = ?, updated_at = datetime('now') WHERE id = ?").run(
+      contentMarkdown,
+      noteId
+    );
+  }
+  return { title: title ?? null };
 });
 
 ipcMain.handle('notes:updateTitle', (_event, noteId: number, title: string) => {
   const db = getDb();
-  db.prepare("UPDATE notes SET title = ?, updated_at = datetime('now') WHERE id = ?").run(
-    title || 'Untitled',
-    noteId
-  );
+  db.prepare(
+    "UPDATE notes SET title = ?, title_is_manual = 1, updated_at = datetime('now') WHERE id = ?"
+  ).run(title || 'Untitled', noteId);
 });
 
 ipcMain.handle('notes:delete', (_event, noteId: number) => {
@@ -567,8 +596,17 @@ ipcMain.handle('notes:delete', (_event, noteId: number) => {
   db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
 });
 
+ipcMain.handle('notes:browserUrl', (_event, noteId: number) => getNoteBrowserUrl(noteId));
+
+// Read-only in the browser, deliberately — an editable browser copy would
+// mean two live editing surfaces (the app's Crepe instance and the browser
+// tab) writing to the same note with no conflict resolution between them.
+// This is for viewing/reference alongside other tabs while working, same
+// role "Open in browser" plays for resources.
 ipcMain.on('notes:contextMenu', (event, noteId: number) => {
   const menu = Menu.buildFromTemplate([
+    { label: 'Open in browser', click: () => shell.openExternal(getNoteBrowserUrl(noteId)) },
+    { type: 'separator' },
     {
       label: 'Delete',
       click: () => {
