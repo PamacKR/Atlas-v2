@@ -282,8 +282,21 @@ const fs = require('fs');
   const iconTiles = await window.$$('li.icon-tile');
   if (iconTiles.length === 0) throw new Error('FAIL: no icon tiles rendered in icon view');
 
+  // View mode is meant to be a single app-wide, persisted preference (not
+  // per-course, not reset on relaunch) — confirm the choice actually landed
+  // in app_settings via the same getSetting() init() reads on startup.
+  const savedViewMode = await window.evaluate(() => window.atlas.getSetting('viewMode'));
+  console.log('persisted viewMode setting after switching to icons:', savedViewMode);
+  if (savedViewMode !== 'icons') {
+    throw new Error(`FAIL: view mode was not persisted, got ${savedViewMode}`);
+  }
+
   await window.click('#view-list');
   await window.waitForTimeout(200);
+  const savedViewModeAfterList = await window.evaluate(() => window.atlas.getSetting('viewMode'));
+  if (savedViewModeAfterList !== 'list') {
+    throw new Error(`FAIL: view mode did not persist back to list, got ${savedViewModeAfterList}`);
+  }
 
   // Confirm on-disk layout: course folder named after the course (not
   // course-<id>), and the uploaded file keeping its original filename.
@@ -416,7 +429,66 @@ const fs = require('fs');
   await window.evaluate((id) => window.atlas.removeWatchedFolder(id), watchedFolderId);
   console.log('folder watching: PASS');
 
+  // Managed-storage watching: Atlas's own data folder is meant to be
+  // user-browsable (ARCHITECTURE.md §2) — a file dropped straight into
+  // Downloads/Atlas-Storage/files/<course>/ by hand (not via upload) should
+  // be picked up, and one deleted from there should disappear from the app,
+  // without any "watched folder" having to be configured for it.
+  const managedCourseDir = path.join(testDataDir, 'files', 'Watch Test Course');
+  const manuallyDroppedFile = path.join(managedCourseDir, 'dropped-in-by-hand.txt');
+  fs.writeFileSync(manuallyDroppedFile, 'Placed directly into managed storage, not via Upload.');
+
+  let resourcesAfterManualDrop = [];
+  for (let i = 0; i < 10; i++) {
+    resourcesAfterManualDrop = await window.$$eval('#resource-list li', (els) =>
+      els.map((e) => e.textContent)
+    );
+    if (resourcesAfterManualDrop.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;
+    await window.waitForTimeout(300);
+  }
+  console.log('resources after manually dropping a file into managed storage:', resourcesAfterManualDrop);
+  if (!resourcesAfterManualDrop.some((t) => t && t.includes('dropped-in-by-hand.txt'))) {
+    throw new Error('FAIL: file placed directly into managed storage was not auto-imported');
+  }
+
+  fs.unlinkSync(manuallyDroppedFile);
+  let resourcesAfterManualStorageDelete = resourcesAfterManualDrop;
+  for (let i = 0; i < 10; i++) {
+    resourcesAfterManualStorageDelete = await window.$$eval('#resource-list li', (els) =>
+      els.map((e) => e.textContent)
+    );
+    if (!resourcesAfterManualStorageDelete.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;
+    await window.waitForTimeout(300);
+  }
+  console.log('resources after deleting that file from managed storage:', resourcesAfterManualStorageDelete);
+  if (resourcesAfterManualStorageDelete.some((t) => t && t.includes('dropped-in-by-hand.txt'))) {
+    throw new Error('FAIL: resource was not removed after its file was deleted directly from managed storage');
+  }
+  console.log('managed-storage watching: PASS');
+
+  // Leave the view mode on icons, then fully relaunch the app against the
+  // same data dir — this is the actual scenario the user asked about
+  // ("even after a fresh launch"), not just that the setting persists in
+  // the DB.
+  await window.click('#view-icons');
+  await window.waitForTimeout(200);
   await app.close();
+
+  const relaunchedApp = await electron.launch({
+    args: [path.join(__dirname, '..')],
+    env: { ...process.env, ATLAS_DATA_DIR: testDataDir },
+  });
+  const relaunchedWindow = await relaunchedApp.firstWindow();
+  await relaunchedWindow.waitForLoadState('domcontentloaded');
+  await relaunchedWindow.waitForTimeout(500);
+  const viewIconsActiveOnRelaunch = await relaunchedWindow.evaluate(() =>
+    document.getElementById('view-icons').classList.contains('active')
+  );
+  console.log('icon view still active after a fresh relaunch:', viewIconsActiveOnRelaunch);
+  if (!viewIconsActiveOnRelaunch) {
+    throw new Error('FAIL: view mode did not survive a fresh app relaunch');
+  }
+  await relaunchedApp.close();
 
   // Throwaway data dirs, safe to delete entirely.
   fs.rmSync(testDataDir, { recursive: true, force: true });

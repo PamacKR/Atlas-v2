@@ -185,6 +185,78 @@ function stopWatchingFolder(folderId: number): void {
   }
 }
 
+// Every course's own managed storage folder is watched too — separately
+// from user-configured "watched folders" above, and with no course-mapping
+// decision to make, since a course's own folder is unambiguously that
+// course's. This is what makes ARCHITECTURE.md §2's promise ("files stay
+// somewhere the user can browse and manually add/remove from") actually
+// true: without this, a file deleted by hand from
+// Downloads/Atlas-Storage/files/<course>/ left a resource row behind that
+// errored with "resource not found" when opened, since only external
+// watched folders were being monitored for changes.
+const activeCourseStorageWatchers = new Map<number, FSWatcher>();
+
+function reconcileCourseStorage(courseId: number): void {
+  const db = getDb();
+  const resources = db
+    .prepare('SELECT id, file_path FROM resources WHERE course_id = ?')
+    .all(courseId) as { id: number; file_path: string }[];
+  for (const resource of resources) {
+    if (fs.existsSync(resource.file_path)) continue;
+    db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
+  }
+}
+
+function startWatchingCourseStorage(courseId: number, folderName: string): void {
+  if (activeCourseStorageWatchers.has(courseId)) return;
+
+  reconcileCourseStorage(courseId);
+
+  const courseFilesDir = path.join(getFilesDir(), folderName);
+  fs.mkdirSync(courseFilesDir, { recursive: true });
+
+  const watcher = watch(courseFilesDir, { ignoreInitial: false, depth: undefined });
+
+  watcher.on('add', (filePath) => {
+    if (path.basename(filePath).startsWith('.')) return;
+
+    const db = getDb();
+    // Atlas's own upload/folder-watch code already inserts the resource row
+    // synchronously right after copying the file, before this async fs
+    // event can fire — so an existing match here means "our own copy just
+    // landed," not a manually-added file, and should be skipped.
+    const already = db.prepare('SELECT id FROM resources WHERE file_path = ?').get(filePath);
+    if (already) return;
+
+    db.prepare(
+      `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename)
+       VALUES (?, ?, ?, 'manual', ?, ?)`
+    ).run(courseId, path.basename(filePath), kindFromExtension(filePath), filePath, path.basename(filePath));
+    if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
+  });
+
+  watcher.on('unlink', (filePath) => {
+    const db = getDb();
+    const resource = db.prepare('SELECT id FROM resources WHERE file_path = ?').get(filePath) as
+      | { id: number }
+      | undefined;
+    if (!resource) return;
+
+    db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
+    if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
+  });
+
+  activeCourseStorageWatchers.set(courseId, watcher);
+}
+
+function stopWatchingCourseStorage(courseId: number): void {
+  const watcher = activeCourseStorageWatchers.get(courseId);
+  if (watcher) {
+    watcher.close();
+    activeCourseStorageWatchers.delete(courseId);
+  }
+}
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
@@ -215,6 +287,14 @@ app.whenReady().then(async () => {
     startWatchingFolder(folder.id, folder.course_id, folder.folder_path);
   }
 
+  const allCourses = db.prepare('SELECT id, folder_name FROM courses').all() as {
+    id: number;
+    folder_name: string;
+  }[];
+  for (const course of allCourses) {
+    startWatchingCourseStorage(course.id, course.folder_name);
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -222,6 +302,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   for (const folderId of activeWatchers.keys()) stopWatchingFolder(folderId);
+  for (const courseId of activeCourseStorageWatchers.keys()) stopWatchingCourseStorage(courseId);
   stopLocalServer();
   closeDb();
   if (process.platform !== 'darwin') app.quit();
@@ -243,11 +324,29 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
 
   const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
   db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
+  startWatchingCourseStorage(Number(courseId), folderName);
 
   return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
 
 ipcMain.handle('app:dataDir', () => getDataDir());
+
+ipcMain.handle('app:getSetting', (_event, key: string) => {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? null;
+});
+
+ipcMain.handle('app:setSetting', (_event, key: string, value: string) => {
+  const db = getDb();
+  db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?').run(
+    key,
+    value,
+    value
+  );
+});
 
 ipcMain.handle('resources:browserUrl', (_event, resourceId: number) => getResourceBrowserUrl(resourceId));
 
@@ -327,6 +426,10 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
     .prepare('SELECT id FROM watched_folders WHERE course_id = ?')
     .all(courseId) as { id: number }[];
   for (const folder of foldersToStop) stopWatchingFolder(folder.id);
+  // Same reasoning for the course's own managed-storage watcher — otherwise
+  // the recursive rmSync below fires an 'unlink' per file, racing the
+  // cascade-delete below for no benefit.
+  stopWatchingCourseStorage(courseId);
   // Remove the course's files from disk; the resources rows cascade-delete
   // via the FK (foreign_keys pragma is on, see db/database.ts).
   if (course) {

@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('atlas', {
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
     ipcRenderer.invoke('courses:create', name, code, term),
   getDataDir: (): Promise<string> => ipcRenderer.invoke('app:dataDir'),
+  getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
+  setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
   getResourceBrowserUrl: (resourceId: number): Promise<string> =>
     ipcRenderer.invoke('resources:browserUrl', resourceId),
   listResources: (courseId: number): Promise<Resource[]> =>

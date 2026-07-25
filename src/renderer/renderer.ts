@@ -39,6 +39,8 @@ interface AtlasApi {
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getDataDir: () => Promise<string>;
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
+  getSetting: (key: string) => Promise<string | null>;
+  setSetting: (key: string, value: string) => Promise<void>;
   listResources: (courseId: number) => Promise<Resource[]>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
@@ -244,11 +246,15 @@ async function selectCourse(course: Course): Promise<void> {
   await renderWatchedFolders();
 }
 
-function setViewMode(mode: 'list' | 'icons'): void {
+// App-wide, not per-course — the user wants one view preference that
+// applies everywhere and survives a fresh launch, not something that resets
+// per folder or on restart.
+function setViewMode(mode: 'list' | 'icons', persist = true): void {
   viewMode = mode;
   document.getElementById('view-list')!.classList.toggle('active', mode === 'list');
   document.getElementById('view-icons')!.classList.toggle('active', mode === 'icons');
   renderResources();
+  if (persist) atlasApi.setSetting('viewMode', mode);
 }
 
 const ZOOM_MIN = 0.25;
@@ -359,6 +365,9 @@ function toggleFullscreenPreview(): void {
 async function init(): Promise<void> {
   const dataDirEl = document.getElementById('data-dir')!;
   dataDirEl.textContent = `Data folder: ${await atlasApi.getDataDir()}`;
+
+  const savedViewMode = await atlasApi.getSetting('viewMode');
+  if (savedViewMode === 'icons') setViewMode('icons', false);
 
   await renderCourses();
 

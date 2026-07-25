@@ -86,6 +86,14 @@ CREATE TABLE IF NOT EXISTS assignments (
   status TEXT NOT NULL DEFAULT 'open' -- open, submitted, graded
 );
 
+-- App-wide preferences that aren't tied to any one course/resource, e.g. the
+-- list/icon resource view mode — standardized across the whole app rather
+-- than remembered per-course, and persisted across launches.
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 -- Full-text search across notes, resources, announcements (PRD §14).
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
   entity_type UNINDEXED, -- 'note', 'resource', 'announcement', 'assignment'
