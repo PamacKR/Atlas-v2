@@ -38,11 +38,11 @@ interface AtlasApi {
   listCourses: () => Promise<Course[]>;
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getDataDir: () => Promise<string>;
+  getResourceBrowserUrl: (resourceId: number) => Promise<string>;
   listResources: (courseId: number) => Promise<Resource[]>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
   deleteResource: (resourceId: number) => Promise<void>;
-  openResource: (resourceId: number) => Promise<void>;
   getPreview: (resourceId: number) => Promise<Preview>;
   setResourceZoom: (resourceId: number, zoom: number) => Promise<void>;
   showResourceContextMenu: (resourceId: number) => void;
@@ -68,6 +68,7 @@ const KIND_ICON: Record<string, string> = {
   pdf: '📄',
   pptx: '📊',
   docx: '📝',
+  xlsx: '📈',
   image: '🖼️',
   text: '📃',
   markdown: '📃',

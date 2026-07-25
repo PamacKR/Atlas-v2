@@ -121,6 +121,62 @@ const fs = require('fs');
     throw new Error('FAIL: preview overlay did not close');
   }
 
+  // "Open in browser": the native context menu itself can't be automated,
+  // so this hits the underlying local HTTP server directly (same server the
+  // menu's "Open in browser" item points shell.openExternal at) to confirm
+  // it actually serves usable content per file kind.
+  const markdownBrowserUrl = await window.evaluate(
+    (id) => window.atlas.getResourceBrowserUrl(id),
+    markdownResourceId
+  );
+  console.log('markdown resource browser URL:', markdownBrowserUrl);
+  const markdownResponse = await fetch(markdownBrowserUrl);
+  const markdownBody = await markdownResponse.text();
+  console.log('local server markdown response ok:', markdownResponse.ok, 'content-type:', markdownResponse.headers.get('content-type'));
+  if (!markdownResponse.ok || !markdownBody.includes('Sample lecture notes')) {
+    throw new Error('FAIL: local server did not serve rendered markdown HTML correctly');
+  }
+  if (!(markdownResponse.headers.get('content-type') || '').includes('text/html')) {
+    throw new Error('FAIL: markdown resource served with unexpected content-type');
+  }
+
+  // Spreadsheet: write a minimal real .xlsx with the same 'xlsx' library
+  // Atlas uses to read it, upload it, and confirm the local server renders
+  // it as an HTML table (not just that the file round-trips).
+  const XLSX = require('xlsx');
+  const testXlsxPath = path.join(testDataDir, 'grades.xlsx');
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['Assignment', 'Score'],
+    ['Homework 1', 92],
+    ['Midterm', 87],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, sheet, 'Grades');
+  XLSX.writeFile(wb, testXlsxPath);
+
+  await app.evaluate((_electron, fp) => {
+    process.env.ATLAS_TEST_UPLOAD_PATH = fp;
+  }, testXlsxPath);
+  // Uploads within the same second get an identical `added_at` (SQLite's
+  // datetime() is 1-second resolution), so DOM order among near-simultaneous
+  // uploads isn't reliable — call uploadResource directly to get the real ID
+  // instead of guessing from list position, then force a UI refresh.
+  const xlsxResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
+  if (!xlsxResource) throw new Error('FAIL: xlsx upload did not return a resource');
+  const xlsxResourceId = xlsxResource.id;
+  await window.click('#course-list li');
+  await window.waitForTimeout(200);
+  const xlsxBrowserUrl = await window.evaluate(
+    (id) => window.atlas.getResourceBrowserUrl(id),
+    xlsxResourceId
+  );
+  const xlsxResponse = await fetch(xlsxBrowserUrl);
+  const xlsxBody = await xlsxResponse.text();
+  console.log('local server xlsx response ok:', xlsxResponse.ok, 'contains "Homework 1":', xlsxBody.includes('Homework 1'));
+  if (!xlsxResponse.ok || !xlsxBody.includes('Homework 1') || !xlsxBody.includes('<table')) {
+    throw new Error('FAIL: local server did not render the .xlsx resource as an HTML table');
+  }
+
   // Image preview: centering + zoom controls. Swap ATLAS_TEST_UPLOAD_PATH
   // mid-run via app.evaluate (mutates the running main process's env
   // directly, which the upload handler re-reads on every call).
@@ -135,14 +191,27 @@ const fs = require('fs');
   await app.evaluate((_electron, filePath) => {
     process.env.ATLAS_TEST_UPLOAD_PATH = filePath;
   }, testImagePath);
-  await window.click('#upload-button');
-  await window.waitForTimeout(300);
-  await window.click('#resource-list .resource-name >> nth=0'); // newest upload, sorted first
+  const imageResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
+  if (!imageResource) throw new Error('FAIL: image upload did not return a resource');
+  const imageResourceId = imageResource.id;
+  await window.click('#course-list li');
+  await window.waitForTimeout(200);
+  await window.click(`li[data-resource-id="${imageResourceId}"] .resource-name`);
   await window.waitForTimeout(300);
 
   const zoomControlsVisible = !(await window.isHidden('#zoom-controls'));
   console.log('zoom controls visible for image:', zoomControlsVisible);
   if (!zoomControlsVisible) throw new Error('FAIL: zoom controls did not show for an image preview');
+
+  const imageBrowserUrl = await window.evaluate(
+    (id) => window.atlas.getResourceBrowserUrl(id),
+    imageResourceId
+  );
+  const imageResponse = await fetch(imageBrowserUrl);
+  console.log('local server image content-type:', imageResponse.headers.get('content-type'));
+  if (!imageResponse.ok || imageResponse.headers.get('content-type') !== 'image/png') {
+    throw new Error('FAIL: local server did not serve the image resource as raw image/png');
+  }
 
   const bodyClass = await window.getAttribute('#preview-body', 'class');
   if (!bodyClass || !bodyClass.includes('centered')) {
@@ -164,7 +233,7 @@ const fs = require('fs');
   // confirm it comes back at 150%, not reset to 100%.
   await window.click('#preview-close');
   await window.waitForTimeout(200);
-  await window.click('#resource-list .resource-name >> nth=0');
+  await window.click(`li[data-resource-id="${imageResourceId}"] .resource-name`);
   await window.waitForTimeout(300);
   const reopenedLevel = await window.textContent('#zoom-level');
   console.log('zoom level on reopen (should still be 150%):', reopenedLevel);
@@ -188,9 +257,11 @@ const fs = require('fs');
   await app.evaluate((_electron, fp) => {
     process.env.ATLAS_TEST_UPLOAD_PATH = fp;
   }, testTxtPath);
-  await window.click('#upload-button');
-  await window.waitForTimeout(300);
-  await window.click('#resource-list .resource-name >> nth=0');
+  const txtResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
+  if (!txtResource) throw new Error('FAIL: .txt upload did not return a resource');
+  await window.click('#course-list li');
+  await window.waitForTimeout(200);
+  await window.click(`li[data-resource-id="${txtResource.id}"] .resource-name`);
   await window.waitForTimeout(300);
   const zoomHiddenForTxt = await window.isHidden('#zoom-controls');
   console.log('zoom controls hidden for .txt preview:', zoomHiddenForTxt);

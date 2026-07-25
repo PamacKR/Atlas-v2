@@ -5,6 +5,7 @@ import { watch, FSWatcher } from 'chokidar';
 import { getDb, closeDb } from './db/database';
 import { getDataDir, getFilesDir } from './paths';
 import { getPreview } from './preview';
+import { startLocalServer, stopLocalServer, getResourceBrowserUrl } from './localServer';
 
 const KIND_BY_EXTENSION: Record<string, string> = {
   '.pdf': 'pdf',
@@ -12,6 +13,8 @@ const KIND_BY_EXTENSION: Record<string, string> = {
   '.pptx': 'pptx',
   '.doc': 'docx',
   '.docx': 'docx',
+  '.xls': 'xlsx',
+  '.xlsx': 'xlsx',
   '.png': 'image',
   '.jpg': 'image',
   '.jpeg': 'image',
@@ -158,8 +161,9 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const db = getDb(); // initializes DB + schema in Downloads/Atlas on first launch
+  await startLocalServer(); // backs "Open in browser" — see localServer.ts
   createWindow();
 
   const watchedFolders = db.prepare('SELECT * FROM watched_folders').all() as {
@@ -178,6 +182,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   for (const folderId of activeWatchers.keys()) stopWatchingFolder(folderId);
+  stopLocalServer();
   closeDb();
   if (process.platform !== 'darwin') app.quit();
 });
@@ -203,6 +208,8 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
 });
 
 ipcMain.handle('app:dataDir', () => getDataDir());
+
+ipcMain.handle('resources:browserUrl', (_event, resourceId: number) => getResourceBrowserUrl(resourceId));
 
 ipcMain.handle('resources:listByCourse', (_event, courseId: number) => {
   const db = getDb();
@@ -230,15 +237,6 @@ ipcMain.handle('resources:upload', async (_event, courseId: number) => {
   return importFileIntoCourse(courseId, sourcePath, 'manual', null);
 });
 
-ipcMain.handle('resources:open', async (_event, resourceId: number) => {
-  const db = getDb();
-  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
-    | { file_path: string }
-    | undefined;
-  if (!resource) return;
-  await shell.openPath(resource.file_path);
-});
-
 ipcMain.handle('resources:getPreview', async (_event, resourceId: number) => {
   const db = getDb();
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
@@ -253,8 +251,9 @@ ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) =
   db.prepare('UPDATE resources SET zoom_level = ? WHERE id = ?').run(zoom, resourceId);
 });
 
-// Native right-click menu, so "Open in default app" feels like a real file
-// manager rather than another in-page button.
+// Native right-click menu. "Open in browser" opens the local-server URL
+// (see localServer.ts) in the OS's real default browser — not Electron's own
+// preview panel — so files can live in real, switchable browser tabs.
 ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
   const db = getDb();
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
@@ -263,7 +262,7 @@ ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
   if (!resource) return;
 
   const menu = Menu.buildFromTemplate([
-    { label: 'Open in default app', click: () => shell.openPath(resource.file_path) },
+    { label: 'Open in browser', click: () => shell.openExternal(getResourceBrowserUrl(resourceId)) },
     { type: 'separator' },
     {
       label: 'Delete',

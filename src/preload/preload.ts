@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('atlas', {
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
     ipcRenderer.invoke('courses:create', name, code, term),
   getDataDir: (): Promise<string> => ipcRenderer.invoke('app:dataDir'),
+  getResourceBrowserUrl: (resourceId: number): Promise<string> =>
+    ipcRenderer.invoke('resources:browserUrl', resourceId),
   listResources: (courseId: number): Promise<Resource[]> =>
     ipcRenderer.invoke('resources:listByCourse', courseId),
   uploadResource: (courseId: number): Promise<Resource | null> =>
@@ -48,7 +50,6 @@ contextBridge.exposeInMainWorld('atlas', {
   deleteCourse: (courseId: number): Promise<void> => ipcRenderer.invoke('courses:delete', courseId),
   deleteResource: (resourceId: number): Promise<void> =>
     ipcRenderer.invoke('resources:delete', resourceId),
-  openResource: (resourceId: number): Promise<void> => ipcRenderer.invoke('resources:open', resourceId),
   getPreview: (resourceId: number): Promise<Preview> => ipcRenderer.invoke('resources:getPreview', resourceId),
   setResourceZoom: (resourceId: number, zoom: number): Promise<void> =>
     ipcRenderer.invoke('resources:setZoom', resourceId, zoom),

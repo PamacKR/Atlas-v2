@@ -3,6 +3,7 @@ import { pathToFileURL } from 'url';
 import { marked } from 'marked';
 import mammoth from 'mammoth';
 import AdmZip from 'adm-zip';
+import * as XLSX from 'xlsx';
 
 export type Preview =
   | { type: 'pdf'; url: string }
@@ -15,11 +16,24 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// The regex below pulls raw text straight out of the slide's XML, which is
+// itself already XML-entity-escaped (e.g. a literal "&" is stored as
+// "&amp;") — decode that first, or escapeHtml would double-escape it into
+// "&amp;amp;" and the browser would display the literal entity text.
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
 // PPTX has no good pure-JS visual renderer (real slide layout/images), so
 // this only extracts each slide's text as a readable outline. Deliberately
-// not attempting layout fidelity — "Open in default app" is the path to
+// not attempting layout fidelity — "Open in browser" is the path to
 // see the real thing. See ARCHITECTURE.md / STATUS.md for the reasoning.
-function extractPptxOutline(filePath: string): string {
+export function extractPptxOutline(filePath: string): string {
   const zip = new AdmZip(filePath);
   const slideEntries = zip
     .getEntries()
@@ -33,11 +47,27 @@ function extractPptxOutline(filePath: string): string {
   return slideEntries
     .map((entry, i) => {
       const xml = entry.getData().toString('utf-8');
-      const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => escapeHtml(m[1]));
+      const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) =>
+        escapeHtml(decodeXmlEntities(m[1]))
+      );
       const body = texts.length > 0 ? texts.join('<br/>') : '<span class="muted">(no text)</span>';
       return `<section class="slide"><h3>Slide ${i + 1}</h3><p>${body}</p></section>`;
     })
     .join('\n');
+}
+
+// Reads without evaluating formulas (cellFormula: false) — Atlas only needs
+// cell values for a read-only view, not a spreadsheet engine, and skipping
+// formula parsing narrows the surface of the xlsx library's known parser
+// CVEs (prototype pollution / ReDoS — see ARCHITECTURE.md §7). One <table>
+// per sheet, sheet name as a heading.
+export function xlsxToHtml(filePath: string): string {
+  const workbook = XLSX.readFile(filePath, { cellFormula: false, cellHTML: false });
+  return workbook.SheetNames.map((name) => {
+    const sheet = workbook.Sheets[name];
+    const table = XLSX.utils.sheet_to_html(sheet, { header: '', footer: '' });
+    return `<h3>${escapeHtml(name)}</h3>${table}`;
+  }).join('\n');
 }
 
 export async function getPreview(
@@ -73,10 +103,17 @@ export async function getPreview(
         return {
           type: 'html',
           html: extractPptxOutline(filePath),
-          note: 'Text-only preview — slide layout and images are not shown. Use "Open in default app" for the real thing.',
+          note: 'Text-only preview — slide layout and images are not shown. Use "Open in browser" for the real thing.',
         };
       } catch {
         return { type: 'unsupported', reason: 'Could not read this .pptx file.' };
+      }
+
+    case 'xlsx':
+      try {
+        return { type: 'html', html: xlsxToHtml(filePath) };
+      } catch {
+        return { type: 'unsupported', reason: 'Could not read this spreadsheet.' };
       }
 
     default:
