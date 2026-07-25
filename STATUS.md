@@ -4,26 +4,28 @@ Living snapshot of where the project actually is. This is the first thing to rea
 
 **Last updated:** 2026-07-23 (session 18)
 
-## Where things stand
+## Where things stand (accurate as of session 18 — read this before the per-session log below)
 
-- Repo created: [github.com/PamacKR/Atlas](https://github.com/PamacKR/Atlas), private, owned by the user (`PamacKR`).
-- Commits in this repo are authored locally as `Claude <noreply@anthropic.com>` (repo-local git config, not global) — the user does not want their `thehawkeye` identity on these commits. Don't change this without being asked.
-- Phase 0 (docs) is done. Phase 1 scaffolding has started and the app **runs end to end**: Electron main process, preload/contextBridge, SQLite schema (courses/resources/notes/deadlines/announcements/assignments + FTS5 search index), and a minimal renderer (course list + add-course form) all verified working together.
-- Verified: `npm install --ignore-scripts` then `npx @electron/rebuild -f -w better-sqlite3` gets a working native binary (no Visual Studio/build tools needed on this machine — a prebuilt Electron-ABI binary was available). Plain `npm install` fails here because there's no prebuilt `better-sqlite3` binary for the host Node version (v24.18.0) and no C++ build toolchain installed. Documented in `README.md` "Running it".
-- User confirmed the app launches and the UI renders (screenshot reviewed together, 2026-07-23) — course list + add-course form visible. Two real bugs were caught and fixed from that first real launch (see below); the app is now verified working end-to-end, including add-course actually persisting and re-rendering.
-- **Self-testing infrastructure added:** `npm run verify` (`scripts/verify-app.js`) launches the built app via Playwright's Electron driver (`_electron`), exercises the UI (fill form, submit, check DOM, screenshot), and runs against a throwaway temp directory via an `ATLAS_DATA_DIR` env override in `src/main/paths.ts` — never touches the user's real `Downloads/Atlas-Storage`. This exists because Claude has no generic way to screenshot a native desktop window otherwise (only browser tabs) — use and extend this script for future UI changes instead of relying solely on the user to click around. See `CLAUDE.md` "Testing UI changes yourself."
-- **Two real bugs fixed** (session 5), both in the initial renderer scaffold: (1) `import type` in `renderer.ts` made TS treat it as an ES module and emit a CommonJS `exports` header, which threw in a plain `<script>` tag with no module system and silently killed the entire script (nothing rendered past the static HTML). (2) `contextBridge.exposeInMainWorld('atlas', ...)` creates a global binding named `atlas`; a local `const atlas = ...` in the same global script scope collided with it (`SyntaxError: Identifier 'atlas' has already been declared`). Fixed by keeping `renderer.ts` a plain script (no import/export/declare-global) and naming the local variable `atlasApi`.
-- **Data cleanup (session 6):** the very first `verify` run (before the throwaway-temp-dir fix existed) had already inserted a "Verify Script Test Course" row into the user's *real* `Downloads/Atlas-Storage/atlas.db`, and its cleanup step failed at the time (that failure was visible to the user, who understandably asked what it meant). Removed directly via Python's stdlib `sqlite3` (avoided the same Electron-vs-plain-Node ABI mismatch that blocked a Node-based fix). Real data folder confirmed empty of test rows now; `npm run verify` can't cause a repeat since it only ever touches a throwaway temp dir.
-- **Documentation map added to `CLAUDE.md`** ("Documentation map — what gets updated, and when"): a table of every doc, its update trigger, and how the user can audit whether an update was missed. Requested explicitly by the user (2026-07-23) so they have a concrete way to check Claude hasn't let docs drift.
-- Data folder is `Downloads/Atlas-Storage/`, deliberately separate from this repo (`Downloads/Atlas/`) — an earlier pass used the same folder name as the repo and caused the dev database to land inside the git working directory; renamed to avoid any git operation ever touching real data.
-- Files in place: all Phase 0 docs, plus `package.json`, `tsconfig.json`, `scripts/copy-assets.js`, `.gitignore`, and `src/{main,preload,renderer}/*` (see `ROADMAP.md` Phase 1 for what's still missing: folder watching, resource viewers, notes UI beyond the stub, dashboard, global search UI).
+- Repo: [github.com/PamacKR/Atlas](https://github.com/PamacKR/Atlas), private, owned by the user (`PamacKR`). Commits authored as `Claude <noreply@anthropic.com>` (repo-local git config) — don't change without being asked.
+- **Phase 0 (docs) done. Phase 1 (local-only workflow) is substantially built and working**, not just scaffolding:
+  - Courses: create (name/code/term-dropdown), list, delete (right-click → native menu → in-app confirm modal). Each course gets a human-readable on-disk folder (`courses.folder_name`, sanitized + collision-safe, computed once at creation).
+  - Resources: manual upload (native file picker), list per course, delete (same right-click pattern), original filenames preserved on disk.
+  - **In-app preview** for every supported kind: PDF/image render natively, markdown via `marked` (pinned to v12 for CJS compat), DOCX via `mammoth`, PPTX as a text-only slide outline (documented scope line — no free library renders real slide layout). Right-click → "Open in default app" is the fallback for full fidelity (needed especially for PPTX, and for anyone without the right editor).
+  - Image previews: center on both axes, zoom via buttons/Ctrl+scroll (25–400%), **remembered per-resource** (`resources.zoom_level`). Zoom is strictly scoped to images only — this took three rounds to fully close out, see sessions 15/17/18 below and the `CLAUDE.md` "recurring CSS bug" note.
+  - List/Icon view toggle for the resource list.
+  - Fullscreen toggle on the preview panel (icon buttons, tightened chrome).
+  - **Not yet built** (rest of Phase 1, per `ROADMAP.md`): local folder watching, notes UI, dashboard, global search UI (the FTS5 `search_index` table exists but isn't populated yet).
+- **Self-testing:** `npm run verify` (`scripts/verify-app.js`) launches the real app via Playwright's Electron driver and exercises courses, upload, preview (markdown/image/txt), zoom + persistence, delete (via direct API call, since native context menus can't be automated), and view toggle — all against a throwaway temp dir, never real storage. Extend this file whenever a UI change needs verifying, rather than relying solely on the user.
+- **One-click launch:** `Launch Atlas.bat` (repo root) + a `Atlas` Desktop shortcut pointing to it. Both run `npm start` (`npm run build && electron .`), so every launch always rebuilds from current source — no separate deploy step exists or is needed.
+- **User's standing test data** (real `Downloads/Atlas-Storage`, not test-suite temp dirs): two seeded courses, **Data Structures & Algorithms** (CS201) and **Database Systems** (CS305), 7 sample resources each (pdf/docx/pptx/image/txt/md/zip). Leave alone unless told otherwise.
+- Recurring lesson (hit 3x — `#preview-overlay`, `#confirm-overlay`, `#zoom-controls`): an element toggled via `el.hidden` must never have `display` set unconditionally on its own ID selector, or that CSS outranks the default `[hidden] { display: none }` rule. Written into `CLAUDE.md` as a standing check.
 
 ## Decisions locked in (don't re-litigate)
 
 - **Stack:** Electron + TypeScript, SQLite (`better-sqlite3`, FTS5 for search). See `ARCHITECTURE.md` §1–2.
 - **OCR:** local/offline via Tesseract.js — explicitly *not* a cloud OCR API, because of the zero-API-fees constraint. Handwriting accuracy will be mediocre; that's an accepted tradeoff, not a bug. See `ARCHITECTURE.md` §3.
 - **Claude integration:** local MCP server exposing a Context Builder query layer; static file export kept as a fallback for non-MCP tools. See `ARCHITECTURE.md` §6.
-- **Data directory:** `Downloads/Atlas/` — an Atlas-managed folder, deliberately placed somewhere browsable rather than a hidden system path, so the user can manually add/remove files. DB and config live alongside it. See `ARCHITECTURE.md` §2 and `docs/open-questions.md` #6.
+- **Data directory:** `Downloads/Atlas-Storage/` — an Atlas-managed folder, deliberately placed somewhere browsable rather than a hidden system path, so the user can manually add/remove files, and deliberately a *different* folder from this repo (`Downloads/Atlas/`) so git operations can never touch real data. Course subfolders under `files/` are named after the course itself, not an ID. DB and config live alongside it. See `ARCHITECTURE.md` §2 and `docs/open-questions.md` #6.
 - **Hard guardrails (user-mandated, 2026-07-23):**
   1. Atlas makes **zero AI/LLM API calls internally**, ever. Claude Code (external process, user's own subscription) is the only reasoning engine — this is why MCP was chosen over Atlas calling Claude's API itself.
   2. **Zero paid/metered API usage anywhere in the project**, for anything, without explicit user approval first. All Google API access must stay on the free tier with no billing account attached.
@@ -36,7 +38,7 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
-Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4), whether to build one-way PDF zoom memory (#10, needs a user decision — see "What's next" below).
 
 ## Session 18 additions
 
@@ -108,10 +110,23 @@ Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. ric
 - **Course term is now a fixed dropdown**, not free text: Monsoon 26, Spring 27, Monsoon 27, Spring 28 (user-specified list, in `src/renderer/index.html`). If more terms are needed later, add `<option>`s there.
 - **Delete added for both courses and resources**, needed for the user to freely test/clean up without leftover data piling up. Deleting a course removes its entire `files/course-<id>/` folder from disk and cascades to delete its `resources` rows (FK `ON DELETE CASCADE`, `foreign_keys` pragma is on). Deleting a single resource removes just its file and row. Both prompt a native `confirm()` before proceeding. `scripts/verify-app.js` now covers both delete paths and auto-accepts the confirm dialog (`window.on('dialog', ...)`, since Playwright auto-dismisses dialogs by default otherwise).
 
-## What's next (updated session 7)
+## What's next (updated session 18 — supersedes the session-7 note below, kept for history)
+
+Proposed next: **local folder watching** (chokidar) — reuse the same "insert into resources" logic manual upload already has; the new piece is (a) watching user-designated folder(s) for new files and (b) deciding which course a detected file belongs to (leaning toward explicit user-configured folder→course mapping over auto-guessing, but this wasn't confirmed with the user yet — ask before building). Not started as of session 18.
+
+Other remaining Phase 1 items, no particular order yet: notes UI (format still open, `docs/open-questions.md` #1), dashboard, global search UI (FTS5 table exists, unpopulated).
+
+**Open question needing the user's decision** (not blocking, but don't build silently): whether to implement one-way "set an initial zoom via a separate control" for PDF previews, given Chromium's built-in PDF viewer can't be read from/written to live — see `docs/open-questions.md` #10.
+
+User has said to commit/push continuously without waiting for approval in this repo (see `CLAUDE.md` "Git workflow") — keep doing that.
+
+<details>
+<summary>Superseded — original session 7 note</summary>
 
 **Manual file upload is done and verified** (self-tested via `npm run verify`, screenshot confirmed): click a course to select it, "Upload file" opens a native file picker, the file is copied into `Downloads/Atlas-Storage/files/course-<id>/` with a timestamp prefix (collision-safe), a `resources` row is inserted with `kind` auto-detected from file extension, and the resource list re-renders under the selected course. `main.ts` has an `ATLAS_TEST_UPLOAD_PATH` env-var test hook so `scripts/verify-app.js` can drive the upload without needing to interact with the native OS file dialog (which Playwright can't click into).
 
 Remaining Phase 1 work, roughly in order: local folder watching (chokidar) — reuse the same "insert into resources" logic as manual upload; resource viewer (PDF/image/markdown/text, falling back to the OS default app); notes UI (typed notes, format still open per `docs/open-questions.md` #1); dashboard; global search UI wired to the existing FTS5 `search_index` table (not populated yet — decide when building search whether to backfill it retroactively for resources added via upload/folder-watch).
 
-User has said to commit/push continuously without waiting for approval in this repo (see `CLAUDE.md` "Git workflow") — keep doing that.
+(Note: resource viewer and folder-naming details in this superseded note are now out of date — see "Where things stand" above for current reality.)
+
+</details>
