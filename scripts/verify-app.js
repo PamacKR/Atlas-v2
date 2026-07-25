@@ -385,6 +385,20 @@ const fs = require('fs');
   await window.click('#note-close');
   await window.waitForTimeout(200);
 
+  // Notes are one-way exported to a plain .md file under
+  // files/<course>/notes/ for use outside Atlas — never read back, just
+  // kept in sync on every save/rename, and removed on delete.
+  const notesExportDir = path.join(testDataDir, 'files', 'Verify Script Test Course', 'notes');
+  const exportedNotePath = path.join(notesExportDir, 'W1L1.md');
+  console.log('exported note file exists:', fs.existsSync(exportedNotePath));
+  if (!fs.existsSync(exportedNotePath)) {
+    throw new Error(`FAIL: note was not exported to ${exportedNotePath}`);
+  }
+  const exportedContent = fs.readFileSync(exportedNotePath, 'utf-8');
+  if (!exportedContent.includes('Verify script note content.')) {
+    throw new Error('FAIL: exported note file does not contain the note content');
+  }
+
   // Delete via the underlying API (native context menu can't be automated,
   // same limitation as course/resource/watched-folder delete).
   await window.evaluate((id) => window.atlas.deleteNote(id), noteId);
@@ -394,6 +408,18 @@ const fs = require('fs');
   console.log('notes after delete:', noteListAfterDelete);
   if (noteListAfterDelete.some((t) => t && t.includes('W1L1'))) {
     throw new Error('FAIL: note still present after delete');
+  }
+  if (fs.existsSync(exportedNotePath)) {
+    throw new Error('FAIL: exported note file was not removed after the note was deleted');
+  }
+
+  // Exported note files/assets must never get picked up by the
+  // managed-storage watcher and re-imported as a resource — the real
+  // regression this could otherwise cause.
+  const resourcesAfterNoteExport = await window.evaluate((id) => window.atlas.listResources(id), courseId);
+  console.log('resources after note export/delete (should be untouched):', resourcesAfterNoteExport.length);
+  if (resourcesAfterNoteExport.some((r) => r.file_path && r.file_path.includes(`${path.sep}notes${path.sep}`))) {
+    throw new Error('FAIL: an exported note file was incorrectly imported as a resource');
   }
 
   // Title auto-derivation must strip inline formatting (bold/italic/etc.),

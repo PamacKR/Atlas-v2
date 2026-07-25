@@ -37,6 +37,10 @@ function kindFromExtension(filePath: string): string {
   return KIND_BY_EXTENSION[path.extname(filePath).toLowerCase()] ?? 'other';
 }
 
+// Subfolder (inside each course's own managed-storage folder) where notes
+// get exported as plain .md mirrors — see exportNoteToFile.
+const NOTES_SUBFOLDER = 'notes';
+
 // Windows forbids \ / : * ? " < > | in filenames; replace with '-' and trim
 // the trailing dots/spaces Windows also disallows at the end of a name.
 function sanitizeFolderName(name: string): string {
@@ -223,9 +227,14 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
   fs.mkdirSync(courseFilesDir, { recursive: true });
 
   const watcher = watch(courseFilesDir, { ignoreInitial: false, depth: undefined });
+  const notesSubdir = path.join(courseFilesDir, NOTES_SUBFOLDER) + path.sep;
 
   watcher.on('add', (filePath) => {
     if (path.basename(filePath).startsWith('.')) return;
+    // Atlas's own exported note mirrors (.md files + per-note .assets
+    // image folders) live here — see exportNoteToFile. They aren't
+    // user-added resources and must never get imported as one.
+    if (filePath.startsWith(notesSubdir)) return;
 
     const db = getDb();
     // Atlas's own upload/folder-watch code already inserts the resource row
@@ -243,6 +252,8 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
   });
 
   watcher.on('unlink', (filePath) => {
+    if (filePath.startsWith(notesSubdir)) return;
+
     const db = getDb();
     const resource = db.prepare('SELECT id FROM resources WHERE file_path = ?').get(filePath) as
       | { id: number }
@@ -545,12 +556,97 @@ ipcMain.handle('notes:listByCourse', (_event, courseId: number) => {
   return db.prepare('SELECT * FROM notes WHERE course_id = ? ORDER BY updated_at DESC').all(courseId);
 });
 
+// Notes are edited from the database (their real, live source of truth —
+// see the comment on the notes table above) but also mirrored out to a
+// plain .md file under files/<course>/notes/<title>.md on every save, purely
+// so the note is usable outside Atlas (grep, copy elsewhere, hand to another
+// tool). One-way: Atlas never reads this file back — editing it externally
+// just gets overwritten on the note's next save. Embedded images are copied
+// into a per-note <title>.assets/ folder alongside it and referenced by
+// relative path, so the exported file + its images work standalone even if
+// moved somewhere Atlas can't reach (the in-app/browser-view copies still
+// use the local-server URL, which only resolves while Atlas is running).
+function sanitizeNoteFilename(title: string): string {
+  const cleaned = title.replace(/[\\/:*?"<>|]/g, '-').trim().replace(/[. ]+$/, '');
+  return cleaned || 'Untitled';
+}
+
+function uniqueNoteExportPath(dir: string, filename: string, excluding: string | null): string {
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  let candidate = filename;
+  let counter = 2;
+  while (true) {
+    const candidatePath = path.join(dir, candidate);
+    if (candidatePath === excluding || !fs.existsSync(candidatePath)) return candidatePath;
+    candidate = `${base} (${counter})${ext}`;
+    counter++;
+  }
+}
+
+function removeNoteExport(exportedPath: string): void {
+  fs.rmSync(exportedPath, { force: true });
+  const assetsDir = path.join(path.dirname(exportedPath), `${path.basename(exportedPath, '.md')}.assets`);
+  fs.rmSync(assetsDir, { recursive: true, force: true });
+}
+
+function exportNoteToFile(noteId: number): void {
+  const db = getDb();
+  const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId) as
+    | { course_id: number; title: string; content_markdown: string; exported_path: string | null }
+    | undefined;
+  if (!note) return;
+
+  const course = db.prepare('SELECT folder_name FROM courses WHERE id = ?').get(note.course_id) as
+    | { folder_name: string }
+    | undefined;
+  if (!course) return;
+
+  const notesDir = path.join(getFilesDir(), course.folder_name, NOTES_SUBFOLDER);
+  fs.mkdirSync(notesDir, { recursive: true });
+
+  const desiredPath = uniqueNoteExportPath(
+    notesDir,
+    `${sanitizeNoteFilename(note.title)}.md`,
+    note.exported_path
+  );
+  const assetsDirName = `${path.basename(desiredPath, '.md')}.assets`;
+
+  const noteImagesDir = getNoteImagesDir();
+  const referencedFilenames = new Set<string>();
+  const rewritten = note.content_markdown.replace(
+    /http:\/\/127\.0\.0\.1:\d+\/note-image\/([\w-]+\.\w+)/g,
+    (_whole, filename) => {
+      referencedFilenames.add(filename);
+      return `./${assetsDirName}/${filename}`;
+    }
+  );
+
+  if (referencedFilenames.size > 0) {
+    const assetsDir = path.join(notesDir, assetsDirName);
+    fs.mkdirSync(assetsDir, { recursive: true });
+    for (const filename of referencedFilenames) {
+      const src = path.join(noteImagesDir, filename);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(assetsDir, filename));
+    }
+  }
+
+  if (note.exported_path && note.exported_path !== desiredPath && fs.existsSync(note.exported_path)) {
+    removeNoteExport(note.exported_path);
+  }
+
+  fs.writeFileSync(desiredPath, rewritten, 'utf-8');
+  db.prepare('UPDATE notes SET exported_path = ? WHERE id = ?').run(desiredPath, noteId);
+}
+
 ipcMain.handle('notes:create', (_event, courseId: number) => {
   const db = getDb();
   const insertResult = db
     .prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (?, 'Untitled', '')")
     .run(courseId);
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(insertResult.lastInsertRowid);
+  const noteId = Number(insertResult.lastInsertRowid);
+  exportNoteToFile(noteId);
+  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
 });
 
 // Google-Docs-style default title: the first non-empty line, with common
@@ -603,6 +699,7 @@ ipcMain.handle('notes:updateContent', (_event, noteId: number, contentMarkdown: 
       noteId
     );
   }
+  exportNoteToFile(noteId);
   return { title: title ?? null };
 });
 
@@ -611,10 +708,15 @@ ipcMain.handle('notes:updateTitle', (_event, noteId: number, title: string) => {
   db.prepare(
     "UPDATE notes SET title = ?, title_is_manual = 1, updated_at = datetime('now') WHERE id = ?"
   ).run(title || 'Untitled', noteId);
+  exportNoteToFile(noteId);
 });
 
 ipcMain.handle('notes:delete', (_event, noteId: number) => {
   const db = getDb();
+  const note = db.prepare('SELECT exported_path FROM notes WHERE id = ?').get(noteId) as
+    | { exported_path: string | null }
+    | undefined;
+  if (note?.exported_path) removeNoteExport(note.exported_path);
   db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
 });
 

@@ -58,7 +58,13 @@ CREATE TABLE IF NOT EXISTS notes (
   -- Google-Docs-style title behavior: while 0, the title auto-follows the
   -- note's first line on every save. Set to 1 the moment the user edits the
   -- title field directly, permanently decoupling it from the content.
-  title_is_manual INTEGER NOT NULL DEFAULT 0
+  title_is_manual INTEGER NOT NULL DEFAULT 0,
+  -- Path to this note's exported .md mirror under
+  -- files/<course>/notes/<title>.md (see main.ts exportNoteToFile). The
+  -- database stays authoritative for editing — this is a one-way,
+  -- Atlas-owned mirror purely so the note is usable outside Atlas. Tracked
+  -- so a title change can find and rename/remove the previous export.
+  exported_path TEXT
 );
 
 CREATE TABLE IF NOT EXISTS deadlines (

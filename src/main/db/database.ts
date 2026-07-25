@@ -50,6 +50,9 @@ function migrate(db: Database.Database): void {
   if (!noteColumns.includes('title_is_manual')) {
     db.exec('ALTER TABLE notes ADD COLUMN title_is_manual INTEGER NOT NULL DEFAULT 0');
   }
+  if (!noteColumns.includes('exported_path')) {
+    db.exec('ALTER TABLE notes ADD COLUMN exported_path TEXT');
+  }
 }
 
 export function closeDb(): void {
