@@ -68,6 +68,23 @@ interface SearchResult {
   snippet: string;
 }
 
+interface DashboardDeadline extends Deadline {
+  course_name: string;
+}
+
+interface DashboardResource extends Resource {
+  course_name: string;
+}
+
+interface DashboardActivityItem {
+  id: number;
+  course_id: number;
+  title: string;
+  timestamp: string;
+  entity_type: 'resource' | 'note';
+  course_name: string;
+}
+
 type Preview =
   | { type: 'pdf'; url: string }
   | { type: 'image'; url: string; zoomLevel: number | null }
@@ -127,6 +144,9 @@ interface AtlasApi {
   deleteDeadline: (deadlineId: number) => Promise<void>;
   showDeadlineContextMenu: (deadlineId: number) => void;
   onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void) => void;
+  getUpcomingDeadlines: () => Promise<DashboardDeadline[]>;
+  getRecentResources: () => Promise<DashboardResource[]>;
+  getRecentActivity: () => Promise<DashboardActivityItem[]>;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -304,6 +324,7 @@ function renderResourceIconView(resources: Resource[]): void {
 }
 
 async function renderResources(): Promise<void> {
+  void renderDashboard();
   const section = document.getElementById('resources-section')!;
   const heading = document.getElementById('resources-heading')!;
   const list = document.getElementById('resource-list')!;
@@ -421,6 +442,7 @@ function renderNoteIconView(notes: Note[]): void {
 }
 
 async function renderNotes(): Promise<void> {
+  void renderDashboard();
   const section = document.getElementById('notes-section')!;
   const heading = document.getElementById('notes-heading')!;
   const list = document.getElementById('note-list')!;
@@ -584,6 +606,7 @@ function makeDeadlineCheckbox(deadline: Deadline): HTMLInputElement {
 }
 
 async function renderDeadlines(): Promise<void> {
+  void renderDashboard();
   const section = document.getElementById('deadlines-section')!;
   const heading = document.getElementById('deadlines-heading')!;
   const list = document.getElementById('deadline-list')!;
@@ -609,6 +632,160 @@ async function renderDeadlines(): Promise<void> {
 
   if (viewMode === 'list') renderDeadlineListView(deadlines);
   else renderDeadlineIconView(deadlines);
+}
+
+// --- Dashboard (PRD §13): global, not per-course — upcoming deadlines
+// across every course, recently added resources across every course, and
+// what changed today. Refreshed opportunistically from renderResources()/
+// renderNotes()/renderDeadlines() (fire-and-forget, not awaited — it's a
+// secondary overview widget, not the thing the user is actively waiting on)
+// rather than hooking every individual mutation call site, since those
+// three functions already run after every resource/note/deadline change.
+
+function isTodayLocal(sqliteDatetimeUtc: string): boolean {
+  // SQLite's datetime('now') is UTC with no 'Z' suffix — append it so Date
+  // parses it as UTC, then compare using the *local* calendar day, matching
+  // how a human would answer "did this happen today."
+  const date = new Date(sqliteDatetimeUtc.replace(' ', 'T') + 'Z');
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+}
+
+async function renderDashboard(): Promise<void> {
+  await Promise.all([renderDashboardDeadlines(), renderDashboardResources(), renderDashboardActivity()]);
+}
+
+function appendDashboardMeta(li: HTMLElement, title: string, courseName: string): void {
+  const titleEl = document.createElement('span');
+  titleEl.className = 'dashboard-item-title';
+  titleEl.textContent = title;
+  li.appendChild(titleEl);
+
+  const courseEl = document.createElement('span');
+  courseEl.className = 'dashboard-item-course';
+  courseEl.textContent = courseName;
+  li.appendChild(courseEl);
+}
+
+async function renderDashboardDeadlines(): Promise<void> {
+  const list = document.getElementById('dashboard-deadlines')!;
+  const deadlines = await atlasApi.getUpcomingDeadlines();
+  list.innerHTML = '';
+
+  if (deadlines.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No upcoming deadlines.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const deadline of deadlines) {
+    const li = document.createElement('li');
+    const icon = document.createElement('span');
+    icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
+    li.appendChild(icon);
+    appendDashboardMeta(li, deadline.title, deadline.course_name);
+    const due = document.createElement('span');
+    due.className = 'dashboard-item-meta';
+    due.textContent = formatDueDate(deadline.due_at);
+    li.appendChild(due);
+    li.addEventListener('click', () => openDashboardDeadline(deadline));
+    list.appendChild(li);
+  }
+}
+
+async function renderDashboardResources(): Promise<void> {
+  const list = document.getElementById('dashboard-resources')!;
+  const resources = await atlasApi.getRecentResources();
+  list.innerHTML = '';
+
+  if (resources.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No resources yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const resource of resources) {
+    const li = document.createElement('li');
+    const icon = document.createElement('span');
+    icon.textContent = KIND_ICON[resource.kind] ?? '📁';
+    li.appendChild(icon);
+    appendDashboardMeta(li, resource.title, resource.course_name);
+    li.addEventListener('click', () => openDashboardResource(resource));
+    list.appendChild(li);
+  }
+}
+
+async function renderDashboardActivity(): Promise<void> {
+  const list = document.getElementById('dashboard-activity')!;
+  const activity = await atlasApi.getRecentActivity();
+  const todayItems = activity.filter((item) => isTodayLocal(item.timestamp));
+  list.innerHTML = '';
+
+  if (todayItems.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'Nothing changed today yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const item of todayItems) {
+    const li = document.createElement('li');
+    const icon = document.createElement('span');
+    icon.textContent = item.entity_type === 'note' ? '📃' : '📁';
+    li.appendChild(icon);
+    appendDashboardMeta(li, item.title, item.course_name);
+    const time = document.createElement('span');
+    time.className = 'dashboard-item-meta';
+    time.textContent = new Date(item.timestamp.replace(' ', 'T') + 'Z').toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    li.appendChild(time);
+    li.addEventListener('click', () => openDashboardActivityItem(item));
+    list.appendChild(li);
+  }
+}
+
+async function openDashboardDeadline(deadline: DashboardDeadline): Promise<void> {
+  const courses = await atlasApi.listCourses();
+  const course = courses.find((c) => c.id === deadline.course_id);
+  if (!course) return;
+  await selectCourse(course);
+  await openDeadlineViewer(deadline);
+}
+
+async function openDashboardResource(resource: DashboardResource): Promise<void> {
+  const courses = await atlasApi.listCourses();
+  const course = courses.find((c) => c.id === resource.course_id);
+  if (!course) return;
+  await selectCourse(course);
+  await openPreview(resource);
+}
+
+async function openDashboardActivityItem(item: DashboardActivityItem): Promise<void> {
+  const courses = await atlasApi.listCourses();
+  const course = courses.find((c) => c.id === item.course_id);
+  if (!course) return;
+  await selectCourse(course);
+
+  if (item.entity_type === 'note') {
+    const notes = await atlasApi.listNotes(course.id);
+    const note = notes.find((n) => n.id === item.id);
+    if (note) await openNoteEditor(note);
+  } else {
+    const resources = await atlasApi.listResources(course.id);
+    const resource = resources.find((r) => r.id === item.id);
+    if (resource) await openPreview(resource);
+  }
 }
 
 let noteEditorInstance: Crepe | null = null;
@@ -1252,6 +1429,7 @@ async function init(): Promise<void> {
   }
 
   await renderCourses();
+  await renderDashboard();
 
   const form = document.getElementById('course-form') as HTMLFormElement;
   form.addEventListener('submit', async (e) => {

@@ -763,6 +763,56 @@ const fs = require('fs');
     throw new Error('FAIL: menu bar is not set to auto-hide');
   }
 
+  // Dashboard (PRD §13): global across every course, not scoped to whatever
+  // course happens to be open. At this point the test course still has the
+  // markdown resource (added today) and the "Homework 1 (revised)" deadline
+  // (incomplete, has a due date) — both should surface here.
+  const dashboardResourceTexts = await window.$$eval('#dashboard-resources li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('dashboard recently-added-resources widget:', dashboardResourceTexts);
+  if (!dashboardResourceTexts.some((t) => t && t.includes('sample-lecture-notes.md'))) {
+    throw new Error(`FAIL: dashboard did not show the recently added resource: ${JSON.stringify(dashboardResourceTexts)}`);
+  }
+
+  const dashboardDeadlineTexts = await window.$$eval('#dashboard-deadlines li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('dashboard upcoming-deadlines widget:', dashboardDeadlineTexts);
+  if (!dashboardDeadlineTexts.some((t) => t && t.includes('Homework 1 (revised)'))) {
+    throw new Error(`FAIL: dashboard did not show the upcoming deadline: ${JSON.stringify(dashboardDeadlineTexts)}`);
+  }
+
+  const dashboardActivityTexts = await window.$$eval('#dashboard-activity li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('dashboard what-changed-today widget:', dashboardActivityTexts);
+  if (!dashboardActivityTexts.some((t) => t && t.includes('sample-lecture-notes.md'))) {
+    throw new Error(`FAIL: dashboard "what changed today" missing today's resource: ${JSON.stringify(dashboardActivityTexts)}`);
+  }
+
+  // Clicking a dashboard item should select its course and open it directly
+  // — same navigation pattern as a global search result.
+  await window.click('#dashboard-deadlines li');
+  await window.waitForTimeout(400);
+  const deadlineViewerVisibleFromDashboard = !(await window.isHidden('#deadline-editor-overlay'));
+  console.log('deadline viewer opened from dashboard:', deadlineViewerVisibleFromDashboard);
+  if (!deadlineViewerVisibleFromDashboard) {
+    throw new Error('FAIL: clicking a dashboard deadline did not open the deadline viewer');
+  }
+  await window.click('#deadline-view-close');
+  await window.waitForTimeout(200);
+
+  await window.click('#dashboard-resources li');
+  await window.waitForTimeout(400);
+  const previewVisibleFromDashboard = !(await window.isHidden('#preview-overlay'));
+  console.log('resource preview opened from dashboard:', previewVisibleFromDashboard);
+  if (!previewVisibleFromDashboard) {
+    throw new Error('FAIL: clicking a dashboard resource did not open its preview');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
 

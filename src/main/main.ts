@@ -445,6 +445,74 @@ ipcMain.handle('search:query', (_event, query: string) => {
     .all(toFtsQuery(query));
 });
 
+// --- IPC: dashboard (PRD §13) ---
+// Global (across every course, not scoped to whichever one is selected) —
+// the dashboard's whole point is a homepage overview, so "per course" would
+// defeat the purpose. v1 covers the three ROADMAP.md-scoped widgets;
+// announcements/assignments widgets are v2, once those have real data
+// behind them (see docs/open-questions.md #13).
+
+ipcMain.handle('dashboard:upcomingDeadlines', () => {
+  const db = getDb();
+  // Only deadlines with an actual due date — an "upcoming" list is
+  // inherently about a timeline, so a no-due-date entry (which the
+  // per-course Deadlines list happily shows, sorted last) has nothing
+  // meaningful to contribute here.
+  return db
+    .prepare(
+      `SELECT deadlines.*, courses.name AS course_name
+       FROM deadlines
+       JOIN courses ON courses.id = deadlines.course_id
+       WHERE deadlines.completed = 0 AND deadlines.due_at IS NOT NULL
+       ORDER BY deadlines.due_at ASC
+       LIMIT 8`
+    )
+    .all();
+});
+
+ipcMain.handle('dashboard:recentResources', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT resources.*, courses.name AS course_name
+       FROM resources
+       JOIN courses ON courses.id = resources.course_id
+       ORDER BY resources.added_at DESC
+       LIMIT 8`
+    )
+    .all();
+});
+
+// Returns a combined, timestamp-sorted feed of recently added resources and
+// recently updated notes — deliberately more than a day's worth (the
+// renderer filters down to "today" itself, comparing each UTC timestamp
+// against the user's *local* calendar day, since a server-side SQLite
+// date('now') comparison would use UTC's day boundary instead and could be
+// wrong by a day depending on the user's timezone/time of day).
+ipcMain.handle('dashboard:recentActivity', () => {
+  const db = getDb();
+  const resources = db
+    .prepare(
+      `SELECT id, course_id, title, added_at AS timestamp, 'resource' AS entity_type
+       FROM resources ORDER BY added_at DESC LIMIT 15`
+    )
+    .all() as { id: number; course_id: number; title: string; timestamp: string; entity_type: string }[];
+  const notes = db
+    .prepare(
+      `SELECT id, course_id, title, updated_at AS timestamp, 'note' AS entity_type
+       FROM notes ORDER BY updated_at DESC LIMIT 15`
+    )
+    .all() as { id: number; course_id: number; title: string; timestamp: string; entity_type: string }[];
+
+  const courses = db.prepare('SELECT id, name FROM courses').all() as { id: number; name: string }[];
+  const courseNameById = new Map(courses.map((c) => [c.id, c.name]));
+
+  return [...resources, ...notes]
+    .map((item) => ({ ...item, course_name: courseNameById.get(item.course_id) ?? '' }))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 20);
+});
+
 // --- IPC: renderer <-> canonical database ---
 
 ipcMain.handle('courses:list', () => {

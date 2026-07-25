@@ -21,8 +21,8 @@ Goal: Atlas is useful *before* any external sync exists.
 - [x] Notes: Markdown, flat per course (session-titled, e.g. "W1L1"), live-rendering WYSIWYG editor (`@milkdown/crepe` — supports live list/heading/divider shortcuts, math via KaTeX, toolbar active-state), autosaved — see `docs/open-questions.md` #1 and `ARCHITECTURE.md` §8
 - [x] Semester filter for the course list, persisted across launches
 - Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings
-- Unified Resource Library (single view regardless of source)
-- Dashboard v1: upcoming deadlines, recently added resources, "what changed today"
+- [x] Unified Resource Library (single view regardless of source) — manual upload and local folder watching already land in the same per-course resource list/table regardless of source; Classroom/Gmail/Drive sources are Phase 3
+- [x] Dashboard v1: upcoming deadlines, recently added resources, "what changed today"
 - [x] Global search (SQLite FTS5) across courses, resources, notes
 
 ## Phase 2 — Handwritten notes

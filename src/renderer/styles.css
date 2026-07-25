@@ -107,6 +107,72 @@ ul#search-results li.search-empty:hover {
   margin: 0 0 1.5rem 0;
 }
 
+section#dashboard-section {
+  margin-bottom: 2rem;
+}
+
+section#dashboard-section > h2 {
+  margin: 0 0 0.75rem 0;
+}
+
+#dashboard-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-widget {
+  background: #1a1e24;
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+}
+
+.dashboard-widget h3 {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.9rem;
+  color: #b0b6bf;
+}
+
+.dashboard-widget ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.dashboard-widget ul li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid #262b33;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.dashboard-widget ul li:first-child {
+  border-top: none;
+}
+
+.dashboard-widget ul li.muted {
+  cursor: default;
+}
+
+.dashboard-item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-item-course,
+.dashboard-item-meta {
+  color: #8a919c;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
 .courses-header {
   display: flex;
   align-items: center;

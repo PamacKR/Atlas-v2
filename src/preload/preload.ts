@@ -68,6 +68,23 @@ export interface SearchResult {
   snippet: string;
 }
 
+export interface DashboardDeadline extends Deadline {
+  course_name: string;
+}
+
+export interface DashboardResource extends Resource {
+  course_name: string;
+}
+
+export interface DashboardActivityItem {
+  id: number;
+  course_id: number;
+  title: string;
+  timestamp: string;
+  entity_type: 'resource' | 'note';
+  course_name: string;
+}
+
 contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
@@ -148,4 +165,7 @@ contextBridge.exposeInMainWorld('atlas', {
   onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void): void => {
     ipcRenderer.on('deadlines:contextMenuDelete', (_event, deadlineId: number) => handler(deadlineId));
   },
+  getUpcomingDeadlines: (): Promise<DashboardDeadline[]> => ipcRenderer.invoke('dashboard:upcomingDeadlines'),
+  getRecentResources: (): Promise<DashboardResource[]> => ipcRenderer.invoke('dashboard:recentResources'),
+  getRecentActivity: (): Promise<DashboardActivityItem[]> => ipcRenderer.invoke('dashboard:recentActivity'),
 });
