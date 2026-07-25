@@ -23,7 +23,7 @@ Goal: Atlas is useful *before* any external sync exists.
 - Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings
 - Unified Resource Library (single view regardless of source)
 - Dashboard v1: upcoming deadlines, recently added resources, "what changed today"
-- Global search (SQLite FTS5) across courses, resources, notes
+- [x] Global search (SQLite FTS5) across courses, resources, notes
 
 ## Phase 2 — Handwritten notes
 

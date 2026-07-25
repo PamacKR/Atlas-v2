@@ -461,6 +461,44 @@ const fs = require('fs');
     throw new Error(`FAIL: expected file not found at ${expectedFilePath}`);
   }
 
+  // Global search (FTS5 over search_index) — the markdown resource uploaded
+  // earlier ("sample-lecture-notes.md") is still the only thing in the
+  // index at this point (the notes created above were already deleted), so
+  // a search for its content should surface exactly that one result and
+  // clicking it should open the resource preview.
+  await window.fill('#search-input', 'lecture');
+  await window.waitForTimeout(500); // debounce (250ms) + IPC round-trip
+  const searchResultTexts = await window.$$eval('#search-results li', (els) => els.map((e) => e.textContent));
+  console.log('search results for "lecture":', searchResultTexts);
+  if (!searchResultTexts.some((t) => t && t.includes('Sample lecture notes') && t.includes('Verify Script Test Course'))) {
+    throw new Error(`FAIL: search did not find the expected resource, got ${JSON.stringify(searchResultTexts)}`);
+  }
+  await window.click('#search-results li');
+  await window.waitForTimeout(400);
+  const previewVisibleAfterSearchClick = !(await window.isHidden('#preview-overlay'));
+  console.log('preview opened from a search result:', previewVisibleAfterSearchClick);
+  if (!previewVisibleAfterSearchClick) {
+    throw new Error('FAIL: clicking a search result did not open the resource preview');
+  }
+  const searchInputClearedAfterClick = await window.inputValue('#search-input');
+  if (searchInputClearedAfterClick !== '') {
+    throw new Error('FAIL: search input was not cleared after selecting a result');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
+  // A query matching nothing should show the "No matches" state, not an
+  // empty/hidden dropdown that looks like the search silently did nothing.
+  await window.fill('#search-input', 'zzz-nonexistent-query-zzz');
+  await window.waitForTimeout(500);
+  const noMatchText = await window.textContent('#search-results');
+  console.log('search results for a query with no matches:', JSON.stringify(noMatchText));
+  if (!noMatchText || !noMatchText.includes('No matches')) {
+    throw new Error(`FAIL: expected "No matches" state, got ${JSON.stringify(noMatchText)}`);
+  }
+  await window.fill('#search-input', '');
+  await window.keyboard.press('Escape');
+
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
 

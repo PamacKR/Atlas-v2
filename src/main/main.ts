@@ -37,6 +37,73 @@ function kindFromExtension(filePath: string): string {
   return KIND_BY_EXTENSION[path.extname(filePath).toLowerCase()] ?? 'other';
 }
 
+// Full-text search (PRD §14) — rather than trying to keep `search_index` in
+// perfect incremental sync with every resource/note mutation across several
+// call sites (manual upload, folder watching, course-storage watching,
+// reconciliation, notes CRUD), it's simply rebuilt from scratch on every
+// mutation. At this app's scale (one user's own courses/resources/notes) a
+// full rebuild is a handful of milliseconds, and "always correct, trivially
+// simple" beats "fast but has to be kept in sync by hand at N call sites."
+// Resource bodies are only indexed for kinds Atlas can read as plain text
+// (text/markdown) — PDFs/DOCX/etc. aren't extracted for search in Phase 1;
+// their titles are still searchable.
+function rebuildSearchIndex(): void {
+  const db = getDb();
+  db.prepare('DELETE FROM search_index').run();
+  const insert = db.prepare(
+    'INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES (?, ?, ?, ?, ?)'
+  );
+
+  const resources = db.prepare('SELECT id, course_id, title, kind, file_path FROM resources').all() as {
+    id: number;
+    course_id: number;
+    title: string;
+    kind: string;
+    file_path: string;
+  }[];
+  for (const resource of resources) {
+    let body = '';
+    if (resource.kind === 'text' || resource.kind === 'markdown') {
+      try {
+        body = fs.readFileSync(resource.file_path, 'utf-8');
+      } catch {
+        body = '';
+      }
+    }
+    insert.run('resource', resource.id, resource.course_id, resource.title, body);
+  }
+
+  const notes = db.prepare('SELECT id, course_id, title, content_markdown FROM notes').all() as {
+    id: number;
+    course_id: number;
+    title: string;
+    content_markdown: string;
+  }[];
+  for (const note of notes) {
+    insert.run('note', note.id, note.course_id, note.title, note.content_markdown);
+  }
+
+  const announcements = db.prepare('SELECT id, course_id, title, body FROM announcements').all() as {
+    id: number;
+    course_id: number;
+    title: string;
+    body: string | null;
+  }[];
+  for (const announcement of announcements) {
+    insert.run('announcement', announcement.id, announcement.course_id, announcement.title, announcement.body ?? '');
+  }
+
+  const assignments = db.prepare('SELECT id, course_id, title, description FROM assignments').all() as {
+    id: number;
+    course_id: number;
+    title: string;
+    description: string | null;
+  }[];
+  for (const assignment of assignments) {
+    insert.run('assignment', assignment.id, assignment.course_id, assignment.title, assignment.description ?? '');
+  }
+}
+
 // Subfolder (inside each course's own managed-storage folder) where notes
 // get exported as plain .md mirrors — see exportNoteToFile.
 const NOTES_SUBFOLDER = 'notes';
@@ -115,6 +182,7 @@ function importFileIntoCourse(
       watchSourcePath
     );
 
+  rebuildSearchIndex();
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 }
 
@@ -143,6 +211,7 @@ function reconcileWatchedFolder(courseId: number, folderPath: string): void {
     fs.rmSync(resource.file_path, { force: true });
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
   }
+  rebuildSearchIndex();
 }
 
 function startWatchingFolder(folderId: number, courseId: number, folderPath: string): void {
@@ -182,6 +251,7 @@ function startWatchingFolder(folderId: number, courseId: number, folderPath: str
 
     fs.rmSync(resource.file_path, { force: true });
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
+    rebuildSearchIndex();
     if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
   });
 
@@ -216,6 +286,7 @@ function reconcileCourseStorage(courseId: number): void {
     if (fs.existsSync(resource.file_path)) continue;
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
   }
+  rebuildSearchIndex();
 }
 
 function startWatchingCourseStorage(courseId: number, folderName: string): void {
@@ -248,6 +319,7 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
       `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename)
        VALUES (?, ?, ?, 'manual', ?, ?)`
     ).run(courseId, path.basename(filePath), kindFromExtension(filePath), filePath, path.basename(filePath));
+    rebuildSearchIndex();
     if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
   });
 
@@ -261,6 +333,7 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
     if (!resource) return;
 
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
+    rebuildSearchIndex();
     if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
   });
 
@@ -313,6 +386,11 @@ app.whenReady().then(async () => {
     startWatchingCourseStorage(course.id, course.folder_name);
   }
 
+  // Backfills any resources/notes that predate this feature and catches up
+  // on anything the reconciliation passes above just cleaned out — cheap
+  // enough at this app's scale to just do unconditionally on every launch.
+  rebuildSearchIndex();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -324,6 +402,42 @@ app.on('window-all-closed', () => {
   stopLocalServer();
   closeDb();
   if (process.platform !== 'darwin') app.quit();
+});
+
+// --- IPC: global search (FTS5, PRD §14) ---
+
+// User input isn't valid FTS5 query syntax as-is (bare `"`, `-`, `*`, `(` etc.
+// all mean something to FTS5's own query grammar and would either error or
+// do something the user didn't intend). Quoting each whitespace-separated
+// word as its own phrase and appending `*` gives simple, predictable
+// prefix-matching per word ("dat str" matches "Data Structures") without
+// exposing FTS5's full query syntax to the search box.
+function toFtsQuery(userInput: string): string {
+  return userInput
+    .trim()
+    .split(/\s+/)
+    .map((word) => `"${word.replace(/"/g, '""')}"*`)
+    .join(' ');
+}
+
+ipcMain.handle('search:query', (_event, query: string) => {
+  if (!query.trim()) return [];
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT search_index.entity_type AS entityType,
+              search_index.entity_id AS entityId,
+              search_index.course_id AS courseId,
+              search_index.title AS title,
+              courses.name AS courseName,
+              snippet(search_index, 4, '<mark>', '</mark>', '…', 12) AS snippet
+       FROM search_index
+       JOIN courses ON courses.id = search_index.course_id
+       WHERE search_index MATCH ?
+       ORDER BY rank
+       LIMIT 30`
+    )
+    .all(toFtsQuery(query));
 });
 
 // --- IPC: renderer <-> canonical database ---
@@ -455,6 +569,7 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
     fs.rmSync(courseFilesDir, { recursive: true, force: true });
   }
   db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
+  rebuildSearchIndex();
 });
 
 // --- IPC: local folder watching ---
@@ -526,6 +641,7 @@ ipcMain.handle('resources:delete', (_event, resourceId: number) => {
     | undefined;
   if (resource) fs.rmSync(resource.file_path, { force: true });
   db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
+  rebuildSearchIndex();
 });
 
 // Course row has no "open in default app" equivalent — just Delete, but
@@ -642,6 +758,7 @@ ipcMain.handle('notes:create', (_event, courseId: number) => {
     .run(courseId);
   const noteId = Number(insertResult.lastInsertRowid);
   exportNoteToFile(noteId);
+  rebuildSearchIndex();
   return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
 });
 
@@ -701,6 +818,7 @@ ipcMain.handle('notes:updateContent', (_event, noteId: number, contentMarkdown: 
     );
   }
   exportNoteToFile(noteId);
+  rebuildSearchIndex();
   return { title: title ?? null };
 });
 
@@ -710,6 +828,7 @@ ipcMain.handle('notes:updateTitle', (_event, noteId: number, title: string) => {
     "UPDATE notes SET title = ?, title_is_manual = 1, updated_at = datetime('now') WHERE id = ?"
   ).run(title || 'Untitled', noteId);
   exportNoteToFile(noteId);
+  rebuildSearchIndex();
 });
 
 ipcMain.handle('notes:delete', (_event, noteId: number) => {
@@ -719,6 +838,7 @@ ipcMain.handle('notes:delete', (_event, noteId: number) => {
     | undefined;
   if (note?.exported_path) removeNoteExport(note.exported_path);
   db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
+  rebuildSearchIndex();
 });
 
 // Images embedded in note content: copied into a stable, Atlas-owned

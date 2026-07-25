@@ -48,6 +48,15 @@ export interface Note {
   updated_at: string;
 }
 
+export interface SearchResult {
+  entityType: 'note' | 'resource' | 'announcement' | 'assignment';
+  entityId: number;
+  courseId: number;
+  title: string;
+  courseName: string;
+  snippet: string;
+}
+
 contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
@@ -103,4 +112,5 @@ contextBridge.exposeInMainWorld('atlas', {
   getNoteBrowserUrl: (noteId: number): Promise<string> => ipcRenderer.invoke('notes:browserUrl', noteId),
   saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string): Promise<string> =>
     ipcRenderer.invoke('notes:saveImage', courseId, buffer, extension),
+  search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('search:query', query),
 });

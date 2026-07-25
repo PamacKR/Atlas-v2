@@ -39,6 +39,15 @@ interface Note {
   updated_at: string;
 }
 
+interface SearchResult {
+  entityType: 'note' | 'resource' | 'announcement' | 'assignment';
+  entityId: number;
+  courseId: number;
+  title: string;
+  courseName: string;
+  snippet: string;
+}
+
 type Preview =
   | { type: 'pdf'; url: string }
   | { type: 'image'; url: string; zoomLevel: number | null }
@@ -78,6 +87,7 @@ interface AtlasApi {
   onNoteContextMenuDelete: (handler: (noteId: number) => void) => void;
   getNoteBrowserUrl: (noteId: number) => Promise<string>;
   saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string) => Promise<string>;
+  search: (query: string) => Promise<SearchResult[]>;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -673,6 +683,84 @@ function toggleFullscreenPreview(): void {
   button.setAttribute('aria-label', button.title);
 }
 
+// Global search (FTS5 across notes/resources — see search:query in main.ts).
+// The snippet the main process returns already has our own literal
+// "<mark>"/"</mark>" markers inserted around matched terms — escape the rest
+// of the (untrusted, user-authored) text as HTML first, then turn just those
+// two escaped marker strings back into real tags, so nothing else in a
+// note/resource body can inject markup into the results dropdown.
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightSnippet(snippet: string): string {
+  return escapeHtml(snippet).replace(/&lt;mark&gt;/g, '<mark>').replace(/&lt;\/mark&gt;/g, '</mark>');
+}
+
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function runSearch(query: string): Promise<void> {
+  const resultsList = document.getElementById('search-results')!;
+  if (!query.trim()) {
+    resultsList.hidden = true;
+    resultsList.innerHTML = '';
+    return;
+  }
+
+  const results = await atlasApi.search(query);
+  resultsList.innerHTML = '';
+
+  if (results.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'search-empty';
+    li.textContent = 'No matches';
+    resultsList.appendChild(li);
+  } else {
+    for (const result of results) {
+      const li = document.createElement('li');
+      const titleRow = document.createElement('div');
+      titleRow.className = 'search-result-title';
+      titleRow.textContent = `${result.entityType === 'note' ? '📃' : '📄'} ${result.title}`;
+      const courseSpan = document.createElement('span');
+      courseSpan.className = 'search-result-course';
+      courseSpan.textContent = result.courseName;
+      titleRow.appendChild(courseSpan);
+      li.appendChild(titleRow);
+
+      if (result.snippet.trim()) {
+        const snippetEl = document.createElement('div');
+        snippetEl.className = 'search-result-snippet';
+        snippetEl.innerHTML = highlightSnippet(result.snippet);
+        li.appendChild(snippetEl);
+      }
+
+      li.addEventListener('click', () => openSearchResult(result));
+      resultsList.appendChild(li);
+    }
+  }
+  resultsList.hidden = false;
+}
+
+async function openSearchResult(result: SearchResult): Promise<void> {
+  const courses = await atlasApi.listCourses();
+  const course = courses.find((c) => c.id === result.courseId);
+  if (!course) return;
+  await selectCourse(course);
+
+  if (result.entityType === 'note') {
+    const notes = await atlasApi.listNotes(course.id);
+    const note = notes.find((n) => n.id === result.entityId);
+    if (note) await openNoteEditor(note);
+  } else if (result.entityType === 'resource') {
+    const resources = await atlasApi.listResources(course.id);
+    const resource = resources.find((r) => r.id === result.entityId);
+    if (resource) await openPreview(resource);
+  }
+
+  document.getElementById('search-results')!.hidden = true;
+  (document.getElementById('search-input') as HTMLInputElement).value = '';
+}
+
 async function init(): Promise<void> {
   const dataDirEl = document.getElementById('data-dir')!;
   dataDirEl.textContent = `Data folder: ${await atlasApi.getDataDir()}`;
@@ -831,6 +919,26 @@ async function init(): Promise<void> {
   // refresh the resource list if that's the course currently open.
   atlasApi.onResourcesChanged(async (courseId) => {
     if (selectedCourse && selectedCourse.id === courseId) await renderResources();
+  });
+
+  const searchInput = document.getElementById('search-input') as HTMLInputElement;
+  const searchBox = document.getElementById('search-box')!;
+  searchInput.addEventListener('input', () => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    const query = searchInput.value;
+    searchDebounceTimer = setTimeout(() => runSearch(query), 250);
+  });
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      document.getElementById('search-results')!.hidden = true;
+      searchInput.blur();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!searchBox.contains(e.target as Node)) {
+      document.getElementById('search-results')!.hidden = true;
+    }
   });
 }
 
