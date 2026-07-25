@@ -533,6 +533,18 @@ const fs = require('fs');
   await window.fill('#search-input', '');
   await window.keyboard.press('Escape');
 
+  // Ctrl+L jumps focus to search from anywhere, browser-address-bar style —
+  // click somewhere else first so this actually proves focus moved.
+  await window.click('#course-list li');
+  await window.keyboard.press('Control+l');
+  await window.waitForTimeout(100);
+  const focusedElementId = await window.evaluate(() => document.activeElement?.id);
+  console.log('focused element after Ctrl+L:', focusedElementId);
+  if (focusedElementId !== 'search-input') {
+    throw new Error(`FAIL: Ctrl+L did not focus the search input, focused "${focusedElementId}" instead`);
+  }
+  (await window.$('#search-input'))?.evaluate((el) => el.blur());
+
   // Deadlines: one unified per-course timeline (assignment/reading/quiz/
   // .../manual), sorted incomplete-first then soonest-due-first, with
   // completed items struck through. No separate "Assignments" tab was
@@ -631,6 +643,9 @@ const fs = require('fs');
   // Viewer + @-mention: open "Homework 1", add a description referencing the
   // markdown resource uploaded earlier via @, save, then confirm the viewer
   // renders it as a clickable link and clicking it opens that resource.
+  // Selected via keyboard (ArrowDown + Enter), not a mouse click, per the
+  // user's explicit ask to be able to navigate mention suggestions without
+  // a mouse — same as the global search results dropdown.
   await window.click(`li[data-deadline-id="${deadlineIds[0]}"] .deadline-title`);
   await window.waitForTimeout(300);
   await window.click('#deadline-edit-button');
@@ -643,9 +658,22 @@ const fs = require('fs');
   if (!mentionSuggestionVisible) {
     throw new Error('FAIL: typing "@sample" did not show mention autocomplete suggestions');
   }
-  await window.dispatchEvent('#deadline-mention-suggestions li', 'mousedown');
+  await window.press('#deadline-edit-description', 'ArrowDown');
+  const mentionActiveAfterArrowDown = await window.$eval('#deadline-mention-suggestions li', (el) =>
+    el.classList.contains('active')
+  );
+  console.log('first mention suggestion active after ArrowDown:', mentionActiveAfterArrowDown);
+  if (!mentionActiveAfterArrowDown) {
+    throw new Error('FAIL: ArrowDown did not mark the first mention suggestion as active');
+  }
+  await window.press('#deadline-edit-description', 'Enter');
   await window.waitForTimeout(200);
-  await window.keyboard.type(' for the format.');
+  const descriptionAfterMentionInsert = await window.inputValue('#deadline-edit-description');
+  console.log('description after ArrowDown+Enter mention insert:', descriptionAfterMentionInsert);
+  if (!descriptionAfterMentionInsert.includes('@[sample-lecture-notes.md](resource:')) {
+    throw new Error(`FAIL: ArrowDown+Enter did not insert a mention token: ${descriptionAfterMentionInsert}`);
+  }
+  await window.keyboard.type('for the format.');
   await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
 

@@ -75,6 +75,9 @@ Still open, lower urgency (not blocking Phase 1): sync frequency/manual-vs-autom
   9. **`@`-mention references in the description** — typing `@` autocompletes against that course's own resources/notes (modeled directly on Claude Code's own `@file` reference convention, which the user pointed to), inserting a `@[Title](resource:<id>)`/`@[Title](note:<id>)` token; rendered read-only as a clickable link that opens the referenced resource/note.
   - Caught and fixed a real instance of the documented recurring CSS bug (`CLAUDE.md`) while building this: `#deadline-date-error` set `display: block` unconditionally on its own ID selector, which outranked the `[hidden]` default and kept the "Invalid date" message visible even when the field was empty/valid. Fixed by scoping it to `#deadline-date-error:not([hidden])`, per the standing check.
   - `scripts/verify-app.js` extended substantially: the whole deadlines test block now drives the add/edit modal instead of the old inline form, plus new coverage for typed-date + time formatting, the icon view, the mention autocomplete dropdown appearing and inserting a token, clicking a rendered mention to open the referenced resource, editing an existing deadline in place (not duplicating it), the "Today" label, and that the menu bar is set to auto-hide.
+- **Second follow-up round, same session — 2 more requests:**
+  1. **Keyboard navigation for the mention autocomplete** — Arrow Up/Down highlight a suggestion (mouse hover stays in sync), Enter inserts the active one (or the top match if none arrowed to), Escape dismisses just the suggestion list without closing the deadline editor. Same pattern as the search results keyboard nav (session 30).
+  2. **Ctrl+L jumps focus to search from anywhere**, matching a browser's address-bar shortcut — the user's own reference point. Deliberately not hinted anywhere in the UI, per their explicit "don't clutter the interface with this" request.
 
 ## Session 30 additions
 

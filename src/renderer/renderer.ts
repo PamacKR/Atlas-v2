@@ -1166,12 +1166,30 @@ function currentMentionQuery(textarea: HTMLTextAreaElement): { query: string; at
   return { query: match[1], atIndex: beforeCursor.length - match[0].length };
 }
 
+// Kept in sync with whatever's currently rendered in #deadline-mention-
+// suggestions, same pattern as the global search results dropdown, so Arrow
+// Up/Down + Enter can operate on it without re-reading the DOM.
+let currentMentionMatches: MentionCandidate[] = [];
+let currentMentionAtIndex = -1;
+let activeMentionIndex = -1;
+
+function updateActiveMentionSuggestion(): void {
+  const items = document.querySelectorAll('#deadline-mention-suggestions li');
+  items.forEach((item, index) => {
+    const isActive = index === activeMentionIndex;
+    item.classList.toggle('active', isActive);
+    if (isActive) item.scrollIntoView({ block: 'nearest' });
+  });
+}
+
 function updateMentionSuggestions(): void {
   const textarea = document.getElementById('deadline-edit-description') as HTMLTextAreaElement;
   const suggestionsList = document.getElementById('deadline-mention-suggestions')!;
   const active = currentMentionQuery(textarea);
+  activeMentionIndex = -1;
 
   if (!active) {
+    currentMentionMatches = [];
     suggestionsList.hidden = true;
     suggestionsList.innerHTML = '';
     return;
@@ -1181,6 +1199,8 @@ function updateMentionSuggestions(): void {
   const matches = mentionCandidates
     .filter((c) => c.title.toLowerCase().includes(queryLower))
     .slice(0, 8);
+  currentMentionMatches = matches;
+  currentMentionAtIndex = active.atIndex;
 
   if (matches.length === 0) {
     suggestionsList.hidden = true;
@@ -1189,7 +1209,7 @@ function updateMentionSuggestions(): void {
   }
 
   suggestionsList.innerHTML = '';
-  for (const candidate of matches) {
+  matches.forEach((candidate, index) => {
     const li = document.createElement('li');
     li.textContent = `${candidate.type === 'note' ? '📃' : '📄'} ${candidate.title}`;
     li.addEventListener('mousedown', (e) => {
@@ -1200,8 +1220,12 @@ function updateMentionSuggestions(): void {
       suggestionsList.hidden = true;
       suggestionsList.innerHTML = '';
     });
+    li.addEventListener('mouseenter', () => {
+      activeMentionIndex = index;
+      updateActiveMentionSuggestion();
+    });
     suggestionsList.appendChild(li);
-  }
+  });
   suggestionsList.hidden = false;
 }
 
@@ -1316,6 +1340,17 @@ async function init(): Promise<void> {
     if (e.target === e.currentTarget) closePreview();
   });
   document.addEventListener('keydown', (e) => {
+    // Ctrl+L jumps to search from anywhere, same convention as a browser's
+    // address bar — selects any existing text so typing immediately
+    // replaces it, matching that same browser behavior.
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      const searchInput = document.getElementById('search-input') as HTMLInputElement;
+      searchInput.focus();
+      searchInput.select();
+      return;
+    }
+
     if (e.key !== 'Escape') return;
     // Deliberately does NOT close the note editor — an editor with
     // in-progress typing shouldn't disappear because of an incidental
@@ -1401,6 +1436,31 @@ async function init(): Promise<void> {
     setTimeout(() => {
       document.getElementById('deadline-mention-suggestions')!.hidden = true;
     }, 150);
+  });
+  descriptionTextarea.addEventListener('keydown', (e) => {
+    if (currentMentionMatches.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeMentionIndex = Math.min(activeMentionIndex + 1, currentMentionMatches.length - 1);
+      updateActiveMentionSuggestion();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeMentionIndex = Math.max(activeMentionIndex - 1, 0);
+      updateActiveMentionSuggestion();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const index = activeMentionIndex === -1 ? 0 : activeMentionIndex;
+      insertMention(descriptionTextarea, currentMentionAtIndex, currentMentionMatches[index]);
+      currentMentionMatches = [];
+      document.getElementById('deadline-mention-suggestions')!.hidden = true;
+      document.getElementById('deadline-mention-suggestions')!.innerHTML = '';
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      currentMentionMatches = [];
+      document.getElementById('deadline-mention-suggestions')!.hidden = true;
+      document.getElementById('deadline-mention-suggestions')!.innerHTML = '';
+    }
   });
 
   const deadlineEditForm = document.getElementById('deadline-edit-form') as HTMLFormElement;
