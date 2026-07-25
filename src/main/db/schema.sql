@@ -72,9 +72,17 @@ CREATE TABLE IF NOT EXISTS deadlines (
   course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT 'assignment', -- assignment, reading, quiz, lab, project, exam, manual
+  -- 'YYYY-MM-DD' (date only) or 'YYYY-MM-DDTHH:MM' (date + optional time) —
+  -- time is optional per deadline, so the format varies row to row rather
+  -- than always carrying an unused time component.
   due_at TEXT,
   completed INTEGER NOT NULL DEFAULT 0,
-  source TEXT NOT NULL DEFAULT 'manual'
+  source TEXT NOT NULL DEFAULT 'manual',
+  -- Free-text notes about the deadline. May contain @-mention tokens in the
+  -- form @[Title](resource:<id>) or @[Title](note:<id>) — inserted via the
+  -- description field's @ autocomplete, rendered as clickable links back to
+  -- that resource/note (see renderDeadlineDescription in renderer.ts).
+  description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS announcements (

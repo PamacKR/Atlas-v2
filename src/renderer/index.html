@@ -68,21 +68,8 @@
       <div class="resources-header">
         <h2 id="deadlines-heading">Deadlines</h2>
       </div>
-      <ul id="deadline-list"></ul>
-      <form id="deadline-form">
-        <input id="deadline-title" type="text" placeholder="Title" required />
-        <select id="deadline-kind">
-          <option value="assignment">Assignment</option>
-          <option value="reading">Reading</option>
-          <option value="quiz">Quiz</option>
-          <option value="lab">Lab</option>
-          <option value="project">Project</option>
-          <option value="exam">Exam</option>
-          <option value="manual">Other</option>
-        </select>
-        <input id="deadline-due" type="date" />
-        <button type="submit">Add deadline</button>
-      </form>
+      <ul id="deadline-list" class="view-list"></ul>
+      <button id="new-deadline-button" type="button">Add deadline</button>
     </section>
 
     <section id="watched-folders-section" hidden>
@@ -108,6 +95,54 @@
         </div>
       </div>
       <div id="note-editor-root"></div>
+    </div>
+  </div>
+
+  <div id="deadline-editor-overlay" hidden>
+    <div id="deadline-editor-panel">
+      <div id="deadline-view-mode">
+        <div id="deadline-view-header">
+          <h3 id="deadline-view-title"></h3>
+          <span id="deadline-view-kind" class="code"></span>
+        </div>
+        <p id="deadline-view-due" class="muted"></p>
+        <div id="deadline-view-description"></div>
+        <div id="deadline-view-actions">
+          <button id="deadline-edit-button" type="button">Edit</button>
+          <button id="deadline-view-close" type="button">Close</button>
+        </div>
+      </div>
+
+      <form id="deadline-edit-form" hidden>
+        <input id="deadline-edit-title" type="text" placeholder="Title" required />
+        <select id="deadline-edit-kind">
+          <option value="assignment">Assignment</option>
+          <option value="reading">Reading</option>
+          <option value="quiz">Quiz</option>
+          <option value="lab">Lab</option>
+          <option value="project">Project</option>
+          <option value="exam">Exam</option>
+          <option value="manual">Other</option>
+        </select>
+        <div id="deadline-date-row">
+          <input id="deadline-edit-date-text" type="text" placeholder="dd-mm-yyyy" autocomplete="off" />
+          <button id="deadline-edit-date-pick" type="button" title="Pick a date" aria-label="Pick a date">📅</button>
+          <input id="deadline-edit-date-native" type="date" />
+          <input id="deadline-edit-time" type="time" />
+        </div>
+        <span id="deadline-date-error" class="muted" hidden>Invalid date — use dd-mm-yyyy</span>
+        <div id="deadline-mention-box">
+          <textarea
+            id="deadline-edit-description"
+            placeholder="Description (optional) — type @ to reference a file or note"
+          ></textarea>
+          <ul id="deadline-mention-suggestions" hidden></ul>
+        </div>
+        <div id="deadline-edit-actions">
+          <button id="deadline-save-button" type="submit">Save</button>
+          <button id="deadline-cancel-button" type="button">Cancel</button>
+        </div>
+      </form>
     </div>
   </div>
 

@@ -354,6 +354,11 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    // Hidden by default to save screen space (per user request) — Alt still
+    // reveals it temporarily, Electron/Chromium's standard behavior for an
+    // auto-hidden menu bar on Windows/Linux. No effect on macOS, which never
+    // renders an in-window menu bar to begin with.
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -909,12 +914,41 @@ ipcMain.handle('deadlines:listByCourse', (_event, courseId: number) => {
 
 ipcMain.handle(
   'deadlines:create',
-  (_event, courseId: number, title: string, kind: string, dueAt: string | null) => {
+  (
+    _event,
+    courseId: number,
+    title: string,
+    kind: string,
+    dueAt: string | null,
+    description: string | null
+  ) => {
     const db = getDb();
     const insertResult = db
-      .prepare('INSERT INTO deadlines (course_id, title, kind, due_at) VALUES (?, ?, ?, ?)')
-      .run(courseId, title, kind, dueAt);
+      .prepare('INSERT INTO deadlines (course_id, title, kind, due_at, description) VALUES (?, ?, ?, ?, ?)')
+      .run(courseId, title, kind, dueAt, description);
     return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(insertResult.lastInsertRowid);
+  }
+);
+
+ipcMain.handle(
+  'deadlines:update',
+  (
+    _event,
+    deadlineId: number,
+    title: string,
+    kind: string,
+    dueAt: string | null,
+    description: string | null
+  ) => {
+    const db = getDb();
+    db.prepare('UPDATE deadlines SET title = ?, kind = ?, due_at = ?, description = ? WHERE id = ?').run(
+      title,
+      kind,
+      dueAt,
+      description,
+      deadlineId
+    );
+    return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId);
   }
 );
 

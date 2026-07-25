@@ -56,6 +56,7 @@ export interface Deadline {
   due_at: string | null;
   completed: number;
   source: string;
+  description: string | null;
 }
 
 export interface SearchResult {
@@ -125,8 +126,21 @@ contextBridge.exposeInMainWorld('atlas', {
   search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('search:query', query),
   listDeadlines: (courseId: number): Promise<Deadline[]> =>
     ipcRenderer.invoke('deadlines:listByCourse', courseId),
-  createDeadline: (courseId: number, title: string, kind: string, dueAt: string | null): Promise<Deadline> =>
-    ipcRenderer.invoke('deadlines:create', courseId, title, kind, dueAt),
+  createDeadline: (
+    courseId: number,
+    title: string,
+    kind: string,
+    dueAt: string | null,
+    description: string | null
+  ): Promise<Deadline> => ipcRenderer.invoke('deadlines:create', courseId, title, kind, dueAt, description),
+  updateDeadline: (
+    deadlineId: number,
+    title: string,
+    kind: string,
+    dueAt: string | null,
+    description: string | null
+  ): Promise<Deadline> =>
+    ipcRenderer.invoke('deadlines:update', deadlineId, title, kind, dueAt, description),
   setDeadlineCompleted: (deadlineId: number, completed: boolean): Promise<void> =>
     ipcRenderer.invoke('deadlines:setCompleted', deadlineId, completed),
   deleteDeadline: (deadlineId: number): Promise<void> => ipcRenderer.invoke('deadlines:delete', deadlineId),

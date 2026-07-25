@@ -53,6 +53,13 @@ function migrate(db: Database.Database): void {
   if (!noteColumns.includes('exported_path')) {
     db.exec('ALTER TABLE notes ADD COLUMN exported_path TEXT');
   }
+
+  const deadlineColumns = (
+    db.prepare('PRAGMA table_info(deadlines)').all() as { name: string }[]
+  ).map((c) => c.name);
+  if (!deadlineColumns.includes('description')) {
+    db.exec('ALTER TABLE deadlines ADD COLUMN description TEXT');
+  }
 }
 
 export function closeDb(): void {

@@ -537,21 +537,34 @@ const fs = require('fs');
   // .../manual), sorted incomplete-first then soonest-due-first, with
   // completed items struck through. No separate "Assignments" tab was
   // built — see docs/open-questions.md #13 for why that's deferred.
-  await window.fill('#deadline-title', 'Midterm exam');
-  await window.selectOption('#deadline-kind', 'exam');
-  await window.fill('#deadline-due', '2026-08-15');
-  await window.click('#deadline-form button[type="submit"]');
+  // Added via the add/edit modal (typed dd-mm-yyyy date, optional time,
+  // optional description with @-mention autocomplete) rather than an inline
+  // form, per later user feedback wanting more fields (time, description,
+  // file/note references) than an inline row could reasonably hold.
+  async function fillDeadlineForm({ title, kind, date, time, description }) {
+    await window.fill('#deadline-edit-title', title);
+    if (kind) await window.selectOption('#deadline-edit-kind', kind);
+    if (date) await window.fill('#deadline-edit-date-text', date);
+    if (time) await window.fill('#deadline-edit-time', time);
+    if (description) await window.fill('#deadline-edit-description', description);
+  }
+
+  await window.click('#new-deadline-button');
+  await window.waitForTimeout(300);
+  await fillDeadlineForm({ title: 'Midterm exam', kind: 'exam', date: '15-08-2026' });
+  await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
 
-  await window.fill('#deadline-title', 'Homework 1');
-  await window.selectOption('#deadline-kind', 'assignment');
-  await window.fill('#deadline-due', '2026-08-01');
-  await window.click('#deadline-form button[type="submit"]');
+  await window.click('#new-deadline-button');
+  await window.waitForTimeout(300);
+  await fillDeadlineForm({ title: 'Homework 1', kind: 'assignment', date: '01-08-2026', time: '23:59' });
+  await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
 
-  await window.fill('#deadline-title', 'Read syllabus');
-  await window.selectOption('#deadline-kind', 'reading');
-  await window.click('#deadline-form button[type="submit"]'); // no due date
+  await window.click('#new-deadline-button');
+  await window.waitForTimeout(300);
+  await fillDeadlineForm({ title: 'Read syllabus', kind: 'reading' }); // no due date
+  await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
 
   const deadlineTitlesInOrder = await window.$$eval('#deadline-list li.deadline-item .deadline-title', (els) =>
@@ -560,6 +573,17 @@ const fs = require('fs');
   console.log('deadline order (soonest due date first, no-due-date last):', deadlineTitlesInOrder);
   if (JSON.stringify(deadlineTitlesInOrder) !== JSON.stringify(['Homework 1', 'Midterm exam', 'Read syllabus'])) {
     throw new Error(`FAIL: unexpected deadline order: ${JSON.stringify(deadlineTitlesInOrder)}`);
+  }
+
+  // Typed dd-mm-yyyy + optional time should format as a plain date with the
+  // time appended (not "Today"/"Tomorrow", since 2026-08-15 is neither
+  // relative to whenever this test happens to run).
+  const homeworkDueText = await window.textContent(
+    `li[data-deadline-id] .deadline-due >> nth=0`
+  );
+  console.log('first deadline due text (should include a time):', homeworkDueText);
+  if (!homeworkDueText.includes('23:59') && !homeworkDueText.toLowerCase().includes('11:59')) {
+    throw new Error(`FAIL: due time was not included in the formatted due date: ${homeworkDueText}`);
   }
 
   const deadlineIds = await window.$$eval('#deadline-list li.deadline-item', (els) =>
@@ -583,8 +607,112 @@ const fs = require('fs');
   if (!completedItemClass || !completedItemClass.includes('completed')) {
     throw new Error('FAIL: completed deadline is missing the "completed" styling class');
   }
+  // Undo, so later assertions about this deadline (edit, description,
+  // mentions) aren't operating on a struck-through/completed item.
+  await window.click(`li[data-deadline-id="${deadlineIds[0]}"] input[type="checkbox"]`);
+  await window.waitForTimeout(300);
 
-  await window.evaluate((id) => window.atlas.deleteDeadline(id), deadlineIds[1]); // "Midterm exam"
+  // Icon view: deadlines share the app-wide list/icon toggle with
+  // resources/notes (no separate per-section toggle), and each kind gets
+  // its own icon.
+  await window.click('#view-icons');
+  await window.waitForTimeout(200);
+  const deadlineListClassInIcons = await window.getAttribute('#deadline-list', 'class');
+  console.log('deadline-list class in icon mode:', deadlineListClassInIcons);
+  if (!deadlineListClassInIcons || !deadlineListClassInIcons.includes('view-icons')) {
+    throw new Error('FAIL: icon view mode did not apply to the deadline list');
+  }
+  if ((await window.$$('#deadline-list li.icon-tile')).length === 0) {
+    throw new Error('FAIL: no icon tiles rendered for deadlines in icon view');
+  }
+  await window.click('#view-list');
+  await window.waitForTimeout(200);
+
+  // Viewer + @-mention: open "Homework 1", add a description referencing the
+  // markdown resource uploaded earlier via @, save, then confirm the viewer
+  // renders it as a clickable link and clicking it opens that resource.
+  await window.click(`li[data-deadline-id="${deadlineIds[0]}"] .deadline-title`);
+  await window.waitForTimeout(300);
+  await window.click('#deadline-edit-button');
+  await window.waitForTimeout(300);
+  await window.click('#deadline-edit-description');
+  await window.keyboard.type('See @sample');
+  await window.waitForTimeout(400);
+  const mentionSuggestionVisible = !(await window.isHidden('#deadline-mention-suggestions'));
+  console.log('mention autocomplete suggestions visible:', mentionSuggestionVisible);
+  if (!mentionSuggestionVisible) {
+    throw new Error('FAIL: typing "@sample" did not show mention autocomplete suggestions');
+  }
+  await window.dispatchEvent('#deadline-mention-suggestions li', 'mousedown');
+  await window.waitForTimeout(200);
+  await window.keyboard.type(' for the format.');
+  await window.click('#deadline-save-button');
+  await window.waitForTimeout(300);
+
+  await window.click(`li[data-deadline-id="${deadlineIds[0]}"] .deadline-title`);
+  await window.waitForTimeout(300);
+  const mentionLinkText = await window.textContent('#deadline-view-description .deadline-mention');
+  console.log('rendered mention link text:', mentionLinkText);
+  if (!mentionLinkText || !mentionLinkText.includes('sample-lecture-notes.md')) {
+    throw new Error(`FAIL: description mention did not render as expected, got ${JSON.stringify(mentionLinkText)}`);
+  }
+  await window.click('#deadline-view-description .deadline-mention');
+  await window.waitForTimeout(400);
+  const previewVisibleAfterMentionClick = !(await window.isHidden('#preview-overlay'));
+  console.log('preview opened by clicking a description mention:', previewVisibleAfterMentionClick);
+  if (!previewVisibleAfterMentionClick) {
+    throw new Error('FAIL: clicking a description mention did not open the referenced resource');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
+  // Editing: title/kind changes on an existing deadline should persist, not
+  // create a duplicate.
+  await window.click(`li[data-deadline-id="${deadlineIds[0]}"] .deadline-title`);
+  await window.waitForTimeout(300);
+  await window.click('#deadline-edit-button');
+  await window.waitForTimeout(300);
+  await window.fill('#deadline-edit-title', 'Homework 1 (revised)');
+  await window.click('#deadline-save-button');
+  await window.waitForTimeout(300);
+  const titlesAfterEdit = await window.$$eval('#deadline-list li.deadline-item .deadline-title', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('deadline titles after editing one:', titlesAfterEdit);
+  if (!titlesAfterEdit.includes('Homework 1 (revised)') || titlesAfterEdit.includes('Homework 1')) {
+    throw new Error(`FAIL: editing a deadline did not update it in place: ${JSON.stringify(titlesAfterEdit)}`);
+  }
+  if ((await window.$$('#deadline-list li.deadline-item')).length !== 3) {
+    throw new Error('FAIL: editing a deadline created a duplicate instead of updating it');
+  }
+
+  // Today/Tomorrow relative labels — a deadline due today or tomorrow should
+  // show that word instead of the date; a deadline further out should not.
+  // Local date components, not toISOString() — that's UTC, which can be a
+  // different calendar day than local "today" depending on timezone offset,
+  // and the app's own "Today"/"Tomorrow" comparison is deliberately local
+  // (see formatDueDate in renderer.ts).
+  const now = new Date();
+  const todayTyped = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
+  await window.click('#new-deadline-button');
+  await window.waitForTimeout(300);
+  await fillDeadlineForm({ title: 'Due today', kind: 'manual', date: todayTyped });
+  await window.click('#deadline-save-button');
+  await window.waitForTimeout(300);
+  const todayDeadlineDue = await window.textContent(
+    `li:has-text("Due today") .deadline-due`
+  );
+  console.log('due-today deadline shows:', todayDeadlineDue);
+  if (!todayDeadlineDue.includes('Today')) {
+    throw new Error(`FAIL: a deadline due today should show "Today", got "${todayDeadlineDue}"`);
+  }
+
+  // "Due today" sorts to the top (earliest due date, incomplete) rather than
+  // the bottom, so find it by content instead of assuming a position.
+  const dueTodayId = await window.$eval('li.deadline-item:has-text("Due today")', (el) =>
+    Number(el.dataset.deadlineId)
+  );
+  await window.evaluate((id) => window.atlas.deleteDeadline(id), dueTodayId);
   await window.click('#course-list li'); // reselect to force a refresh
   await window.waitForTimeout(300);
   const deadlineTitlesAfterDelete = await window.$$eval(
@@ -592,8 +720,19 @@ const fs = require('fs');
     (els) => els.map((e) => e.textContent)
   );
   console.log('deadlines after delete:', deadlineTitlesAfterDelete);
-  if (deadlineTitlesAfterDelete.some((t) => t === 'Midterm exam')) {
+  if (deadlineTitlesAfterDelete.some((t) => t === 'Due today')) {
     throw new Error('FAIL: deadline still present after delete');
+  }
+
+  // Menu bar auto-hidden by default (per user request, saves screen space) —
+  // Alt still reveals it, standard Electron/Chromium behavior on Windows/
+  // Linux for an auto-hidden menu bar.
+  const menuBarAutoHide = await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].isMenuBarAutoHide()
+  );
+  console.log('menu bar auto-hide enabled:', menuBarAutoHide);
+  if (!menuBarAutoHide) {
+    throw new Error('FAIL: menu bar is not set to auto-hide');
   }
 
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });

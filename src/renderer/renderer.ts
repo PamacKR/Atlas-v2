@@ -47,6 +47,16 @@ interface Deadline {
   due_at: string | null;
   completed: number;
   source: string;
+  description: string | null;
+}
+
+// A candidate a deadline description's "@" autocomplete can insert a mention
+// token for — the current course's resources and notes, kept generic so the
+// same suggestion list/renderer logic doesn't care which one it is.
+interface MentionCandidate {
+  type: 'resource' | 'note';
+  id: number;
+  title: string;
 }
 
 interface SearchResult {
@@ -99,7 +109,20 @@ interface AtlasApi {
   saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string) => Promise<string>;
   search: (query: string) => Promise<SearchResult[]>;
   listDeadlines: (courseId: number) => Promise<Deadline[]>;
-  createDeadline: (courseId: number, title: string, kind: string, dueAt: string | null) => Promise<Deadline>;
+  createDeadline: (
+    courseId: number,
+    title: string,
+    kind: string,
+    dueAt: string | null,
+    description: string | null
+  ) => Promise<Deadline>;
+  updateDeadline: (
+    deadlineId: number,
+    title: string,
+    kind: string,
+    dueAt: string | null,
+    description: string | null
+  ) => Promise<Deadline>;
   setDeadlineCompleted: (deadlineId: number, completed: boolean) => Promise<void>;
   deleteDeadline: (deadlineId: number) => Promise<void>;
   showDeadlineContextMenu: (deadlineId: number) => void;
@@ -151,6 +174,16 @@ const DEADLINE_KIND_LABEL: Record<string, string> = {
   project: 'Project',
   exam: 'Exam',
   manual: 'Other',
+};
+
+const DEADLINE_KIND_ICON: Record<string, string> = {
+  assignment: '📝',
+  reading: '📖',
+  quiz: '❓',
+  lab: '🧪',
+  project: '🛠️',
+  exam: '🎓',
+  manual: '📌',
 };
 
 let selectedCourse: Course | null = null;
@@ -415,19 +448,48 @@ async function renderNotes(): Promise<void> {
   else renderNoteIconView(notes);
 }
 
-// `due_at` is stored as a plain "YYYY-MM-DD" string (an HTML date input's
-// value) — parsed with explicit year/month/day rather than `new Date(str)`
-// to avoid the browser interpreting a bare date string as UTC midnight and
-// displaying the day before in negative-UTC-offset timezones.
+// `due_at` is 'YYYY-MM-DD' (date only) or 'YYYY-MM-DDTHH:MM' (date + optional
+// time) — split apart and parsed with explicit year/month/day/hour/minute
+// components rather than `new Date(str)` directly, to avoid the browser
+// interpreting a bare date string as UTC midnight and displaying the day
+// before in negative-UTC-offset timezones.
+function splitDueAt(dueAt: string): { year: number; month: number; day: number; hour: number | null; minute: number | null } {
+  const [datePart, timePart] = dueAt.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  if (!timePart) return { year, month, day, hour: null, minute: null };
+  const [hour, minute] = timePart.split(':').map(Number);
+  return { year, month, day, hour, minute };
+}
+
+// "Today"/"Tomorrow" read faster at a glance than a date the user has to
+// mentally compare against today — everything from the day after tomorrow
+// onward falls back to a plain formatted date, where relative labels stop
+// being obviously faster to parse.
 function formatDueDate(dueAt: string | null): string {
   if (!dueAt) return 'No due date';
-  const [year, month, day] = dueAt.split('-').map(Number);
+  const { year, month, day, hour, minute } = splitDueAt(dueAt);
   const date = new Date(year, month - 1, day);
-  return date.toLocaleDateString(undefined, { dateStyle: 'medium' });
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  let label: string;
+  if (date.getTime() === today.getTime()) label = 'Today';
+  else if (date.getTime() === tomorrow.getTime()) label = 'Tomorrow';
+  else label = date.toLocaleDateString(undefined, { dateStyle: 'medium' });
+
+  if (hour === null || minute === null) return label;
+  const timeLabel = new Date(2000, 0, 1, hour, minute).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${label} at ${timeLabel}`;
 }
 
 function renderDeadlineListView(deadlines: Deadline[]): void {
   const list = document.getElementById('deadline-list')!;
+  list.className = 'view-list';
   list.innerHTML = '';
 
   for (const deadline of deadlines) {
@@ -436,15 +498,11 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
     if (deadline.completed) li.classList.add('completed');
     li.dataset.deadlineId = String(deadline.id);
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = !!deadline.completed;
-    checkbox.addEventListener('click', (e) => e.stopPropagation());
-    checkbox.addEventListener('change', async () => {
-      await atlasApi.setDeadlineCompleted(deadline.id, checkbox.checked);
-      await renderDeadlines();
-    });
-    li.appendChild(checkbox);
+    li.appendChild(makeDeadlineCheckbox(deadline));
+
+    const icon = document.createElement('span');
+    icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
+    li.appendChild(icon);
 
     const title = document.createElement('span');
     title.className = 'deadline-title';
@@ -461,6 +519,7 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
     due.textContent = formatDueDate(deadline.due_at);
     li.appendChild(due);
 
+    li.addEventListener('click', () => openDeadlineViewer(deadline));
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       atlasApi.showDeadlineContextMenu(deadline.id);
@@ -468,6 +527,60 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
 
     list.appendChild(li);
   }
+}
+
+function renderDeadlineIconView(deadlines: Deadline[]): void {
+  const list = document.getElementById('deadline-list')!;
+  list.className = 'view-icons';
+  list.innerHTML = '';
+
+  for (const deadline of deadlines) {
+    const li = document.createElement('li');
+    li.className = 'icon-tile deadline-item';
+    if (deadline.completed) li.classList.add('completed');
+    li.dataset.deadlineId = String(deadline.id);
+
+    li.appendChild(makeDeadlineCheckbox(deadline));
+
+    const icon = document.createElement('div');
+    icon.className = 'icon-glyph';
+    icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
+    li.appendChild(icon);
+
+    const name = document.createElement('div');
+    name.className = 'icon-name';
+    name.textContent = deadline.title;
+    li.appendChild(name);
+
+    const due = document.createElement('div');
+    due.className = 'icon-due';
+    due.textContent = formatDueDate(deadline.due_at);
+    li.appendChild(due);
+
+    li.addEventListener('click', () => openDeadlineViewer(deadline));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showDeadlineContextMenu(deadline.id);
+    });
+
+    list.appendChild(li);
+  }
+}
+
+// Shared between list and icon view — clicking the checkbox toggles
+// completion without opening the viewer (stopPropagation), clicking
+// anywhere else on the row/tile opens it.
+function makeDeadlineCheckbox(deadline: Deadline): HTMLInputElement {
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'deadline-checkbox';
+  checkbox.checked = !!deadline.completed;
+  checkbox.addEventListener('click', (e) => e.stopPropagation());
+  checkbox.addEventListener('change', async () => {
+    await atlasApi.setDeadlineCompleted(deadline.id, checkbox.checked);
+    await renderDeadlines();
+  });
+  return checkbox;
 }
 
 async function renderDeadlines(): Promise<void> {
@@ -485,6 +598,7 @@ async function renderDeadlines(): Promise<void> {
 
   const deadlines = await atlasApi.listDeadlines(selectedCourse.id);
   if (deadlines.length === 0) {
+    list.className = 'view-list';
     list.innerHTML = '';
     const li = document.createElement('li');
     li.className = 'muted';
@@ -493,7 +607,8 @@ async function renderDeadlines(): Promise<void> {
     return;
   }
 
-  renderDeadlineListView(deadlines);
+  if (viewMode === 'list') renderDeadlineListView(deadlines);
+  else renderDeadlineIconView(deadlines);
 }
 
 let noteEditorInstance: Crepe | null = null;
@@ -684,6 +799,7 @@ function setViewMode(mode: 'list' | 'icons', persist = true): void {
   document.getElementById('view-icons')!.classList.toggle('active', mode === 'icons');
   renderResources();
   renderNotes();
+  renderDeadlines();
   if (persist) atlasApi.setSetting('viewMode', mode);
 }
 
@@ -893,6 +1009,211 @@ async function openSearchResult(result: SearchResult): Promise<void> {
   (document.getElementById('search-input') as HTMLInputElement).value = '';
 }
 
+// --- Deadline viewer/editor: view mode (read-only, clickable @mentions) and
+// edit mode (form) share one overlay, switched between rather than being two
+// separate overlays — a deadline is a small enough amount of content that a
+// single panel with a "Edit" button is simpler than juggling two panels.
+
+let currentViewingDeadline: Deadline | null = null;
+let currentEditingDeadlineId: number | null = null;
+let mentionCandidates: MentionCandidate[] = [];
+
+async function loadMentionCandidates(courseId: number): Promise<void> {
+  const [resources, notes] = await Promise.all([
+    atlasApi.listResources(courseId),
+    atlasApi.listNotes(courseId),
+  ]);
+  mentionCandidates = [
+    ...resources.map((r): MentionCandidate => ({ type: 'resource', id: r.id, title: r.title })),
+    ...notes.map((n): MentionCandidate => ({ type: 'note', id: n.id, title: n.title })),
+  ];
+}
+
+const MENTION_TOKEN_REGEX = /@\[([^\]]*)\]\((resource|note):(\d+)\)/g;
+
+// A description is plain text the user typed, so it's escaped as HTML first
+// (same reasoning as search snippets — it could otherwise contain `<`/`>`/
+// `&`) and only the mention tokens (which survive escaping untouched, since
+// escapeHtml doesn't touch `[`/`]`/`(`/`)`/`:`) are turned into real links.
+function renderDeadlineDescription(text: string): string {
+  return escapeHtml(text).replace(
+    MENTION_TOKEN_REGEX,
+    (_whole, title, type, id) =>
+      `<a href="#" class="deadline-mention" data-type="${type}" data-id="${id}">${
+        type === 'note' ? '📃' : '📄'
+      } ${title}</a>`
+  );
+}
+
+function wireMentionClicks(container: HTMLElement): void {
+  container.querySelectorAll<HTMLAnchorElement>('.deadline-mention').forEach((link) => {
+    link.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const type = link.dataset.type as 'resource' | 'note';
+      const id = Number(link.dataset.id);
+      if (!currentViewingDeadline) return;
+      const courseId = currentViewingDeadline.course_id;
+      closeDeadlineEditor();
+
+      const courses = await atlasApi.listCourses();
+      const course = courses.find((c) => c.id === courseId);
+      if (!course) return;
+      await selectCourse(course);
+
+      if (type === 'note') {
+        const notes = await atlasApi.listNotes(courseId);
+        const note = notes.find((n) => n.id === id);
+        if (note) await openNoteEditor(note);
+      } else {
+        const resources = await atlasApi.listResources(courseId);
+        const resource = resources.find((r) => r.id === id);
+        if (resource) await openPreview(resource);
+      }
+    });
+  });
+}
+
+async function openDeadlineViewer(deadline: Deadline): Promise<void> {
+  currentViewingDeadline = deadline;
+
+  document.getElementById('deadline-view-title')!.textContent = deadline.title;
+  document.getElementById('deadline-view-kind')!.textContent =
+    DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
+  document.getElementById('deadline-view-due')!.textContent = formatDueDate(deadline.due_at);
+
+  const descriptionEl = document.getElementById('deadline-view-description')!;
+  if (deadline.description && deadline.description.trim()) {
+    descriptionEl.innerHTML = renderDeadlineDescription(deadline.description);
+    descriptionEl.hidden = false;
+    wireMentionClicks(descriptionEl);
+  } else {
+    descriptionEl.innerHTML = '';
+    descriptionEl.hidden = true;
+  }
+
+  document.getElementById('deadline-view-mode')!.hidden = false;
+  (document.getElementById('deadline-edit-form') as HTMLFormElement).hidden = true;
+  document.getElementById('deadline-editor-overlay')!.hidden = false;
+}
+
+// dd-mm-yyyy, the format the user asked to be able to type directly — kept
+// separate from the native <input type="date">'s own yyyy-mm-dd value so
+// both entry methods (typing, or the picker button) can drive the same
+// field without fighting each other's format.
+function typedDateToIso(text: string): string | null {
+  const match = text.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match;
+  const month = Number(mm);
+  const day = Number(dd);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+}
+
+function isoDateToTyped(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  return `${day}-${month}-${year}`;
+}
+
+async function openDeadlineEditForm(deadline: Deadline | null): Promise<void> {
+  if (!selectedCourse) return;
+  await loadMentionCandidates(selectedCourse.id);
+
+  currentEditingDeadlineId = deadline ? deadline.id : null;
+  (document.getElementById('deadline-edit-title') as HTMLInputElement).value = deadline?.title ?? '';
+  (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value = deadline?.kind ?? 'assignment';
+
+  const dateText = document.getElementById('deadline-edit-date-text') as HTMLInputElement;
+  const dateNative = document.getElementById('deadline-edit-date-native') as HTMLInputElement;
+  const timeInput = document.getElementById('deadline-edit-time') as HTMLInputElement;
+  if (deadline?.due_at) {
+    const [datePart, timePart] = deadline.due_at.split('T');
+    dateText.value = isoDateToTyped(datePart);
+    dateNative.value = datePart;
+    timeInput.value = timePart ?? '';
+  } else {
+    dateText.value = '';
+    dateNative.value = '';
+    timeInput.value = '';
+  }
+  document.getElementById('deadline-date-error')!.hidden = true;
+
+  (document.getElementById('deadline-edit-description') as HTMLTextAreaElement).value =
+    deadline?.description ?? '';
+  document.getElementById('deadline-mention-suggestions')!.hidden = true;
+
+  document.getElementById('deadline-view-mode')!.hidden = true;
+  (document.getElementById('deadline-edit-form') as HTMLFormElement).hidden = false;
+  document.getElementById('deadline-editor-overlay')!.hidden = false;
+  (document.getElementById('deadline-edit-title') as HTMLInputElement).focus();
+}
+
+function closeDeadlineEditor(): void {
+  document.getElementById('deadline-editor-overlay')!.hidden = true;
+  currentViewingDeadline = null;
+  currentEditingDeadlineId = null;
+}
+
+// @-mention autocomplete in the description textarea — matches Claude Code's
+// own @-file-reference convention the user pointed to, scoped to the current
+// course's resources/notes (mentionCandidates, loaded when the editor opens)
+// rather than the whole filesystem, since those are the things Atlas already
+// knows about and can navigate to.
+function currentMentionQuery(textarea: HTMLTextAreaElement): { query: string; atIndex: number } | null {
+  const beforeCursor = textarea.value.slice(0, textarea.selectionStart ?? 0);
+  const match = beforeCursor.match(/@([^\s@]*)$/);
+  if (!match) return null;
+  return { query: match[1], atIndex: beforeCursor.length - match[0].length };
+}
+
+function updateMentionSuggestions(): void {
+  const textarea = document.getElementById('deadline-edit-description') as HTMLTextAreaElement;
+  const suggestionsList = document.getElementById('deadline-mention-suggestions')!;
+  const active = currentMentionQuery(textarea);
+
+  if (!active) {
+    suggestionsList.hidden = true;
+    suggestionsList.innerHTML = '';
+    return;
+  }
+
+  const queryLower = active.query.toLowerCase();
+  const matches = mentionCandidates
+    .filter((c) => c.title.toLowerCase().includes(queryLower))
+    .slice(0, 8);
+
+  if (matches.length === 0) {
+    suggestionsList.hidden = true;
+    suggestionsList.innerHTML = '';
+    return;
+  }
+
+  suggestionsList.innerHTML = '';
+  for (const candidate of matches) {
+    const li = document.createElement('li');
+    li.textContent = `${candidate.type === 'note' ? '📃' : '📄'} ${candidate.title}`;
+    li.addEventListener('mousedown', (e) => {
+      // mousedown (not click) fires before the textarea's blur, so the
+      // selection/cursor position read below is still valid.
+      e.preventDefault();
+      insertMention(textarea, active.atIndex, candidate);
+      suggestionsList.hidden = true;
+      suggestionsList.innerHTML = '';
+    });
+    suggestionsList.appendChild(li);
+  }
+  suggestionsList.hidden = false;
+}
+
+function insertMention(textarea: HTMLTextAreaElement, atIndex: number, candidate: MentionCandidate): void {
+  const cursor = textarea.selectionStart ?? atIndex;
+  const token = `@[${candidate.title}](${candidate.type}:${candidate.id}) `;
+  textarea.value = textarea.value.slice(0, atIndex) + token + textarea.value.slice(cursor);
+  const newCursor = atIndex + token.length;
+  textarea.focus();
+  textarea.setSelectionRange(newCursor, newCursor);
+}
+
 async function init(): Promise<void> {
   const dataDirEl = document.getElementById('data-dir')!;
   dataDirEl.textContent = `Data folder: ${await atlasApi.getDataDir()}`;
@@ -1038,22 +1359,82 @@ async function init(): Promise<void> {
     await renderDeadlines();
   });
 
-  const deadlineForm = document.getElementById('deadline-form') as HTMLFormElement;
-  deadlineForm.addEventListener('submit', async (e) => {
+  const newDeadlineButton = document.getElementById('new-deadline-button') as HTMLButtonElement;
+  newDeadlineButton.addEventListener('click', () => openDeadlineEditForm(null));
+
+  document.getElementById('deadline-edit-button')!.addEventListener('click', () => {
+    if (currentViewingDeadline) openDeadlineEditForm(currentViewingDeadline);
+  });
+  document.getElementById('deadline-view-close')!.addEventListener('click', closeDeadlineEditor);
+  document.getElementById('deadline-cancel-button')!.addEventListener('click', closeDeadlineEditor);
+
+  const dateTextInput = document.getElementById('deadline-edit-date-text') as HTMLInputElement;
+  const dateNativeInput = document.getElementById('deadline-edit-date-native') as HTMLInputElement;
+  const dateErrorEl = document.getElementById('deadline-date-error')!;
+
+  dateTextInput.addEventListener('input', () => {
+    const iso = typedDateToIso(dateTextInput.value);
+    dateErrorEl.hidden = dateTextInput.value.trim() === '' || iso !== null;
+    dateNativeInput.value = iso ?? '';
+  });
+
+  document.getElementById('deadline-edit-date-pick')!.addEventListener('click', () => {
+    // showPicker() is the modern way to open a date input's native picker
+    // programmatically (Chromium 99+, so available in Electron) — needed
+    // since the native input itself is visually hidden in favor of the
+    // typed text field being the visible/primary way to enter a date.
+    if (typeof dateNativeInput.showPicker === 'function') dateNativeInput.showPicker();
+    else dateNativeInput.focus();
+  });
+
+  dateNativeInput.addEventListener('change', () => {
+    if (!dateNativeInput.value) return;
+    dateTextInput.value = isoDateToTyped(dateNativeInput.value);
+    dateErrorEl.hidden = true;
+  });
+
+  const descriptionTextarea = document.getElementById('deadline-edit-description') as HTMLTextAreaElement;
+  descriptionTextarea.addEventListener('input', updateMentionSuggestions);
+  descriptionTextarea.addEventListener('blur', () => {
+    // Slight delay so a suggestion's mousedown (which fires before blur)
+    // still gets to run insertMention() before the list is torn down.
+    setTimeout(() => {
+      document.getElementById('deadline-mention-suggestions')!.hidden = true;
+    }, 150);
+  });
+
+  const deadlineEditForm = document.getElementById('deadline-edit-form') as HTMLFormElement;
+  deadlineEditForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!selectedCourse) return;
-    const title = (document.getElementById('deadline-title') as HTMLInputElement).value.trim();
-    const kind = (document.getElementById('deadline-kind') as HTMLSelectElement).value;
-    const dueAt = (document.getElementById('deadline-due') as HTMLInputElement).value || null;
+
+    const title = (document.getElementById('deadline-edit-title') as HTMLInputElement).value.trim();
     if (!title) return;
 
-    await atlasApi.createDeadline(selectedCourse.id, title, kind, dueAt);
-    deadlineForm.reset();
+    const typedDate = dateTextInput.value.trim();
+    if (typedDate && typedDateToIso(typedDate) === null) {
+      dateErrorEl.hidden = false;
+      return;
+    }
+
+    const kind = (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value;
+    const isoDate = typedDate ? typedDateToIso(typedDate) : null;
+    const time = (document.getElementById('deadline-edit-time') as HTMLInputElement).value;
+    const dueAt = isoDate ? (time ? `${isoDate}T${time}` : isoDate) : null;
+    const description = descriptionTextarea.value.trim() || null;
+
+    if (currentEditingDeadlineId === null) {
+      await atlasApi.createDeadline(selectedCourse.id, title, kind, dueAt, description);
+    } else {
+      await atlasApi.updateDeadline(currentEditingDeadlineId, title, kind, dueAt, description);
+    }
+    closeDeadlineEditor();
     await renderDeadlines();
   });
 
   atlasApi.onDeadlineContextMenuDelete(async (deadlineId) => {
     if (!(await showConfirm("Delete this deadline? This can't be undone."))) return;
+    if (currentViewingDeadline?.id === deadlineId) closeDeadlineEditor();
     await atlasApi.deleteDeadline(deadlineId);
     await renderDeadlines();
   });

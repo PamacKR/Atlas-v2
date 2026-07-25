@@ -618,13 +618,13 @@ section#deadlines-section {
   margin-top: 2rem;
 }
 
-ul#deadline-list {
+ul#deadline-list.view-list {
   list-style: none;
   padding: 0;
   margin: 0 0 1rem 0;
 }
 
-ul#deadline-list li.deadline-item {
+ul#deadline-list.view-list li.deadline-item {
   padding: 0.6rem 0.8rem;
   background: #1a1e24;
   border-radius: 6px;
@@ -632,48 +632,228 @@ ul#deadline-list li.deadline-item {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  cursor: pointer;
 }
 
-ul#deadline-list li.deadline-item .deadline-title {
+ul#deadline-list.view-list li.deadline-item .deadline-title {
   flex: 1;
 }
 
-ul#deadline-list li.deadline-item .deadline-due {
+ul#deadline-list.view-list li.deadline-item .deadline-due {
   color: #8a919c;
   font-size: 0.8rem;
 }
 
-ul#deadline-list li.deadline-item.completed .deadline-title {
+ul#deadline-list.view-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+}
+
+li.icon-tile.deadline-item .icon-due {
+  color: #8a919c;
+  font-size: 0.7rem;
+  margin-top: 0.2rem;
+}
+
+li.icon-tile.deadline-item .deadline-checkbox {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+}
+
+li.deadline-item.completed .deadline-title,
+li.deadline-item.completed .icon-name {
   text-decoration: line-through;
   color: #8a919c;
 }
 
-form#deadline-form {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1.25rem;
-}
-
-form#deadline-form input,
-form#deadline-form select {
-  padding: 0.5rem;
-  border-radius: 4px;
-  border: 1px solid #2a2f37;
-  background: #1a1e24;
-  color: #e6e8eb;
-}
-
-form#deadline-form input#deadline-title {
-  flex: 1;
-}
-
-form#deadline-form button {
+button#new-deadline-button {
   padding: 0.5rem 1rem;
   border-radius: 4px;
   border: none;
   background: #3b82f6;
   color: white;
   cursor: pointer;
+}
+
+#deadline-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 10;
+}
+
+#deadline-editor-overlay:not([hidden]) {
+  display: flex;
+}
+
+#deadline-editor-panel {
+  background: #16191e;
+  border-radius: 8px;
+  border: 1px solid #2a2f37;
+  width: 100%;
+  max-width: 480px;
+  padding: 1.25rem;
+}
+
+#deadline-view-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+#deadline-view-header h3 {
+  margin: 0;
+}
+
+#deadline-view-due {
+  margin: 0 0 0.75rem 0;
+}
+
+#deadline-view-description {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+  color: #d5d8dd;
+}
+
+.deadline-mention {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.deadline-mention:hover {
+  text-decoration: underline;
+}
+
+#deadline-view-actions,
+#deadline-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+#deadline-view-actions button,
+#deadline-edit-actions button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+#deadline-save-button {
+  background: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: white !important;
+}
+
+form#deadline-edit-form input,
+form#deadline-edit-form select,
+form#deadline-edit-form textarea {
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  width: 100%;
+  margin-bottom: 0.6rem;
+  font-family: inherit;
+}
+
+#deadline-date-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+#deadline-date-row input#deadline-edit-date-text {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+#deadline-date-row input#deadline-edit-time {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+#deadline-edit-date-pick {
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* The native date input only exists to back the picker button (via
+   showPicker()) and to feed a starting value back into it — the typed text
+   field is the one the user actually sees and edits, per the user's request
+   to be able to type a date rather than only using the calendar widget. */
+input#deadline-edit-date-native {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+#deadline-date-error:not([hidden]) {
+  display: block;
+  color: #f87171;
+  margin: -0.3rem 0 0.6rem 0;
+}
+
+#deadline-mention-box {
+  position: relative;
+}
+
+#deadline-edit-description {
+  min-height: 80px;
+  resize: vertical;
+}
+
+ul#deadline-mention-suggestions {
+  position: absolute;
+  bottom: calc(100% + 0.2rem);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #1a1e24;
+  border: 1px solid #2a2f37;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+ul#deadline-mention-suggestions li {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+ul#deadline-mention-suggestions li:hover,
+ul#deadline-mention-suggestions li.active {
+  background: #262b33;
 }
 
 #note-editor-overlay {
