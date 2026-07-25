@@ -629,11 +629,11 @@ button#new-note-button {
 
 #note-editor-root {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   border-radius: 6px;
 }
 
-/* Toast UI Editor fills whatever container height it's given. */
-#note-editor-root .toastui-editor-defaultUI {
+#note-editor-root .milkdown {
   height: 100%;
+  min-height: 100%;
 }

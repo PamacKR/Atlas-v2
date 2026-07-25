@@ -322,13 +322,10 @@ const fs = require('fs');
     throw new Error(`FAIL: view mode did not persist back to list, got ${savedViewModeAfterList}`);
   }
 
-  // Notes: create, type live-rendered markdown content, confirm autosave,
-  // close/reopen to confirm persistence, then delete. The WYSIWYG editor's
-  // contenteditable region reports a zero-size bounding box for Playwright's
-  // default actionability check (a second, genuinely-hidden ProseMirror
-  // instance for Markdown-source mode also matches the selector) even
-  // though it's visibly rendered — confirmed via screenshot during
-  // development — so click uses force:true and a WYSIWYG-scoped selector.
+  // Notes: create, type live-rendered markdown content (including the "- "
+  // bullet-list shortcut — the whole reason Milkdown/Crepe was chosen over
+  // Toast UI Editor, which didn't support it), confirm autosave, close/
+  // reopen to confirm persistence, then delete.
   await window.click('#new-note-button');
   await window.waitForTimeout(500);
   const noteEditorVisible = !(await window.isHidden('#note-editor-overlay'));
@@ -336,16 +333,23 @@ const fs = require('fs');
   if (!noteEditorVisible) throw new Error('FAIL: note editor did not open on "New note"');
 
   await window.fill('#note-title-input', 'W1L1');
-  const noteEditableSelector = '.toastui-editor-ww-container [contenteditable="true"]';
+  const noteEditableSelector = '.milkdown [contenteditable="true"]';
   await window.click(noteEditableSelector, { force: true });
   await window.keyboard.type('# Lecture 1');
   await window.keyboard.press('Enter');
+  await window.keyboard.type('- ');
   await window.keyboard.type('Verify script note content.');
   await window.waitForTimeout(1200); // let the debounced autosave fire
 
   const saveStatus = await window.textContent('#note-save-status');
   console.log('note save status:', saveStatus);
   if (saveStatus !== 'Saved') throw new Error(`FAIL: note did not autosave, status was "${saveStatus}"`);
+
+  // Regression guard for the actual reason the editor library was switched:
+  // typing "- " must produce a real <li>, not the literal text "- ".
+  const bulletCreated = (await window.$$('.milkdown li')).length > 0;
+  console.log('typing "- " created a real bullet list item:', bulletCreated);
+  if (!bulletCreated) throw new Error('FAIL: "- " did not convert to a real bullet list item');
 
   await window.click('#note-close');
   await window.waitForTimeout(300);

@@ -79,14 +79,25 @@ interface AtlasApi {
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
-// directly by tsc, specifically so npm packages like @toast-ui/editor can be
+// directly by tsc, specifically so npm packages like @milkdown/crepe can be
 // `import`ed here despite the renderer having no module system at runtime
 // (contextIsolation: true, nodeIntegration: false — no `require`, and a
 // plain <script> tag has no `exports` object either). esbuild resolves and
 // inlines everything into one browser-ready IIFE. `window.atlas` still goes
 // through a cast rather than a `declare global` purely to keep this diff
 // small, not because of any remaining module-system constraint.
-import { Editor } from '@toast-ui/editor';
+//
+// Editor choice: Milkdown/Crepe, not Toast UI Editor (tried first) — Toast
+// UI's WYSIWYG mode doesn't support typing markdown shortcuts ("- ", "1. ",
+// "---") to create real lists/dividers live, and its toolbar buttons don't
+// show an active state for the current selection (e.g. Bold doesn't
+// highlight when the cursor is in bold text). Both are core to how the user
+// actually works (bullet-heavy notes, Notion-like typing feel) and verified
+// working correctly in Crepe before switching. Crepe also bundles KaTeX math
+// rendering out of the box, which the user needs for academic notes.
+import { Crepe } from '@milkdown/crepe';
+import '@milkdown/crepe/theme/common/style.css';
+import '@milkdown/crepe/theme/frame-dark.css';
 
 const atlasApi: AtlasApi = (window as any).atlas;
 
@@ -318,7 +329,7 @@ async function renderNotes(): Promise<void> {
   }
 }
 
-let noteEditorInstance: Editor | null = null;
+let noteEditorInstance: Crepe | null = null;
 let currentNoteId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let noteTitleBeforeEdit = '';
@@ -356,17 +367,15 @@ async function openNoteEditor(note: Note): Promise<void> {
   root.innerHTML = '';
   overlay.hidden = false;
 
-  noteEditorInstance = new Editor({
-    el: root,
-    theme: 'dark',
-    initialEditType: 'wysiwyg',
-    previewStyle: 'tab',
-    height: '100%',
-    initialValue: note.content_markdown,
-    events: {
-      change: () => scheduleNoteSave(),
-    },
+  const crepe = new Crepe({
+    root,
+    defaultValue: note.content_markdown,
   });
+  crepe.on((listener) => {
+    listener.markdownUpdated(() => scheduleNoteSave());
+  });
+  await crepe.create();
+  noteEditorInstance = crepe;
 }
 
 async function closeNoteEditor(): Promise<void> {
@@ -381,7 +390,7 @@ async function closeNoteEditor(): Promise<void> {
   fullscreenButton.setAttribute('aria-label', 'Fullscreen');
 
   if (noteEditorInstance) {
-    noteEditorInstance.destroy();
+    await noteEditorInstance.destroy();
     noteEditorInstance = null;
   }
   currentNoteId = null;

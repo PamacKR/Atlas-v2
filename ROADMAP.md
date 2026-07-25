@@ -18,7 +18,7 @@ Goal: Atlas is useful *before* any external sync exists.
 - [x] Resource Viewer: in-app preview for PDF (native Chromium rendering), image, markdown (rendered), text, DOCX (via `mammoth`), and XLSX (via `xlsx`/SheetJS, rendered as HTML tables); PPTX gets a text-only slide outline (no layout fidelity — no good free library renders real slide layout); right-click → "Open in browser" opens the resource in the real OS browser via a local loopback HTTP server, for full-fidelity viewing and fast tab-switching between files
 - [x] List/icon view toggle for the resource list, file-manager style
 - [x] Local folder watching: explicit per-course folder mapping (`chokidar`), new files copied into the course's managed storage automatically, same as manual upload
-- [x] Notes: Markdown, flat per course (session-titled, e.g. "W1L1"), live-rendering WYSIWYG editor (`@toast-ui/editor`), autosaved — see `docs/open-questions.md` #1 and `ARCHITECTURE.md` §8
+- [x] Notes: Markdown, flat per course (session-titled, e.g. "W1L1"), live-rendering WYSIWYG editor (`@milkdown/crepe` — supports live list/heading/divider shortcuts, math via KaTeX, toolbar active-state), autosaved — see `docs/open-questions.md` #1 and `ARCHITECTURE.md` §8
 - [x] Semester filter for the course list, persisted across launches
 - Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings
 - Unified Resource Library (single view regardless of source)

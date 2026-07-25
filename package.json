@@ -21,7 +21,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@toast-ui/editor": "^3.2.2",
+    "@milkdown/crepe": "^7.21.3",
     "adm-zip": "^0.6.0",
     "better-sqlite3": "^11.7.0",
     "chokidar": "^4.0.3",
