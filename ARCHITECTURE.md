@@ -105,7 +105,7 @@ PRD section 10 asks for in-app viewing "whenever practical," with an external-ap
 
 ### Fullscreen shortcut
 
-Pressing **F** while the resource preview is open toggles fullscreen (`toggleFullscreenPreview()`), same effect as clicking the fullscreen button — added so reaching for the mouse isn't the only way to expand a preview. Guarded to only fire when the preview overlay is actually visible and focus isn't in a text field (`<input>`/`<textarea>`/`<select>`/`contenteditable`), so typing a literal "f" somewhere (a deadline title, a note) never gets hijacked into a fullscreen toggle.
+Pressing **F** while the resource preview *or* the note editor is open toggles that panel's fullscreen (`toggleFullscreenPreview()`/`toggleNoteFullscreen()`), same effect as clicking its fullscreen button — added so reaching for the mouse isn't the only way to expand either. Guarded to only fire when focus isn't in a text field (`<input>`/`<textarea>`/`<select>`/`contenteditable`) — the note editor's Milkdown surface is itself a `contenteditable`, so typing a literal "f" while actually writing a note is never hijacked, same as it isn't for a deadline title or the note title field. Blurring out of the note (e.g. clicking anywhere non-editable) re-enables the shortcut for that panel.
 
 ### Opening resources in the browser
 

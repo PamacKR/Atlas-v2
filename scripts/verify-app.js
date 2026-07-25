@@ -369,6 +369,44 @@ const fs = require('fs');
   console.log('typing "- " created a real bullet list item:', bulletCreated);
   if (!bulletCreated) throw new Error('FAIL: "- " did not convert to a real bullet list item');
 
+  // "F" toggles note fullscreen, but only when not actually typing in the
+  // note — typing "f" into the editor itself must produce a literal "f",
+  // never hijacked into a fullscreen toggle.
+  await window.keyboard.type('f');
+  await window.waitForTimeout(200);
+  let noteFullscreenWhileTyping = await window.evaluate(() =>
+    document.getElementById('note-editor-overlay').classList.contains('fullscreen')
+  );
+  console.log('note fullscreen after typing "f" inside the editor (should stay false):', noteFullscreenWhileTyping);
+  if (noteFullscreenWhileTyping) {
+    throw new Error('FAIL: typing "f" inside the note editor incorrectly toggled fullscreen');
+  }
+  const contentIncludesTypedF = await window.textContent(noteEditableSelector);
+  if (!contentIncludesTypedF.includes('f')) {
+    throw new Error('FAIL: the literal "f" was not typed into the note content');
+  }
+
+  // Now blur out of the editor and confirm "F" does toggle fullscreen from
+  // there. Blurred directly via JS rather than clicking some other element
+  // in the header, since the header's child <input>/buttons fill nearly all
+  // of its clickable area and a coordinate-based click risks landing on one
+  // of them instead (refocusing a text field, not blurring away from one).
+  await window.evaluate(() => document.activeElement && document.activeElement.blur());
+  await window.keyboard.press('f');
+  await window.waitForTimeout(200);
+  let noteFullscreen = await window.evaluate(() =>
+    document.getElementById('note-editor-overlay').classList.contains('fullscreen')
+  );
+  console.log('note fullscreen after pressing "f" outside a text field:', noteFullscreen);
+  if (!noteFullscreen) throw new Error('FAIL: pressing "f" did not enter note fullscreen');
+  await window.keyboard.press('f');
+  await window.waitForTimeout(200);
+  noteFullscreen = await window.evaluate(() =>
+    document.getElementById('note-editor-overlay').classList.contains('fullscreen')
+  );
+  console.log('note fullscreen after pressing "f" again:', noteFullscreen);
+  if (noteFullscreen) throw new Error('FAIL: pressing "f" again did not exit note fullscreen');
+
   await window.click('#note-close');
   await window.waitForTimeout(300);
 

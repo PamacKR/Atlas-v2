@@ -70,8 +70,8 @@ Still open, lower urgency (not blocking Phase 1): sync frequency/manual-vs-autom
   1. **Visual separator (`•`) between course name and due/changed date-time** in the deadlines and activity dashboard widgets, so e.g. "Data Structures & Algorithms Tomorrow at 23:45" doesn't read as one run-on clause.
   2. Answered: **"Recently added resources" is the last 8 by `added_at`, not a time window** — could be from just now or from weeks ago, whichever 8 were added most recently.
   3. Answered: **"What changed today" only covers resources added and notes updated today** — not resource deletions, and not deadlines (which don't currently have a created/updated timestamp column at all).
-  4. **"F" toggles fullscreen for an open resource preview**, same as clicking the fullscreen button — guarded to not fire while a text field has focus, so typing a literal "f" (e.g. into a deadline title) is never hijacked.
-  - `scripts/verify-app.js` extended: confirms pressing "f" enters and then exits preview fullscreen.
+  4. **"F" toggles fullscreen for an open resource preview**, same as clicking the fullscreen button — guarded to not fire while a text field has focus, so typing a literal "f" (e.g. into a deadline title) is never hijacked. Extended to the note editor too, on request — the Milkdown editing surface itself counts as a text field for this guard, so typing "f" while actually writing a note still just types "f"; blurring out of it (clicking anywhere non-editable) re-enables the shortcut.
+  - `scripts/verify-app.js` extended: confirms pressing "f" enters and then exits preview fullscreen, and separately, that typing "f" inside the note editor produces a literal "f" (not a fullscreen toggle) while pressing "f" after blurring out of the editor does toggle it.
 
 ## Session 31 additions
 

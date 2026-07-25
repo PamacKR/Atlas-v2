@@ -1529,22 +1529,25 @@ async function init(): Promise<void> {
       return;
     }
 
-    // "F" toggles fullscreen for whichever resource preview is currently
-    // open, so the user doesn't have to reach for the fullscreen button.
-    // Guarded to only fire when the preview is actually open and focus
-    // isn't in a text field — otherwise typing a literal "f" somewhere
-    // (e.g. a deadline title) would unexpectedly toggle fullscreen.
+    // "F" toggles fullscreen for whichever resource preview or note editor
+    // is currently open, so the user doesn't have to reach for the
+    // fullscreen button. Guarded to only fire when focus isn't in a text
+    // field — the note editor's Milkdown surface is a contenteditable, so
+    // typing a literal "f" while actually writing a note is never hijacked,
+    // same as it isn't for a deadline title or any other text field.
     if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey) {
       const previewOpen = !(document.getElementById('preview-overlay') as HTMLElement).hidden;
+      const noteEditorOpen = !(document.getElementById('note-editor-overlay') as HTMLElement).hidden;
       const active = document.activeElement;
       const isTyping =
         active instanceof HTMLInputElement ||
         active instanceof HTMLTextAreaElement ||
         active instanceof HTMLSelectElement ||
         (active instanceof HTMLElement && active.isContentEditable);
-      if (previewOpen && !isTyping) {
+      if (!isTyping && (previewOpen || noteEditorOpen)) {
         e.preventDefault();
-        toggleFullscreenPreview();
+        if (previewOpen) toggleFullscreenPreview();
+        else toggleNoteFullscreen();
         return;
       }
     }
