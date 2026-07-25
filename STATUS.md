@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 17)
+**Last updated:** 2026-07-23 (session 18)
 
 ## Where things stand
 
@@ -37,6 +37,11 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4).
+
+## Session 18 additions
+
+- **The actual bug behind the repeated zoom-scoping reports, finally found**: `#zoom-controls { display: flex; ... }` set `display` unconditionally on an ID selector, which outranks the browser's default `[hidden] { display: none }` rule — so even though the JS logic correctly set `zoomControls.hidden = true` for every non-image type, the CSS kept it visibly rendered anyway (user saw it on a `.txt` file). This is the exact same class of bug already hit and fixed twice before, for `#preview-overlay` (session 10) and `#confirm-overlay` (session 11) — should have caught this one at the same time; noted for future `[hidden]`-toggled elements to always double-check for an unconditional `display` on their own ID selector. Fixed with `#zoom-controls:not([hidden]) { display: flex; }`. Audited the rest of the stylesheet for the same pattern — nothing else affected (the other `display: flex` rules found belong to descendants of already-correctly-hidden ancestors, not elements toggled via `.hidden` themselves).
+- `scripts/verify-app.js` now explicitly asserts `#zoom-controls` stays hidden for both a markdown and a `.txt` preview (the exact reported case) — regression-proofed going forward.
 
 ## Session 17 additions
 

@@ -104,6 +104,17 @@ const fs = require('fs');
     throw new Error('FAIL: markdown preview did not render expected content');
   }
 
+  // Regression check: zoom controls must stay hidden for a non-image
+  // preview. This previously broke because #zoom-controls had an
+  // unconditional `display: flex` on its ID selector, which outranked the
+  // browser's default `[hidden] { display: none }` rule — same class of
+  // bug already hit (and fixed) for #preview-overlay and #confirm-overlay.
+  const zoomHiddenForMarkdown = await window.isHidden('#zoom-controls');
+  console.log('zoom controls hidden for markdown preview:', zoomHiddenForMarkdown);
+  if (!zoomHiddenForMarkdown) {
+    throw new Error('FAIL: zoom controls visible for a non-image (markdown) preview');
+  }
+
   await window.click('#preview-close');
   await window.waitForTimeout(200);
   if (!(await window.isHidden('#preview-overlay'))) {
@@ -166,6 +177,26 @@ const fs = require('fs');
   const resetLevel = await window.textContent('#zoom-level');
   if (resetLevel !== '100%') throw new Error(`FAIL: zoom reset did not return to 100%, got ${resetLevel}`);
 
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
+  // Plain .txt (preview.type === 'text') — the exact case from the user's
+  // bug report. Same regression guard as the markdown check above, for
+  // the specific file type that actually surfaced it.
+  const testTxtPath = path.join(testDataDir, 'raw-notes.txt');
+  fs.writeFileSync(testTxtPath, 'Just some plain notes, no formatting.');
+  await app.evaluate((_electron, fp) => {
+    process.env.ATLAS_TEST_UPLOAD_PATH = fp;
+  }, testTxtPath);
+  await window.click('#upload-button');
+  await window.waitForTimeout(300);
+  await window.click('#resource-list .resource-name >> nth=0');
+  await window.waitForTimeout(300);
+  const zoomHiddenForTxt = await window.isHidden('#zoom-controls');
+  console.log('zoom controls hidden for .txt preview:', zoomHiddenForTxt);
+  if (!zoomHiddenForTxt) {
+    throw new Error('FAIL: zoom controls visible for a .txt preview');
+  }
   await window.click('#preview-close');
   await window.waitForTimeout(200);
 

@@ -59,6 +59,14 @@ Atlas is an Electron desktop app, not a website — there's no browser tab to pr
 
 Use it as the default way to confirm a UI/renderer change actually works before telling the user it's done — extend `scripts/verify-app.js` as new features get added (uploads, viewers, notes, search) rather than only ever asking the user to click around. Still worth having the user glance at real usage periodically, but don't make them your only verification method.
 
+### A recurring CSS bug to check for explicitly
+
+This exact bug has been hit **three separate times** (`#preview-overlay`, `#confirm-overlay`, `#zoom-controls`) before finally being called out here — each time it looked like a JS logic bug but wasn't:
+
+> An element toggled via `el.hidden = true/false` in JS also has a CSS rule setting `display` unconditionally on its **own ID selector** (e.g. `#zoom-controls { display: flex; }`). That ID selector outranks the browser's default `[hidden] { display: none }` rule, so the element stays visibly rendered even while `hidden` is `true`.
+
+Fix: never set `display` unconditionally on an element's own ID selector if that same element is ever toggled via the `hidden` attribute — scope it with `#id:not([hidden]) { display: ...; }` instead. **Whenever adding a new `hidden`-toggled element, check this pattern immediately** rather than waiting for the user to report "it's still showing up" — that's what happened all three times.
+
 ## Git workflow
 
 Commit and push to `github.com/PamacKR/Atlas` continuously as work happens — **don't wait for approval before committing/pushing** in this repo. The user explicitly opted into this (2026-07-23) on the reasoning that git history makes any bad change trivially reversible. Still use judgment on commit granularity (a coherent chunk of work, not every keystroke) and write real commit messages — the autonomy is about not blocking on a confirmation round-trip, not about being careless.

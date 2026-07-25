@@ -299,12 +299,19 @@ form#course-form button {
 }
 
 #zoom-controls {
-  display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   color: #8a919c;
   font-size: 0.85rem;
+}
+
+/* Same trap as #preview-overlay/#confirm-overlay: an unconditional
+   `display` on this ID selector would outrank the default [hidden] rule
+   and keep the controls visible (e.g. for a .txt preview) even when JS
+   sets the hidden attribute. */
+#zoom-controls:not([hidden]) {
+  display: flex;
 }
 
 #zoom-controls button {
