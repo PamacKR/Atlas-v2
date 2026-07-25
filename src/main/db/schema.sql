@@ -26,7 +26,23 @@ CREATE TABLE IF NOT EXISTS resources (
   synced_at TEXT,
   -- Remembered image-preview zoom (1.0 = 100%), per resource. NULL means
   -- "never set, use the default." Only meaningful for kind = 'image'.
-  zoom_level REAL
+  zoom_level REAL,
+  -- Original absolute path of a file picked up via folder watching (see
+  -- watched_folders below). Used to detect "already imported" on watcher
+  -- restart, since chokidar re-emits 'add' for every existing file each time
+  -- a watch starts. NULL for manually-uploaded resources.
+  watch_source_path TEXT
+);
+
+-- User-designated folders Atlas watches for new files, mapped explicitly to
+-- one course each (deliberately not auto-guessed — see docs/open-questions.md
+-- #11 and the "Atlas owns the data" principle in CLAUDE.md: which course a
+-- file belongs to is a user decision, not an inference Atlas makes for them).
+CREATE TABLE IF NOT EXISTS watched_folders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  folder_path TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS notes (

@@ -17,7 +17,7 @@ Goal: Atlas is useful *before* any external sync exists.
 - [x] Manual upload (PDF, PPTX, DOCX, images, text, markdown) — file picker, copies into `Downloads/Atlas-Storage/files/<course name>/` (folder named after the course, original filename kept), kind auto-detected from extension
 - [x] Resource Viewer: in-app preview for PDF (native Chromium rendering), image, markdown (rendered), text, and DOCX (via `mammoth`); PPTX gets a text-only slide outline (no layout fidelity — no good free library renders real slide layout); right-click → "Open in default app" as the full-fidelity fallback for any type, native OS file manager style
 - [x] List/icon view toggle for the resource list, file-manager style
-- Local folder watching (Downloads, lecture/semester folders) with new-file detection
+- [x] Local folder watching: explicit per-course folder mapping (`chokidar`), new files copied into the course's managed storage automatically, same as manual upload
 - Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings
 - Unified Resource Library (single view regardless of source)
 - Notes: format decision resolved (see `docs/open-questions.md`), typed notes, embedded files/images

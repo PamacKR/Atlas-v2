@@ -40,6 +40,9 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('zoom_level')) {
     db.exec('ALTER TABLE resources ADD COLUMN zoom_level REAL');
   }
+  if (!resourceColumns.includes('watch_source_path')) {
+    db.exec('ALTER TABLE resources ADD COLUMN watch_source_path TEXT');
+  }
 }
 
 export function closeDb(): void {

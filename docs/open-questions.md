@@ -71,3 +71,9 @@ The user asked (2026-07-23) whether Atlas can remember each file's preferred pre
 The only lever available is one-directional: appending `#zoom=N` to the PDF's `file://` URL sets its *initial* zoom on load (a Chromium PDF-viewer convention), but we'd have to build our own separate control (outside the iframe) for the user to pick/save a preferred value — we can't observe what they actually change it to inside the native viewer afterward.
 
 **Status:** Open — needs a decision from the user on whether that one-way, "set an initial zoom via a separate small control, can't reflect live changes" approach is worth building for PDFs, given the real UX limitation. Not implemented yet.
+
+### 11. Folder→course mapping for local folder watching
+
+When Atlas watches a local folder for new files, how does it know which course a detected file belongs to — explicit user-configured mapping, or auto-guessing from file content/name/location?
+
+**Status:** Resolved (2026-07-25) — explicit only. The user maps a folder to a specific course when adding it (native folder picker, from that course's "Watched folders" section); there is no auto-guessing. Reasoning: guessing which course a file belongs to from its content or name would be Atlas making an inference about academic meaning, which cuts against the "Atlas owns data, Claude owns reasoning" rule (`CLAUDE.md`) — that kind of association-with-uncertainty belongs to a human decision (or later, an explicit Claude Code query), not a silent sync-adapter heuristic. See `ARCHITECTURE.md` §4.

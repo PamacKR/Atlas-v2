@@ -22,6 +22,13 @@ export interface Resource {
   synced_at: string | null;
 }
 
+export interface WatchedFolder {
+  id: number;
+  course_id: number;
+  folder_path: string;
+  created_at: string;
+}
+
 export type Preview =
   | { type: 'pdf'; url: string }
   | { type: 'image'; url: string; zoomLevel: number | null }
@@ -54,5 +61,17 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.send('resources:courseContextMenu', courseId),
   onCourseContextMenuDelete: (handler: (courseId: number) => void): void => {
     ipcRenderer.on('resources:courseContextMenuDelete', (_event, courseId: number) => handler(courseId));
+  },
+  listWatchedFolders: (courseId: number): Promise<WatchedFolder[]> =>
+    ipcRenderer.invoke('folders:listWatched', courseId),
+  addWatchedFolder: (courseId: number): Promise<WatchedFolder | null> =>
+    ipcRenderer.invoke('folders:add', courseId),
+  removeWatchedFolder: (folderId: number): Promise<void> => ipcRenderer.invoke('folders:remove', folderId),
+  showFolderContextMenu: (folderId: number): void => ipcRenderer.send('folders:contextMenu', folderId),
+  onFolderContextMenuRemove: (handler: (folderId: number) => void): void => {
+    ipcRenderer.on('folders:contextMenuRemove', (_event, folderId: number) => handler(folderId));
+  },
+  onResourcesChanged: (handler: (courseId: number) => void): void => {
+    ipcRenderer.on('resources:changed', (_event, courseId: number) => handler(courseId));
   },
 });

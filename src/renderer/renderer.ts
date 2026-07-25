@@ -20,6 +20,13 @@ interface Resource {
   synced_at: string | null;
 }
 
+interface WatchedFolder {
+  id: number;
+  course_id: number;
+  folder_path: string;
+  created_at: string;
+}
+
 type Preview =
   | { type: 'pdf'; url: string }
   | { type: 'image'; url: string; zoomLevel: number | null }
@@ -42,6 +49,12 @@ interface AtlasApi {
   showCourseContextMenu: (courseId: number) => void;
   onContextMenuDelete: (handler: (resourceId: number) => void) => void;
   onCourseContextMenuDelete: (handler: (courseId: number) => void) => void;
+  listWatchedFolders: (courseId: number) => Promise<WatchedFolder[]>;
+  addWatchedFolder: (courseId: number) => Promise<WatchedFolder | null>;
+  removeWatchedFolder: (folderId: number) => Promise<void>;
+  showFolderContextMenu: (folderId: number) => void;
+  onFolderContextMenuRemove: (handler: (folderId: number) => void) => void;
+  onResourcesChanged: (handler: (courseId: number) => void) => void;
 }
 
 // Deliberately not using `import`/`export`/`declare global` here: any of
@@ -205,10 +218,29 @@ async function renderResources(): Promise<void> {
   else renderResourceIconView(resources);
 }
 
+async function renderWatchedFolders(): Promise<void> {
+  const list = document.getElementById('watched-folder-list')!;
+  list.innerHTML = '';
+  if (!selectedCourse) return;
+
+  const folders = await atlasApi.listWatchedFolders(selectedCourse.id);
+  for (const folder of folders) {
+    const li = document.createElement('li');
+    li.textContent = folder.folder_path;
+    li.dataset.folderId = String(folder.id);
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showFolderContextMenu(folder.id);
+    });
+    list.appendChild(li);
+  }
+}
+
 async function selectCourse(course: Course): Promise<void> {
   selectedCourse = course;
   await renderCourses();
   await renderResources();
+  await renderWatchedFolders();
 }
 
 function setViewMode(mode: 'list' | 'icons'): void {
@@ -349,6 +381,16 @@ async function init(): Promise<void> {
     if (resource) await renderResources();
   });
 
+  const addWatchFolderButton = document.getElementById('add-watch-folder') as HTMLButtonElement;
+  addWatchFolderButton.addEventListener('click', async () => {
+    if (!selectedCourse) return;
+    const folder = await atlasApi.addWatchedFolder(selectedCourse.id);
+    if (folder) {
+      await renderWatchedFolders();
+      await renderResources(); // pick up any files already sitting in the folder
+    }
+  });
+
   document.getElementById('view-list')!.addEventListener('click', () => setViewMode('list'));
   document.getElementById('view-icons')!.addEventListener('click', () => setViewMode('icons'));
 
@@ -393,6 +435,19 @@ async function init(): Promise<void> {
 
   document.getElementById('confirm-cancel')!.addEventListener('click', () => resolveConfirm(false));
   document.getElementById('confirm-yes')!.addEventListener('click', () => resolveConfirm(true));
+
+  atlasApi.onFolderContextMenuRemove(async (folderId) => {
+    if (!(await showConfirm('Stop watching this folder? Files already imported stay in Atlas.')))
+      return;
+    await atlasApi.removeWatchedFolder(folderId);
+    await renderWatchedFolders();
+  });
+
+  // Fired by the main process when a watched folder picks up a new file —
+  // refresh the resource list if that's the course currently open.
+  atlasApi.onResourcesChanged(async (courseId) => {
+    if (selectedCourse && selectedCourse.id === courseId) await renderResources();
+  });
 }
 
 init();

@@ -142,6 +142,46 @@ button#upload-button {
   cursor: pointer;
 }
 
+#watched-folders-section {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #2a2f37;
+}
+
+#watched-folders-section h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.95rem;
+}
+
+#watched-folders-section .muted {
+  margin: 0 0 0.6rem 0;
+}
+
+ul#watched-folder-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem 0;
+}
+
+ul#watched-folder-list li {
+  padding: 0.5rem 0.7rem;
+  background: #1a1e24;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+button#add-watch-folder {
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
 form#course-form {
   display: flex;
   gap: 0.5rem;

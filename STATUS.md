@@ -2,9 +2,9 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-23 (session 18)
+**Last updated:** 2026-07-25 (session 19)
 
-## Where things stand (accurate as of session 18 — read this before the per-session log below)
+## Where things stand (accurate as of session 19 — read this before the per-session log below)
 
 - Repo: [github.com/PamacKR/Atlas](https://github.com/PamacKR/Atlas), private, owned by the user (`PamacKR`). Commits authored as `Claude <noreply@anthropic.com>` (repo-local git config) — don't change without being asked.
 - **Phase 0 (docs) done. Phase 1 (local-only workflow) is substantially built and working**, not just scaffolding:
@@ -14,8 +14,9 @@ Living snapshot of where the project actually is. This is the first thing to rea
   - Image previews: center on both axes, zoom via buttons/Ctrl+scroll (25–400%), **remembered per-resource** (`resources.zoom_level`). Zoom is strictly scoped to images only — this took three rounds to fully close out, see sessions 15/17/18 below and the `CLAUDE.md` "recurring CSS bug" note.
   - List/Icon view toggle for the resource list.
   - Fullscreen toggle on the preview panel (icon buttons, tightened chrome).
-  - **Not yet built** (rest of Phase 1, per `ROADMAP.md`): local folder watching, notes UI, dashboard, global search UI (the FTS5 `search_index` table exists but isn't populated yet).
-- **Self-testing:** `npm run verify` (`scripts/verify-app.js`) launches the real app via Playwright's Electron driver and exercises courses, upload, preview (markdown/image/txt), zoom + persistence, delete (via direct API call, since native context menus can't be automated), and view toggle — all against a throwaway temp dir, never real storage. Extend this file whenever a UI change needs verifying, rather than relying solely on the user.
+  - **Local folder watching** (session 19): per-course "Watched folders" section — user picks a folder via a native directory picker, explicitly mapped to that one course (`watched_folders` table, `chokidar`). New files (including ones already sitting in the folder when watching starts) are copied into the course's managed storage automatically, identical to manual upload, and the open resource list refreshes live. Folder→course mapping is deliberately explicit, never auto-guessed — see `docs/open-questions.md` #11 and `ARCHITECTURE.md` §4. "Stop watching" is right-click-only on the folder entry, same pattern as course/resource delete.
+  - **Not yet built** (rest of Phase 1, per `ROADMAP.md`): notes UI, dashboard, global search UI (the FTS5 `search_index` table exists but isn't populated yet).
+- **Self-testing:** `npm run verify` (`scripts/verify-app.js`) launches the real app via Playwright's Electron driver and exercises courses, upload, preview (markdown/image/txt), zoom + persistence, delete (via direct API call, since native context menus can't be automated), view toggle, and folder watching (pre-existing files in a newly-watched folder + a file dropped in live, both auto-imported) — all against a throwaway temp dir, never real storage. Extend this file whenever a UI change needs verifying, rather than relying solely on the user.
 - **One-click launch:** `Launch Atlas.bat` (repo root) + a `Atlas` Desktop shortcut pointing to it. Both run `npm start` (`npm run build && electron .`), so every launch always rebuilds from current source — no separate deploy step exists or is needed.
 - **User's standing test data** (real `Downloads/Atlas-Storage`, not test-suite temp dirs): two seeded courses, **Data Structures & Algorithms** (CS201) and **Database Systems** (CS305), 7 sample resources each (pdf/docx/pptx/image/txt/md/zip). Leave alone unless told otherwise.
 - Recurring lesson (hit 3x — `#preview-overlay`, `#confirm-overlay`, `#zoom-controls`): an element toggled via `el.hidden` must never have `display` set unconditionally on its own ID selector, or that CSS outranks the default `[hidden] { display: none }` rule. Written into `CLAUDE.md` as a standing check.
@@ -39,6 +40,14 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
 Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4), whether to build one-way PDF zoom memory (#10, needs a user decision — see "What's next" below).
+
+## Session 19 additions
+
+- **Local folder watching built** — the next Phase 1 item per the session-18 note below. Folder→course mapping decided as explicit-only (not auto-guessed) rather than asking the user to confirm mid-session, on the reasoning already flagged as the leaning in session 18 and consistent with the "Atlas owns data, Claude owns reasoning" rule — logged as a resolved decision in `docs/open-questions.md` #11 rather than silently picked with no record.
+- New `watched_folders` table (`course_id`, `folder_path` UNIQUE) and a new `resources.watch_source_path` column (migration added for existing DBs). One `chokidar` watcher per watched folder, managed in `main.ts` (`activeWatchers` map); started for all rows at app launch and for any newly-added folder; stopped on "Stop watching" and when its course is deleted (cascade-delete alone would've left an orphaned live watcher).
+- Manual upload's copy-into-storage + insert-resource logic was factored out into a shared `importFileIntoCourse()` so watched-folder imports go through the exact same path (same filename handling, same collision-disambiguation) instead of a parallel implementation.
+- UI: each course's Resources section now has a "Watched folders" list with a "Watch a folder…" button (native directory picker); right-click a watched folder → "Stop watching" (same right-click-only pattern as course/resource delete, per the CLAUDE.md UI convention already established). The main process pushes a `resources:changed` event to the renderer when a watcher imports a file, so the resource list refreshes live if that course is open — not just on next manual reselect.
+- `scripts/verify-app.js` extended: watches a temp folder that already contains a file (confirms pre-existing files are picked up, not just future ones), then drops a second file in while the watcher is live (confirms ongoing detection), both via the same `ATLAS_TEST_WATCH_FOLDER_PATH` env-var test-hook pattern already used for uploads. Full suite passes.
 
 ## Session 18 additions
 
@@ -110,11 +119,18 @@ Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. ric
 - **Course term is now a fixed dropdown**, not free text: Monsoon 26, Spring 27, Monsoon 27, Spring 28 (user-specified list, in `src/renderer/index.html`). If more terms are needed later, add `<option>`s there.
 - **Delete added for both courses and resources**, needed for the user to freely test/clean up without leftover data piling up. Deleting a course removes its entire `files/course-<id>/` folder from disk and cascades to delete its `resources` rows (FK `ON DELETE CASCADE`, `foreign_keys` pragma is on). Deleting a single resource removes just its file and row. Both prompt a native `confirm()` before proceeding. `scripts/verify-app.js` now covers both delete paths and auto-accepts the confirm dialog (`window.on('dialog', ...)`, since Playwright auto-dismisses dialogs by default otherwise).
 
-## What's next (updated session 18 — supersedes the session-7 note below, kept for history)
+## What's next (updated session 19 — supersedes the session-18 note below, kept for history)
+
+Local folder watching (previously "proposed next") is now built — see session 19 above.
+
+Remaining Phase 1 items, no particular order yet: notes UI (format still open, `docs/open-questions.md` #1), dashboard, global search UI (FTS5 table exists, unpopulated).
+
+<details>
+<summary>Superseded — original session 18 note</summary>
 
 Proposed next: **local folder watching** (chokidar) — reuse the same "insert into resources" logic manual upload already has; the new piece is (a) watching user-designated folder(s) for new files and (b) deciding which course a detected file belongs to (leaning toward explicit user-configured folder→course mapping over auto-guessing, but this wasn't confirmed with the user yet — ask before building). Not started as of session 18.
 
-Other remaining Phase 1 items, no particular order yet: notes UI (format still open, `docs/open-questions.md` #1), dashboard, global search UI (FTS5 table exists, unpopulated).
+</details>
 
 **Open question needing the user's decision** (not blocking, but don't build silently): whether to implement one-way "set an initial zoom via a separate control" for PDF previews, given Chromium's built-in PDF viewer can't be read from/written to live — see `docs/open-questions.md` #10.
 

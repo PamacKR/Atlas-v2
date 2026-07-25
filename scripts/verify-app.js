@@ -258,10 +258,77 @@ const fs = require('fs');
     throw new Error('FAIL: course still present after delete');
   }
 
+  // Folder watching: re-create the course (the previous one was just
+  // deleted above) and point a watched folder at a throwaway directory that
+  // already has a file in it, confirming the pre-existing file gets picked
+  // up automatically (not just future ones).
+  await window.fill('#course-name', 'Watch Test Course');
+  await window.selectOption('#course-term', 'Spring 27');
+  await window.click('#course-form button[type="submit"]');
+  await window.waitForTimeout(300);
+  await window.click('#course-list li');
+  await window.waitForTimeout(200);
+  const watchCourseId = await window.$eval('#course-list li', (el) => Number(el.dataset.courseId));
+
+  const watchFolderDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-watch-'));
+  const preExistingFile = path.join(watchFolderDir, 'pre-existing-syllabus.txt');
+  fs.writeFileSync(preExistingFile, 'Syllabus content dropped into the watched folder before Atlas watched it.');
+
+  await app.evaluate((_electron, fp) => {
+    process.env.ATLAS_TEST_WATCH_FOLDER_PATH = fp;
+  }, watchFolderDir);
+  await window.click('#add-watch-folder');
+  await window.waitForTimeout(500);
+
+  const watchedFolderItems = await window.$$eval('#watched-folder-list li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('watched folders:', watchedFolderItems);
+  if (!watchedFolderItems.some((t) => t && t.includes(watchFolderDir))) {
+    throw new Error('FAIL: watched folder did not appear in the list');
+  }
+
+  // Chokidar's initial scan is async; poll briefly rather than a fixed sleep.
+  let resourcesAfterWatch = [];
+  for (let i = 0; i < 10; i++) {
+    resourcesAfterWatch = await window.$$eval('#resource-list li', (els) => els.map((e) => e.textContent));
+    if (resourcesAfterWatch.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
+    await window.waitForTimeout(300);
+  }
+  console.log('resources after watching pre-populated folder:', resourcesAfterWatch);
+  if (!resourcesAfterWatch.some((t) => t && t.includes('pre-existing-syllabus.txt'))) {
+    throw new Error('FAIL: pre-existing file in watched folder was not auto-imported');
+  }
+
+  // Now drop a genuinely new file into the watched folder while it's live.
+  const newFile = path.join(watchFolderDir, 'week1-notes.txt');
+  fs.writeFileSync(newFile, 'New notes dropped in while the folder was already being watched.');
+  let resourcesAfterNewFile = [];
+  for (let i = 0; i < 10; i++) {
+    resourcesAfterNewFile = await window.$$eval('#resource-list li', (els) =>
+      els.map((e) => e.textContent)
+    );
+    if (resourcesAfterNewFile.some((t) => t && t.includes('week1-notes.txt'))) break;
+    await window.waitForTimeout(300);
+  }
+  console.log('resources after new file dropped into watched folder:', resourcesAfterNewFile);
+  if (!resourcesAfterNewFile.some((t) => t && t.includes('week1-notes.txt'))) {
+    throw new Error('FAIL: new file dropped into an already-watched folder was not auto-imported');
+  }
+
+  // Stop watching via the underlying API (native context menu can't be
+  // automated, same limitation as resource/course delete).
+  const watchedFolderId = await window.$eval('#watched-folder-list li', (el) =>
+    Number(el.dataset.folderId)
+  );
+  await window.evaluate((id) => window.atlas.removeWatchedFolder(id), watchedFolderId);
+  console.log('folder watching: PASS');
+
   await app.close();
 
-  // Throwaway data dir, safe to delete entirely.
+  // Throwaway data dirs, safe to delete entirely.
   fs.rmSync(testDataDir, { recursive: true, force: true });
+  fs.rmSync(watchFolderDir, { recursive: true, force: true });
 
   console.log('PASS');
 })().catch((err) => {
