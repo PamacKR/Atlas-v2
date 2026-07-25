@@ -470,6 +470,19 @@ ipcMain.handle('dashboard:upcomingDeadlines', () => {
     .all();
 });
 
+ipcMain.handle('dashboard:courseSummaries', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT courses.*,
+              (SELECT COUNT(*) FROM resources WHERE resources.course_id = courses.id) AS resource_count
+       FROM courses
+       WHERE courses.archived = 0
+       ORDER BY courses.name`
+    )
+    .all();
+});
+
 ipcMain.handle('dashboard:recentResources', () => {
   const db = getDb();
   return db

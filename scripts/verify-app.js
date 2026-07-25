@@ -82,6 +82,49 @@ const fs = require('fs');
   }
   console.log('semester filter: PASS');
 
+  // Theme toggle: dark by default, switches to light on click, and persists
+  // across a reload (via the same app_settings mechanism as viewMode/
+  // semesterFilter).
+  const themeBeforeToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  console.log('theme before toggle:', themeBeforeToggle);
+  if (themeBeforeToggle !== 'dark') throw new Error(`FAIL: expected dark theme by default, got "${themeBeforeToggle}"`);
+  await window.click('#theme-toggle');
+  await window.waitForTimeout(200);
+  let themeAfterToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  console.log('theme after toggle:', themeAfterToggle);
+  if (themeAfterToggle !== 'light') throw new Error(`FAIL: expected light theme after toggle, got "${themeAfterToggle}"`);
+  await window.reload();
+  await window.waitForTimeout(500);
+  themeAfterToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
+  console.log('theme after reload (should stay light):', themeAfterToggle);
+  if (themeAfterToggle !== 'light') throw new Error('FAIL: theme did not persist across a reload');
+  await window.click('#theme-toggle'); // back to dark for the rest of the run
+  await window.waitForTimeout(200);
+
+  // Sidebar nav: a scroll-to-section shortcut, not real client-side
+  // routing — clicking "Courses" should scroll #courses-section into view
+  // and mark that nav item active.
+  await window.click('.sidebar-nav-item[data-scroll-target="courses-section"]');
+  await window.waitForTimeout(400);
+  const coursesNavActive = await window.evaluate(() =>
+    document.querySelector('.sidebar-nav-item[data-scroll-target="courses-section"]').classList.contains('active')
+  );
+  console.log('"Courses" sidebar nav item active after click:', coursesNavActive);
+  if (!coursesNavActive) throw new Error('FAIL: clicking the Courses sidebar nav item did not mark it active');
+  const dashboardNavStillActive = await window.evaluate(() =>
+    document.querySelector('.sidebar-nav-item[data-scroll-target="dashboard-section"]').classList.contains('active')
+  );
+  if (dashboardNavStillActive) throw new Error('FAIL: Dashboard sidebar nav item should no longer be active');
+
+  // Sidebar "Search" focuses the search input, same as Ctrl+L.
+  await window.click('#sidebar-search-button');
+  await window.waitForTimeout(100);
+  const focusedAfterSidebarSearch = await window.evaluate(() => document.activeElement && document.activeElement.id);
+  console.log('focused element after sidebar Search click:', focusedAfterSidebarSearch);
+  if (focusedAfterSidebarSearch !== 'search-input') {
+    throw new Error(`FAIL: sidebar Search did not focus the search input, got "${focusedAfterSidebarSearch}"`);
+  }
+
   // Select the course, then upload a resource into it.
   await window.click('#course-list li');
   await window.waitForTimeout(200);
@@ -817,6 +860,30 @@ const fs = require('fs');
   console.log('menu bar auto-hide enabled:', menuBarAutoHide);
   if (!menuBarAutoHide) {
     throw new Error('FAIL: menu bar is not set to auto-hide');
+  }
+
+  // Dashboard "My courses" card: lists every course with a colored initial
+  // avatar and its resource count, and clicking one selects that course and
+  // scrolls to the Courses section.
+  const dashboardCourseTexts = await window.$$eval('#dashboard-course-list li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('dashboard my-courses widget:', dashboardCourseTexts);
+  if (!dashboardCourseTexts.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error(`FAIL: dashboard did not list the course: ${JSON.stringify(dashboardCourseTexts)}`);
+  }
+  const dashboardCourseAvatarText = await window.textContent('#dashboard-course-list .course-avatar');
+  if (dashboardCourseAvatarText.trim() !== 'V') {
+    throw new Error(`FAIL: expected course avatar initial "V", got "${dashboardCourseAvatarText}"`);
+  }
+  await window.click('#dashboard-course-list li');
+  await window.waitForTimeout(400);
+  const coursesSectionSelectedAfterCardClick = await window.evaluate(
+    () => document.querySelector('#course-list li.selected') !== null
+  );
+  console.log('course selected after clicking its dashboard card:', coursesSectionSelectedAfterCardClick);
+  if (!coursesSectionSelectedAfterCardClick) {
+    throw new Error('FAIL: clicking a dashboard "My courses" entry did not select that course');
   }
 
   // Dashboard (PRD §13): global across every course, not scoped to whatever

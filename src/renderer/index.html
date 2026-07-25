@@ -7,95 +7,114 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="app">
-    <header>
-      <h1>Atlas</h1>
-      <div id="search-box">
-        <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
-        <ul id="search-results" hidden></ul>
-      </div>
-      <p id="data-dir" class="muted"></p>
-    </header>
+  <div id="app-shell">
+    <nav id="sidebar">
+      <div id="sidebar-brand">Atlas</div>
+      <button class="sidebar-nav-item active" type="button" data-scroll-target="dashboard-section">🏠 Dashboard</button>
+      <button class="sidebar-nav-item" type="button" data-scroll-target="courses-section">📚 Courses</button>
+      <button class="sidebar-nav-item" id="sidebar-search-button" type="button">🔍 Search</button>
+      <button class="sidebar-nav-item" type="button" data-scroll-target="settings-section">⚙️ Settings</button>
+    </nav>
 
-    <section id="dashboard-section">
-      <h2>Dashboard</h2>
-      <div id="dashboard-widgets">
-        <div class="dashboard-widget">
-          <h3>Upcoming deadlines</h3>
-          <ul id="dashboard-deadlines"></ul>
+    <div id="main-area">
+      <header id="topbar">
+        <div id="search-box">
+          <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
+          <ul id="search-results" hidden></ul>
         </div>
-        <div class="dashboard-widget">
-          <h3>Recently added resources</h3>
-          <ul id="dashboard-resources"></ul>
+        <button id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+      </header>
+
+      <section id="dashboard-section">
+        <h2>Dashboard</h2>
+        <div id="dashboard-widgets">
+          <div class="dashboard-widget">
+            <h3>My courses</h3>
+            <ul id="dashboard-course-list"></ul>
+            <button id="manage-courses-button" type="button">Manage courses</button>
+          </div>
+          <div class="dashboard-widget">
+            <h3>Upcoming deadlines</h3>
+            <ul id="dashboard-deadlines"></ul>
+          </div>
+          <div class="dashboard-widget">
+            <h3>Recently added resources</h3>
+            <ul id="dashboard-resources"></ul>
+          </div>
+          <div class="dashboard-widget">
+            <h3>What changed today</h3>
+            <ul id="dashboard-activity"></ul>
+          </div>
         </div>
-        <div class="dashboard-widget">
-          <h3>What changed today</h3>
-          <ul id="dashboard-activity"></ul>
+      </section>
+
+      <section id="courses-section">
+        <div class="courses-header">
+          <h2>Courses</h2>
+          <select id="semester-filter">
+            <option value="">All semesters</option>
+            <option value="Monsoon 26">Monsoon 26</option>
+            <option value="Spring 27">Spring 27</option>
+            <option value="Monsoon 27">Monsoon 27</option>
+            <option value="Spring 28">Spring 28</option>
+          </select>
         </div>
-      </div>
-    </section>
+        <form id="course-form">
+          <input id="course-name" type="text" placeholder="Course name" required />
+          <input id="course-code" type="text" placeholder="Code (optional)" />
+          <select id="course-term">
+            <option value="">Semester</option>
+            <option value="Monsoon 26">Monsoon 26</option>
+            <option value="Spring 27">Spring 27</option>
+            <option value="Monsoon 27">Monsoon 27</option>
+            <option value="Spring 28">Spring 28</option>
+          </select>
+          <button type="submit">Add course</button>
+        </form>
 
-    <section>
-      <div class="courses-header">
-        <h2>Courses</h2>
-        <select id="semester-filter">
-          <option value="">All semesters</option>
-          <option value="Monsoon 26">Monsoon 26</option>
-          <option value="Spring 27">Spring 27</option>
-          <option value="Monsoon 27">Monsoon 27</option>
-          <option value="Spring 28">Spring 28</option>
-        </select>
-      </div>
-      <form id="course-form">
-        <input id="course-name" type="text" placeholder="Course name" required />
-        <input id="course-code" type="text" placeholder="Code (optional)" />
-        <select id="course-term">
-          <option value="">Semester</option>
-          <option value="Monsoon 26">Monsoon 26</option>
-          <option value="Spring 27">Spring 27</option>
-          <option value="Monsoon 27">Monsoon 27</option>
-          <option value="Spring 28">Spring 28</option>
-        </select>
-        <button type="submit">Add course</button>
-      </form>
+        <ul id="course-list"></ul>
+      </section>
 
-      <ul id="course-list"></ul>
-    </section>
-
-    <section id="resources-section" hidden>
-      <div class="resources-header">
-        <h2 id="resources-heading">Resources</h2>
-        <div class="view-toggle">
-          <button id="view-list" type="button" class="active">List</button>
-          <button id="view-icons" type="button">Icons</button>
+      <section id="resources-section" hidden>
+        <div class="resources-header">
+          <h2 id="resources-heading">Resources</h2>
+          <div class="view-toggle">
+            <button id="view-list" type="button" class="active">List</button>
+            <button id="view-icons" type="button">Icons</button>
+          </div>
         </div>
-      </div>
-      <ul id="resource-list" class="view-list"></ul>
-      <button id="upload-button" type="button">Upload file</button>
-    </section>
+        <ul id="resource-list" class="view-list"></ul>
+        <button id="upload-button" type="button">Upload file</button>
+      </section>
 
-    <section id="notes-section" hidden>
-      <div class="resources-header">
-        <h2 id="notes-heading">Notes</h2>
-      </div>
-      <ul id="note-list"></ul>
-      <button id="new-note-button" type="button">New note</button>
-    </section>
+      <section id="notes-section" hidden>
+        <div class="resources-header">
+          <h2 id="notes-heading">Notes</h2>
+        </div>
+        <ul id="note-list"></ul>
+        <button id="new-note-button" type="button">New note</button>
+      </section>
 
-    <section id="deadlines-section" hidden>
-      <div class="resources-header">
-        <h2 id="deadlines-heading">Deadlines</h2>
-      </div>
-      <ul id="deadline-list" class="view-list"></ul>
-      <button id="new-deadline-button" type="button">Add deadline</button>
-    </section>
+      <section id="deadlines-section" hidden>
+        <div class="resources-header">
+          <h2 id="deadlines-heading">Deadlines</h2>
+        </div>
+        <ul id="deadline-list" class="view-list"></ul>
+        <button id="new-deadline-button" type="button">Add deadline</button>
+      </section>
 
-    <section id="watched-folders-section" hidden>
-      <h3>Watched folders</h3>
-      <p class="muted">Files added to a watched folder are copied in automatically.</p>
-      <ul id="watched-folder-list"></ul>
-      <button id="add-watch-folder" type="button">Watch a folder…</button>
-    </section>
+      <section id="watched-folders-section" hidden>
+        <h3>Watched folders</h3>
+        <p class="muted">Files added to a watched folder are copied in automatically.</p>
+        <ul id="watched-folder-list"></ul>
+        <button id="add-watch-folder" type="button">Watch a folder…</button>
+      </section>
+
+      <section id="settings-section">
+        <h2>Settings</h2>
+        <p id="data-dir" class="muted"></p>
+      </section>
+    </div>
   </div>
 
   <div id="note-editor-overlay" hidden>

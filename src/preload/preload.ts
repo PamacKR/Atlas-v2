@@ -85,6 +85,10 @@ export interface DashboardActivityItem {
   course_name: string;
 }
 
+export interface CourseSummary extends Course {
+  resource_count: number;
+}
+
 contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
@@ -168,4 +172,5 @@ contextBridge.exposeInMainWorld('atlas', {
   getUpcomingDeadlines: (): Promise<DashboardDeadline[]> => ipcRenderer.invoke('dashboard:upcomingDeadlines'),
   getRecentResources: (): Promise<DashboardResource[]> => ipcRenderer.invoke('dashboard:recentResources'),
   getRecentActivity: (): Promise<DashboardActivityItem[]> => ipcRenderer.invoke('dashboard:recentActivity'),
+  getCourseSummaries: (): Promise<CourseSummary[]> => ipcRenderer.invoke('dashboard:courseSummaries'),
 });

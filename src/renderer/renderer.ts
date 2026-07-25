@@ -85,6 +85,10 @@ interface DashboardActivityItem {
   course_name: string;
 }
 
+interface CourseSummary extends Course {
+  resource_count: number;
+}
+
 type Preview =
   | { type: 'pdf'; url: string }
   | { type: 'image'; url: string; zoomLevel: number | null }
@@ -147,6 +151,7 @@ interface AtlasApi {
   getUpcomingDeadlines: () => Promise<DashboardDeadline[]>;
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
+  getCourseSummaries: () => Promise<CourseSummary[]>;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -206,6 +211,24 @@ const DEADLINE_KIND_ICON: Record<string, string> = {
   manual: '📌',
 };
 
+// A fixed, deterministic palette for course avatars (dashboard "My courses"
+// card, course list) — picked by course id rather than anything
+// subject-specific, since Atlas has no way to know what a course is "about"
+// from its name alone.
+const COURSE_AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#ef4444'];
+
+function courseAvatarColor(courseId: number): string {
+  return COURSE_AVATAR_COLORS[courseId % COURSE_AVATAR_COLORS.length];
+}
+
+function makeCourseAvatar(course: Course): HTMLElement {
+  const avatar = document.createElement('div');
+  avatar.className = 'course-avatar';
+  avatar.style.background = courseAvatarColor(course.id);
+  avatar.textContent = course.name.trim().charAt(0).toUpperCase() || '?';
+  return avatar;
+}
+
 let selectedCourse: Course | null = null;
 let viewMode: 'list' | 'icons' = 'list';
 let semesterFilter = ''; // '' = all semesters
@@ -232,14 +255,18 @@ function resolveConfirm(result: boolean): void {
 }
 
 async function renderCourses(): Promise<void> {
+  void renderDashboard();
   const list = document.getElementById('course-list')!;
   const allCourses = await atlasApi.listCourses();
   const courses = semesterFilter ? allCourses.filter((c) => c.term === semesterFilter) : allCourses;
   list.innerHTML = '';
   for (const course of courses) {
     const li = document.createElement('li');
-    li.textContent = course.name;
     li.dataset.courseId = String(course.id);
+    li.appendChild(makeCourseAvatar(course));
+    const name = document.createElement('span');
+    name.textContent = course.name;
+    li.appendChild(name);
     if (course.code) {
       const code = document.createElement('span');
       code.className = 'code';
@@ -656,19 +683,90 @@ function isTodayLocal(sqliteDatetimeUtc: string): boolean {
 }
 
 async function renderDashboard(): Promise<void> {
-  await Promise.all([renderDashboardDeadlines(), renderDashboardResources(), renderDashboardActivity()]);
+  await Promise.all([
+    renderDashboardCourses(),
+    renderDashboardDeadlines(),
+    renderDashboardResources(),
+    renderDashboardActivity(),
+  ]);
 }
 
-function appendDashboardMeta(li: HTMLElement, title: string, courseName: string): void {
+async function renderDashboardCourses(): Promise<void> {
+  const list = document.getElementById('dashboard-course-list')!;
+  const courses = await atlasApi.getCourseSummaries();
+  list.innerHTML = '';
+
+  if (courses.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No courses yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const course of courses) {
+    const li = document.createElement('li');
+    li.appendChild(makeCourseAvatar(course));
+
+    const info = document.createElement('div');
+    info.className = 'dashboard-course-info';
+    const name = document.createElement('div');
+    name.className = 'dashboard-course-name';
+    name.textContent = course.name;
+    info.appendChild(name);
+    if (course.code) {
+      const code = document.createElement('div');
+      code.className = 'dashboard-course-code';
+      code.textContent = course.code;
+      info.appendChild(code);
+    }
+    li.appendChild(info);
+
+    const count = document.createElement('span');
+    count.className = 'dashboard-course-count';
+    count.textContent = `${course.resource_count}`;
+    li.appendChild(count);
+
+    li.addEventListener('click', () => openDashboardCourse(course));
+    list.appendChild(li);
+  }
+}
+
+async function openDashboardCourse(course: Course): Promise<void> {
+  await selectCourse(course);
+  document.getElementById('courses-section')!.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Two stacked rows per item (icon + title on top, course + optional meta
+// below) rather than one long row — with 4 cards now sharing the dashboard
+// grid (since "My courses" was added), a single row ran out of width fast
+// and truncated the title down to a couple of characters.
+function buildDashboardItemRows(icon: string, title: string, courseName: string, metaText?: string): DocumentFragment {
+  const iconEl = document.createElement('span');
+  iconEl.textContent = icon;
   const titleEl = document.createElement('span');
   titleEl.className = 'dashboard-item-title';
   titleEl.textContent = title;
-  li.appendChild(titleEl);
+  const topRow = document.createElement('div');
+  topRow.className = 'dashboard-item-row';
+  topRow.append(iconEl, titleEl);
 
   const courseEl = document.createElement('span');
   courseEl.className = 'dashboard-item-course';
   courseEl.textContent = courseName;
-  li.appendChild(courseEl);
+  const bottomRow = document.createElement('div');
+  bottomRow.className = 'dashboard-item-row dashboard-item-subrow';
+  bottomRow.appendChild(courseEl);
+  if (metaText) {
+    const metaEl = document.createElement('span');
+    metaEl.className = 'dashboard-item-meta';
+    metaEl.textContent = metaText;
+    bottomRow.appendChild(metaEl);
+  }
+
+  const fragment = document.createDocumentFragment();
+  fragment.append(topRow, bottomRow);
+  return fragment;
 }
 
 async function renderDashboardDeadlines(): Promise<void> {
@@ -686,14 +784,14 @@ async function renderDashboardDeadlines(): Promise<void> {
 
   for (const deadline of deadlines) {
     const li = document.createElement('li');
-    const icon = document.createElement('span');
-    icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
-    li.appendChild(icon);
-    appendDashboardMeta(li, deadline.title, deadline.course_name);
-    const due = document.createElement('span');
-    due.className = 'dashboard-item-meta';
-    due.textContent = formatDueDate(deadline.due_at);
-    li.appendChild(due);
+    li.appendChild(
+      buildDashboardItemRows(
+        DEADLINE_KIND_ICON[deadline.kind] ?? '📌',
+        deadline.title,
+        deadline.course_name,
+        formatDueDate(deadline.due_at)
+      )
+    );
     li.addEventListener('click', () => openDashboardDeadline(deadline));
     list.appendChild(li);
   }
@@ -714,10 +812,7 @@ async function renderDashboardResources(): Promise<void> {
 
   for (const resource of resources) {
     const li = document.createElement('li');
-    const icon = document.createElement('span');
-    icon.textContent = KIND_ICON[resource.kind] ?? '📁';
-    li.appendChild(icon);
-    appendDashboardMeta(li, resource.title, resource.course_name);
+    li.appendChild(buildDashboardItemRows(KIND_ICON[resource.kind] ?? '📁', resource.title, resource.course_name));
     li.addEventListener('click', () => openDashboardResource(resource));
     list.appendChild(li);
   }
@@ -739,17 +834,13 @@ async function renderDashboardActivity(): Promise<void> {
 
   for (const item of todayItems) {
     const li = document.createElement('li');
-    const icon = document.createElement('span');
-    icon.textContent = item.entity_type === 'note' ? '📃' : '📁';
-    li.appendChild(icon);
-    appendDashboardMeta(li, item.title, item.course_name);
-    const time = document.createElement('span');
-    time.className = 'dashboard-item-meta';
-    time.textContent = new Date(item.timestamp.replace(' ', 'T') + 'Z').toLocaleTimeString(undefined, {
+    const timeText = new Date(item.timestamp.replace(' ', 'T') + 'Z').toLocaleTimeString(undefined, {
       hour: 'numeric',
       minute: '2-digit',
     });
-    li.appendChild(time);
+    li.appendChild(
+      buildDashboardItemRows(item.entity_type === 'note' ? '📃' : '📁', item.title, item.course_name, timeText)
+    );
     li.addEventListener('click', () => openDashboardActivityItem(item));
     list.appendChild(li);
   }
@@ -1415,9 +1506,30 @@ function insertMention(textarea: HTMLTextAreaElement, atIndex: number, candidate
   textarea.setSelectionRange(newCursor, newCursor);
 }
 
+// Light/dark theme — a `data-theme` attribute on <html> switches the whole
+// CSS custom-property palette (see :root / :root[data-theme='light'] in
+// styles.css). Dark is the historical default, so only 'light' needs to be
+// recorded/applied explicitly; anything else (including never having been
+// set) falls back to dark.
+function applyTheme(theme: 'light' | 'dark'): void {
+  document.documentElement.setAttribute('data-theme', theme);
+  const button = document.getElementById('theme-toggle') as HTMLButtonElement;
+  button.textContent = theme === 'light' ? '🌙' : '☀️';
+  button.title = theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+}
+
+function focusSearch(): void {
+  const searchInput = document.getElementById('search-input') as HTMLInputElement;
+  searchInput.focus();
+  searchInput.select();
+}
+
 async function init(): Promise<void> {
   const dataDirEl = document.getElementById('data-dir')!;
   dataDirEl.textContent = `Data folder: ${await atlasApi.getDataDir()}`;
+
+  const savedTheme = await atlasApi.getSetting('theme');
+  applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 
   const savedViewMode = await atlasApi.getSetting('viewMode');
   if (savedViewMode === 'icons') setViewMode('icons', false);
@@ -1463,6 +1575,36 @@ async function init(): Promise<void> {
 
   document.getElementById('view-list')!.addEventListener('click', () => setViewMode('list'));
   document.getElementById('view-icons')!.addEventListener('click', () => setViewMode('icons'));
+
+  document.getElementById('theme-toggle')!.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const next = current === 'light' ? 'dark' : 'light';
+    applyTheme(next);
+    atlasApi.setSetting('theme', next);
+  });
+
+  // Sidebar nav: a scroll-shortcut to a section that's already on the page
+  // (Atlas is still one continuous scrolling view, not separate routed
+  // pages), not real client-side routing — clicking one just highlights it
+  // and smooth-scrolls there.
+  document.querySelectorAll<HTMLButtonElement>('.sidebar-nav-item[data-scroll-target]').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('.sidebar-nav-item').forEach((el) => el.classList.remove('active'));
+      button.classList.add('active');
+      document.getElementById(button.dataset.scrollTarget!)?.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  document.getElementById('sidebar-search-button')!.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-nav-item').forEach((el) => el.classList.remove('active'));
+    focusSearch();
+  });
+  document.getElementById('manage-courses-button')!.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-nav-item').forEach((el) => el.classList.remove('active'));
+    document
+      .querySelector('.sidebar-nav-item[data-scroll-target="courses-section"]')
+      ?.classList.add('active');
+    document.getElementById('courses-section')!.scrollIntoView({ behavior: 'smooth' });
+  });
 
   document.getElementById('semester-filter')!.addEventListener('change', (e) => {
     setSemesterFilter((e.target as HTMLSelectElement).value);
@@ -1523,9 +1665,7 @@ async function init(): Promise<void> {
     // replaces it, matching that same browser behavior.
     if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'l') {
       e.preventDefault();
-      const searchInput = document.getElementById('search-input') as HTMLInputElement;
-      searchInput.focus();
-      searchInput.select();
+      focusSearch();
       return;
     }
 
