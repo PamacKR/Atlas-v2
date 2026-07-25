@@ -487,6 +487,40 @@ const fs = require('fs');
   await window.click('#preview-close');
   await window.waitForTimeout(200);
 
+  // Keyboard navigation: Arrow Down should highlight a result (not require
+  // the mouse at all), and Enter should open it — same as a click would.
+  await window.fill('#search-input', 'lecture');
+  await window.waitForTimeout(500);
+  await window.press('#search-input', 'ArrowDown');
+  const activeAfterArrowDown = await window.$eval('#search-results li', (el) => el.classList.contains('active'));
+  console.log('first search result active after ArrowDown:', activeAfterArrowDown);
+  if (!activeAfterArrowDown) {
+    throw new Error('FAIL: ArrowDown did not mark the first search result as active');
+  }
+  await window.press('#search-input', 'Enter');
+  await window.waitForTimeout(400);
+  const previewVisibleAfterKeyboardNav = !(await window.isHidden('#preview-overlay'));
+  console.log('preview opened via keyboard nav (ArrowDown + Enter):', previewVisibleAfterKeyboardNav);
+  if (!previewVisibleAfterKeyboardNav) {
+    throw new Error('FAIL: ArrowDown + Enter did not open the search result');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
+  // Enter alone (no ArrowDown first) should pick the top result, so the
+  // user isn't forced to press ArrowDown just to confirm an obvious match.
+  await window.fill('#search-input', 'lecture');
+  await window.waitForTimeout(500);
+  await window.press('#search-input', 'Enter');
+  await window.waitForTimeout(400);
+  const previewVisibleAfterBareEnter = !(await window.isHidden('#preview-overlay'));
+  console.log('preview opened via bare Enter (no ArrowDown):', previewVisibleAfterBareEnter);
+  if (!previewVisibleAfterBareEnter) {
+    throw new Error('FAIL: Enter alone did not open the top search result');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
   // A query matching nothing should show the "No matches" state, not an
   // empty/hidden dropdown that looks like the search silently did nothing.
   await window.fill('#search-input', 'zzz-nonexistent-query-zzz');

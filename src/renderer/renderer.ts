@@ -698,16 +698,33 @@ function highlightSnippet(snippet: string): string {
 }
 
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+// Tracks what Arrow Up/Down + Enter operate on — kept in sync with whatever
+// is currently rendered in #search-results, so keyboard nav works without
+// having to re-read the DOM to figure out which result is "current."
+let currentSearchResults: SearchResult[] = [];
+let activeSearchIndex = -1;
+
+function updateActiveSearchResult(): void {
+  const items = document.querySelectorAll('#search-results li');
+  items.forEach((item, index) => {
+    const isActive = index === activeSearchIndex;
+    item.classList.toggle('active', isActive);
+    if (isActive) item.scrollIntoView({ block: 'nearest' });
+  });
+}
 
 async function runSearch(query: string): Promise<void> {
   const resultsList = document.getElementById('search-results')!;
+  activeSearchIndex = -1;
   if (!query.trim()) {
+    currentSearchResults = [];
     resultsList.hidden = true;
     resultsList.innerHTML = '';
     return;
   }
 
   const results = await atlasApi.search(query);
+  currentSearchResults = results;
   resultsList.innerHTML = '';
 
   if (results.length === 0) {
@@ -716,7 +733,7 @@ async function runSearch(query: string): Promise<void> {
     li.textContent = 'No matches';
     resultsList.appendChild(li);
   } else {
-    for (const result of results) {
+    results.forEach((result, index) => {
       const li = document.createElement('li');
       const titleRow = document.createElement('div');
       titleRow.className = 'search-result-title';
@@ -735,8 +752,14 @@ async function runSearch(query: string): Promise<void> {
       }
 
       li.addEventListener('click', () => openSearchResult(result));
+      // Hovering keeps mouse and keyboard selection in sync — moving the
+      // mouse over a result makes it "active" the same way Arrow Down would.
+      li.addEventListener('mouseenter', () => {
+        activeSearchIndex = index;
+        updateActiveSearchResult();
+      });
       resultsList.appendChild(li);
-    }
+    });
   }
   resultsList.hidden = false;
 }
@@ -933,6 +956,24 @@ async function init(): Promise<void> {
       searchInput.value = '';
       document.getElementById('search-results')!.hidden = true;
       searchInput.blur();
+      return;
+    }
+    if (currentSearchResults.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeSearchIndex = Math.min(activeSearchIndex + 1, currentSearchResults.length - 1);
+      updateActiveSearchResult();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeSearchIndex = Math.max(activeSearchIndex - 1, 0);
+      updateActiveSearchResult();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      // Enter with nothing arrowed-to yet picks the top result, so the user
+      // doesn't have to press Arrow Down once just to confirm the obvious
+      // first match.
+      const index = activeSearchIndex === -1 ? 0 : activeSearchIndex;
+      openSearchResult(currentSearchResults[index]);
     }
   });
   document.addEventListener('click', (e) => {
