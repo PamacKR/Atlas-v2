@@ -111,8 +111,33 @@ function importFileIntoCourse(
 // single folder can be stopped/started independently of the others.
 const activeWatchers = new Map<number, FSWatcher>();
 
+// chokidar's 'unlink' only fires for deletions that happen while it's
+// actively watching — a file removed from a watched folder while Atlas
+// wasn't running would otherwise leave a stale, broken resource behind
+// until the user notices. Run once whenever a folder's watcher (re)starts
+// (app launch, or a folder just added) to catch anything missed.
+function reconcileWatchedFolder(courseId: number, folderPath: string): void {
+  const db = getDb();
+  const resources = db
+    .prepare(
+      `SELECT id, file_path, watch_source_path FROM resources
+       WHERE course_id = ? AND source = 'local_folder' AND watch_source_path IS NOT NULL`
+    )
+    .all(courseId) as { id: number; file_path: string; watch_source_path: string }[];
+
+  const normalizedFolder = path.resolve(folderPath) + path.sep;
+  for (const resource of resources) {
+    if (!resource.watch_source_path.startsWith(normalizedFolder)) continue;
+    if (fs.existsSync(resource.watch_source_path)) continue;
+    fs.rmSync(resource.file_path, { force: true });
+    db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
+  }
+}
+
 function startWatchingFolder(folderId: number, courseId: number, folderPath: string): void {
   if (activeWatchers.has(folderId)) return;
+
+  reconcileWatchedFolder(courseId, folderPath);
 
   const watcher = watch(folderPath, {
     ignoreInitial: false, // pick up files already in the folder, not just future ones
@@ -131,6 +156,21 @@ function startWatchingFolder(folderId: number, courseId: number, folderPath: str
     if (already) return; // already imported in a previous watch session
 
     importFileIntoCourse(courseId, filePath, 'local_folder', filePath);
+    if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
+  });
+
+  // Mirror deletion: if the source file disappears from the watched folder,
+  // the resource it produced is removed from Atlas too, rather than being
+  // left behind as a broken entry pointing at nothing.
+  watcher.on('unlink', (filePath) => {
+    const db = getDb();
+    const resource = db.prepare('SELECT * FROM resources WHERE watch_source_path = ?').get(filePath) as
+      | { id: number; file_path: string }
+      | undefined;
+    if (!resource) return;
+
+    fs.rmSync(resource.file_path, { force: true });
+    db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
     if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
   });
 

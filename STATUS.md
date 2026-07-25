@@ -2,9 +2,9 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-25 (session 20)
+**Last updated:** 2026-07-25 (session 21)
 
-## Where things stand (accurate as of session 20 — read this before the per-session log below)
+## Where things stand (accurate as of session 21 — read this before the per-session log below)
 
 - Repo: [github.com/PamacKR/Atlas](https://github.com/PamacKR/Atlas), private, owned by the user (`PamacKR`). Commits authored as `Claude <noreply@anthropic.com>` (repo-local git config) — don't change without being asked.
 - **Phase 0 (docs) done. Phase 1 (local-only workflow) is substantially built and working**, not just scaffolding:
@@ -15,11 +15,11 @@ Living snapshot of where the project actually is. This is the first thing to rea
   - Image previews: center on both axes, zoom via buttons/Ctrl+scroll (25–400%), **remembered per-resource** (`resources.zoom_level`). Zoom is strictly scoped to images only — this took three rounds to fully close out, see sessions 15/17/18 below and the `CLAUDE.md` "recurring CSS bug" note.
   - List/Icon view toggle for the resource list.
   - Fullscreen toggle on the preview panel (icon buttons, tightened chrome).
-  - **Local folder watching** (session 19): per-course "Watched folders" section — user picks a folder via a native directory picker, explicitly mapped to that one course (`watched_folders` table, `chokidar`). New files (including ones already sitting in the folder when watching starts) are copied into the course's managed storage automatically, identical to manual upload, and the open resource list refreshes live. Folder→course mapping is deliberately explicit, never auto-guessed — see `docs/open-questions.md` #11 and `ARCHITECTURE.md` §4. "Stop watching" is right-click-only on the folder entry, same pattern as course/resource delete.
+  - **Local folder watching** (session 19, deletion sync added session 21): per-course "Watched folders" section — user picks a folder via a native directory picker, explicitly mapped to that one course (`watched_folders` table, `chokidar`). New files (including ones already sitting in the folder when watching starts) are copied into the course's managed storage automatically, identical to manual upload, and the open resource list refreshes live. **Deleting a file from a watched folder now deletes the resource it produced** too — both live (`chokidar`'s `unlink` event) and retroactively (a reconciliation pass runs whenever a folder's watcher starts, catching deletions that happened while Atlas wasn't running) — so a removed source file never leaves a broken "resource not found" entry behind. Folder→course mapping is deliberately explicit, never auto-guessed — see `docs/open-questions.md` #11 and `ARCHITECTURE.md` §4. "Stop watching" is right-click-only on the folder entry, same pattern as course/resource delete.
   - **Not yet built** (rest of Phase 1, per `ROADMAP.md`): notes UI, dashboard, global search UI (the FTS5 `search_index` table exists but isn't populated yet).
 - **Self-testing:** `npm run verify` (`scripts/verify-app.js`) launches the real app via Playwright's Electron driver and exercises courses, upload, preview (markdown/image/txt), zoom + persistence, delete (via direct API call, since native context menus can't be automated), view toggle, and folder watching (pre-existing files in a newly-watched folder + a file dropped in live, both auto-imported) — all against a throwaway temp dir, never real storage. Extend this file whenever a UI change needs verifying, rather than relying solely on the user.
 - **One-click launch:** `Launch Atlas.bat` (repo root) + a `Atlas` Desktop shortcut pointing to it. Both run `npm start` (`npm run build && electron .`), so every launch always rebuilds from current source — no separate deploy step exists or is needed.
-- **User's standing test data** (real `Downloads/Atlas-Storage`, not test-suite temp dirs): two seeded courses, **Data Structures & Algorithms** (CS201) and **Database Systems** (CS305), 7 sample resources each (pdf/docx/pptx/image/txt/md/zip). Leave alone unless told otherwise.
+- **User's standing test data** (real `Downloads/Atlas-Storage`, not test-suite temp dirs): two seeded courses, **Data Structures & Algorithms** (CS201, now 8 resources — a `CS201-gradebook.xlsx` with realistic assignment/quiz/exam scores across two sheets was added session 21) and **Database Systems** (CS305, 7 resources), covering pdf/docx/pptx/xlsx/image/txt/md/zip. Leave alone unless told otherwise.
 - Recurring lesson (hit 3x — `#preview-overlay`, `#confirm-overlay`, `#zoom-controls`): an element toggled via `el.hidden` must never have `display` set unconditionally on its own ID selector, or that CSS outranks the default `[hidden] { display: none }` rule. Written into `CLAUDE.md` as a standing check.
 
 ## Decisions locked in (don't re-litigate)
@@ -40,7 +40,14 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
-Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4), whether to build one-way PDF zoom memory (#10, needs a user decision — see "What's next" below).
+Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4), whether to build one-way PDF zoom memory (#10, needs a user decision — see "What's next" below), whether to route Office-file preview through Google Drive for real layout fidelity (#12, explicitly deferred to Phase 3 by the user).
+
+## Session 21 additions
+
+- **Watched-folder deletion now syncs**: deleting a file from a watched folder deletes the `resources` row (and its managed-storage copy) too, both live via `chokidar`'s `unlink` event and retroactively via a `reconcileWatchedFolder()` pass that runs whenever a folder's watcher (re)starts — catches files deleted while Atlas wasn't running, which `unlink` alone can't see. Previously such resources stayed listed and threw "resource not found" when opened.
+- **Added a real `.xlsx` to the user's standing test data** — `CS201-gradebook.xlsx` in Data Structures & Algorithms, two sheets (Assignments: 11 rows across homework/quizzes/exams/projects with realistic scores; Grade Summary: weighted category breakdown), generated with the same `xlsx` library Atlas depends on and uploaded via the existing `ATLAS_TEST_UPLOAD_PATH` hook against real storage (same pattern as the original session-11 seed data). Verified it renders correctly both in-app and via "Open in browser."
+- **User feedback on PPTX fidelity, logged as `docs/open-questions.md` #12**: after trying "Open in browser" on a real slide deck, the user said the text-only outline is fine for now but they'll likely want the Google Drive route (real slide rendering via Google Slides) once Phase 3 sync work starts anyway, since the Drive OAuth/upload plumbing would already exist at that point — explicitly not something to build now.
+- `scripts/verify-app.js` extended: deletes a watched folder's source file mid-run and confirms both the resource entry and its managed-storage copy disappear.
 
 ## Session 20 additions
 

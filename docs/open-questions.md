@@ -77,3 +77,9 @@ The only lever available is one-directional: appending `#zoom=N` to the PDF's `f
 When Atlas watches a local folder for new files, how does it know which course a detected file belongs to — explicit user-configured mapping, or auto-guessing from file content/name/location?
 
 **Status:** Resolved (2026-07-25) — explicit only. The user maps a folder to a specific course when adding it (native folder picker, from that course's "Watched folders" section); there is no auto-guessing. Reasoning: guessing which course a file belongs to from its content or name would be Atlas making an inference about academic meaning, which cuts against the "Atlas owns data, Claude owns reasoning" rule (`CLAUDE.md`) — that kind of association-with-uncertainty belongs to a human decision (or later, an explicit Claude Code query), not a silent sync-adapter heuristic. See `ARCHITECTURE.md` §4.
+
+### 12. PPTX fidelity — revisit the Google Drive route once Phase 3 (sync) is underway
+
+The user tried "Open in browser" on a real PPTX and, while accepting the current text-only outline as fine *for now*, was explicit that the fidelity isn't great and they'd like to revisit routing PPTX (and possibly DOCX/XLSX) through Google Drive/Docs/Slides for real layout rendering — the option scoped out of the "Open in browser" work (session 20) specifically because it requires uploading files to Google Drive, a Phase 3-scale change.
+
+**Status:** Open, deliberately deferred — not a Phase 1 item. Revisit when Phase 3 (external sync, `ROADMAP.md`) is underway and Google Drive integration is being built anyway, since at that point the Drive OAuth/upload plumbing already needs to exist and reusing it for "open in Slides for real fidelity" becomes a much smaller incremental step than building a one-off Drive upload path just for this. Until then, PPTX/DOCX/XLSX previews stay local-only (`ARCHITECTURE.md` §7).

@@ -387,6 +387,27 @@ const fs = require('fs');
     throw new Error('FAIL: new file dropped into an already-watched folder was not auto-imported');
   }
 
+  // Deleting the source file out from under a watched folder should delete
+  // the resource it produced too, not leave a broken "resource not found"
+  // entry behind.
+  fs.unlinkSync(preExistingFile);
+  let resourcesAfterSourceDelete = resourcesAfterNewFile;
+  for (let i = 0; i < 10; i++) {
+    resourcesAfterSourceDelete = await window.$$eval('#resource-list li', (els) =>
+      els.map((e) => e.textContent)
+    );
+    if (!resourcesAfterSourceDelete.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
+    await window.waitForTimeout(300);
+  }
+  console.log('resources after deleting source file from watched folder:', resourcesAfterSourceDelete);
+  if (resourcesAfterSourceDelete.some((t) => t && t.includes('pre-existing-syllabus.txt'))) {
+    throw new Error('FAIL: resource was not removed after its source file was deleted from the watched folder');
+  }
+  const managedCopyPath = path.join(testDataDir, 'files', 'Watch Test Course', 'pre-existing-syllabus.txt');
+  if (fs.existsSync(managedCopyPath)) {
+    throw new Error('FAIL: managed-storage copy was not deleted alongside the resource row');
+  }
+
   // Stop watching via the underlying API (native context menu can't be
   // automated, same limitation as resource/course delete).
   const watchedFolderId = await window.$eval('#watched-folder-list li', (el) =>
