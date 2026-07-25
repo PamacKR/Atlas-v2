@@ -7,6 +7,7 @@ const copies = [
   ['src/main/db/schema.sql', 'dist/main/db/schema.sql'],
   ['src/renderer/index.html', 'dist/renderer/index.html'],
   ['src/renderer/styles.css', 'dist/renderer/styles.css'],
+  ['node_modules/@toast-ui/editor/dist/toastui-editor.css', 'dist/renderer/toastui-editor.css'],
 ];
 
 for (const [from, to] of copies) {

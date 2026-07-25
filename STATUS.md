@@ -2,9 +2,9 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-25 (session 22)
+**Last updated:** 2026-07-25 (session 23)
 
-## Where things stand (accurate as of session 22 — read this before the per-session log below)
+## Where things stand (accurate as of session 23 — read this before the per-session log below)
 
 - Repo: [github.com/PamacKR/Atlas](https://github.com/PamacKR/Atlas), private, owned by the user (`PamacKR`). Commits authored as `Claude <noreply@anthropic.com>` (repo-local git config) — don't change without being asked.
 - **Phase 0 (docs) done. Phase 1 (local-only workflow) is substantially built and working**, not just scaffolding:
@@ -17,7 +17,10 @@ Living snapshot of where the project actually is. This is the first thing to rea
   - Fullscreen toggle on the preview panel (icon buttons, tightened chrome).
   - **Local folder watching** (session 19, deletion sync added session 21): per-course "Watched folders" section — user picks a folder via a native directory picker, explicitly mapped to that one course (`watched_folders` table, `chokidar`). New files (including ones already sitting in the folder when watching starts) are copied into the course's managed storage automatically, identical to manual upload, and the open resource list refreshes live. Deleting a file from a watched folder deletes the resource it produced too (live via `unlink`, retroactively via reconciliation on watcher start). Folder→course mapping is deliberately explicit, never auto-guessed — see `docs/open-questions.md` #11 and `ARCHITECTURE.md` §4. "Stop watching" is right-click-only on the folder entry, same pattern as course/resource delete.
   - **Every course's own managed storage folder is watched too** (session 22): separately from opt-in watched folders, `Downloads/Atlas-Storage/files/<course>/` itself is watched — a file dropped in there by hand is auto-imported, and one deleted from there is auto-removed from the app (same live + startup-reconciliation pattern). This makes the "user-browsable, hand-editable" data directory design (`ARCHITECTURE.md` §2) actually hold; previously only external watched folders were monitored, so hand-editing Atlas's own storage silently desynced from the DB (see session 22 below for the real bug this fixed).
-  - **App-wide settings**: new `app_settings` table for preferences that shouldn't reset per launch. Currently just the resource list/icon view mode (session 22) — one global choice, not remembered per-course, restored on every launch.
+  - **App-wide settings**: new `app_settings` table for preferences that shouldn't reset per launch. Resource list/icon view mode (session 22) and semester filter (session 23) — both global/persisted, restored on every launch.
+  - **Notes (session 23)**: flat per-course note list (no folders — title your own sessions, e.g. "W1L1"), Markdown storage, live-rendering WYSIWYG editor (`@toast-ui/editor`) matching the Notion/Obsidian feel, autosave 600ms after the last edit. Right-click delete, same pattern as everywhere else. See `docs/open-questions.md` #1 (resolved) and `ARCHITECTURE.md` §8.
+  - **Semester filter (session 23)**: course list can be scoped to one term at a time via a dropdown; persisted app-wide.
+  - **Renderer now has a build step** (session 23): `esbuild` bundles `src/renderer/renderer.ts` (needed to use the notes editor's npm package, which isn't usable from a bare `<script>` tag) — see `ARCHITECTURE.md` §1 "Renderer build pipeline." `main.ts`/`preload.ts` still compile via plain `tsc`, unaffected.
   - **Not yet built** (rest of Phase 1, per `ROADMAP.md`): notes UI, dashboard, global search UI (the FTS5 `search_index` table exists but isn't populated yet).
 - **Self-testing:** `npm run verify` (`scripts/verify-app.js`) launches the real app via Playwright's Electron driver and exercises courses, upload, preview (markdown/image/txt), zoom + persistence, delete (via direct API call, since native context menus can't be automated), view toggle, and folder watching (pre-existing files in a newly-watched folder + a file dropped in live, both auto-imported) — all against a throwaway temp dir, never real storage. Extend this file whenever a UI change needs verifying, rather than relying solely on the user.
 - **One-click launch:** `Launch Atlas.bat` (repo root) + a `Atlas` Desktop shortcut pointing to it. Both run `npm start` (`npm run build && electron .`), so every launch always rebuilds from current source — no separate deploy step exists or is needed.
@@ -42,7 +45,15 @@ See `docs/open-questions.md` for full detail. Nothing blocking right now — all
 
 - **#8 College Google Workspace access** — resolved 2026-07-23. Verified via OAuth Playground: both Classroom and Gmail read scopes authorize cleanly against the college account, no admin block. Phase 3 can be scoped against the college account.
 
-Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. rich text, #1), sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4), whether to build one-way PDF zoom memory (#10, needs a user decision — see "What's next" below), whether to route Office-file preview through Google Drive for real layout fidelity (#12, explicitly deferred to Phase 3 by the user).
+Still open, lower urgency (not blocking Phase 1): sync frequency/manual-vs-automatic (#2), sync-conflict policy (#3), course/semester archiving rules (#4), whether to build one-way PDF zoom memory (#10, needs a user decision — see "What's next" below), whether to route Office-file preview through Google Drive for real layout fidelity (#12, explicitly deferred to Phase 3 by the user).
+
+## Session 23 additions
+
+- **Notes UI built** — the next Phase 1 item. Format/organization questions (`docs/open-questions.md` #1) resolved through conversation with the user: Markdown (not rich text — the deciding factor was that notes get read by Claude Code via MCP, not exported to PDF like the user's old Notion workflow, and markdown is what Claude reads most naturally with no lossy rich-text-to-markdown conversion needed), flat per-course organization (no folders — matches how the user actually used Notion: course-level grouping plus a session-titled note like "W1L1", not a manually-built folder tree), live-rendering WYSIWYG editor (Toast UI Editor) rather than a raw-markdown/preview split.
+- **Real architecture change: renderer now has a build step (`esbuild`).** The renderer previously had none — a deliberate earlier choice to avoid an ESM/CommonJS conflict, achieved by keeping `renderer.ts` free of `import`/`export` syntax. Toast UI Editor's npm package externalizes its ProseMirror dependencies in a way that only works with a bundler, not a bare `<script>` tag, so this constraint had to be revisited. Verified via a standalone smoke test (loaded the esbuild-bundled editor directly in a browser tab) before building the rest of the feature on top of it, to avoid discovering integration problems after the fact. `esbuild` bundles only `renderer.ts`; `main.ts`/`preload.ts` still compile via plain `tsc`, unaffected. Full detail in `ARCHITECTURE.md` §1.
+- **Semester filter added to the course list** (dropdown, persisted via `app_settings`) — the user raised this mid-conversation as a related organizational need while describing their old Notion structure ("semester > course > notes"), so it was built alongside notes rather than as a separate follow-up.
+- New `notes:*` IPC surface (list/create/updateContent/updateTitle/delete, native right-click delete menu matching the existing pattern) — `notes` table already existed in the schema from Phase 0, no migration needed.
+- `scripts/verify-app.js` extended: creates a note, types live-rendered content via the WYSIWYG editor, confirms autosave, closes/reopens to confirm persistence, deletes it; also covers the semester filter (hide/show, persistence). Note: the WYSIWYG editor's contenteditable region needs `force: true` on Playwright clicks and a WYSIWYG-scoped selector — a second, genuinely-hidden ProseMirror instance for Markdown-source mode matches a bare `[contenteditable]` selector and confuses Playwright's visibility check even though the real one is visibly rendered (confirmed via screenshot during development).
 
 ## Session 22 additions
 
@@ -144,11 +155,20 @@ Still open, lower urgency (not blocking Phase 1): notes format (Markdown vs. ric
 - **Course term is now a fixed dropdown**, not free text: Monsoon 26, Spring 27, Monsoon 27, Spring 28 (user-specified list, in `src/renderer/index.html`). If more terms are needed later, add `<option>`s there.
 - **Delete added for both courses and resources**, needed for the user to freely test/clean up without leftover data piling up. Deleting a course removes its entire `files/course-<id>/` folder from disk and cascades to delete its `resources` rows (FK `ON DELETE CASCADE`, `foreign_keys` pragma is on). Deleting a single resource removes just its file and row. Both prompt a native `confirm()` before proceeding. `scripts/verify-app.js` now covers both delete paths and auto-accepts the confirm dialog (`window.on('dialog', ...)`, since Playwright auto-dismisses dialogs by default otherwise).
 
-## What's next (updated session 19 — supersedes the session-18 note below, kept for history)
+## What's next (updated session 23 — supersedes the session-19 note below, kept for history)
+
+Notes UI (previously "proposed next") is now built — see session 23 above.
+
+Remaining Phase 1 items, no particular order yet: dashboard v1 (upcoming deadlines, recently added resources, "what changed today"), global search UI (FTS5 `search_index` table exists, still unpopulated — notes/resources aren't indexed into it yet, worth deciding when building search whether to backfill retroactively).
+
+<details>
+<summary>Superseded — session 19 note</summary>
 
 Local folder watching (previously "proposed next") is now built — see session 19 above.
 
 Remaining Phase 1 items, no particular order yet: notes UI (format still open, `docs/open-questions.md` #1), dashboard, global search UI (FTS5 table exists, unpopulated).
+
+</details>
 
 <details>
 <summary>Superseded — original session 18 note</summary>

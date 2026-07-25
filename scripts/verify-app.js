@@ -58,6 +58,30 @@ const fs = require('fs');
     throw new Error('FAIL: term dropdown value did not persist/display');
   }
 
+  // Semester filter: the course was created with term "Monsoon 26" above.
+  // Filtering to a different term should hide it; filtering back (or to
+  // "All semesters") should show it again. Reset to "All" before continuing
+  // so the rest of the script can keep finding it via '#course-list li'.
+  await window.selectOption('#semester-filter', 'Spring 27');
+  await window.waitForTimeout(200);
+  const itemsFilteredOut = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  console.log('courses with Spring 27 filter (should exclude the Monsoon 26 course):', itemsFilteredOut);
+  if (itemsFilteredOut.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error('FAIL: semester filter did not hide a course from a different term');
+  }
+  const persistedFilter = await window.evaluate(() => window.atlas.getSetting('semesterFilter'));
+  if (persistedFilter !== 'Spring 27') {
+    throw new Error(`FAIL: semester filter selection was not persisted, got ${persistedFilter}`);
+  }
+
+  await window.selectOption('#semester-filter', '');
+  await window.waitForTimeout(200);
+  const itemsAllSemesters = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  if (!itemsAllSemesters.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error('FAIL: course did not reappear after resetting semester filter to "All semesters"');
+  }
+  console.log('semester filter: PASS');
+
   // Select the course, then upload a resource into it.
   await window.click('#course-list li');
   await window.waitForTimeout(200);
@@ -296,6 +320,62 @@ const fs = require('fs');
   const savedViewModeAfterList = await window.evaluate(() => window.atlas.getSetting('viewMode'));
   if (savedViewModeAfterList !== 'list') {
     throw new Error(`FAIL: view mode did not persist back to list, got ${savedViewModeAfterList}`);
+  }
+
+  // Notes: create, type live-rendered markdown content, confirm autosave,
+  // close/reopen to confirm persistence, then delete. The WYSIWYG editor's
+  // contenteditable region reports a zero-size bounding box for Playwright's
+  // default actionability check (a second, genuinely-hidden ProseMirror
+  // instance for Markdown-source mode also matches the selector) even
+  // though it's visibly rendered — confirmed via screenshot during
+  // development — so click uses force:true and a WYSIWYG-scoped selector.
+  await window.click('#new-note-button');
+  await window.waitForTimeout(500);
+  const noteEditorVisible = !(await window.isHidden('#note-editor-overlay'));
+  console.log('note editor overlay visible:', noteEditorVisible);
+  if (!noteEditorVisible) throw new Error('FAIL: note editor did not open on "New note"');
+
+  await window.fill('#note-title-input', 'W1L1');
+  const noteEditableSelector = '.toastui-editor-ww-container [contenteditable="true"]';
+  await window.click(noteEditableSelector, { force: true });
+  await window.keyboard.type('# Lecture 1');
+  await window.keyboard.press('Enter');
+  await window.keyboard.type('Verify script note content.');
+  await window.waitForTimeout(1200); // let the debounced autosave fire
+
+  const saveStatus = await window.textContent('#note-save-status');
+  console.log('note save status:', saveStatus);
+  if (saveStatus !== 'Saved') throw new Error(`FAIL: note did not autosave, status was "${saveStatus}"`);
+
+  await window.click('#note-close');
+  await window.waitForTimeout(300);
+
+  const noteListAfterClose = await window.$$eval('#note-list li', (els) => els.map((e) => e.textContent));
+  console.log('notes after close:', noteListAfterClose);
+  if (!noteListAfterClose.some((t) => t && t.includes('W1L1'))) {
+    throw new Error('FAIL: created note did not appear in the note list with its title');
+  }
+
+  const noteId = await window.$eval('#note-list li', (el) => Number(el.dataset.noteId));
+  await window.click(`li[data-note-id="${noteId}"]`);
+  await window.waitForTimeout(500);
+  const reopenedNoteText = await window.textContent(noteEditableSelector);
+  console.log('reopened note content:', reopenedNoteText);
+  if (!reopenedNoteText.includes('Verify script note content.')) {
+    throw new Error('FAIL: note content did not persist across close/reopen');
+  }
+  await window.click('#note-close');
+  await window.waitForTimeout(200);
+
+  // Delete via the underlying API (native context menu can't be automated,
+  // same limitation as course/resource/watched-folder delete).
+  await window.evaluate((id) => window.atlas.deleteNote(id), noteId);
+  await window.click('#course-list li'); // reselect to force a refresh
+  await window.waitForTimeout(300);
+  const noteListAfterDelete = await window.$$eval('#note-list li', (els) => els.map((e) => e.textContent));
+  console.log('notes after delete:', noteListAfterDelete);
+  if (noteListAfterDelete.some((t) => t && t.includes('W1L1'))) {
+    throw new Error('FAIL: note still present after delete');
   }
 
   // Confirm on-disk layout: course folder named after the course (not

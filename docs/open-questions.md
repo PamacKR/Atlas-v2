@@ -7,7 +7,7 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 - Should notes support Markdown, rich text, or both?
 - Should handwritten annotations be possible directly within the app (vs. only imported)?
 
-**Status:** Open. Leaning toward Markdown-only for typed notes (simpler storage, trivially searchable, no rich-text editor to build/maintain) but not yet decided.
+**Status:** Resolved (2026-07-25) — Markdown, typed notes only for now (handwritten/OCR notes are Phase 2, `ROADMAP.md`). Decided against rich text: the user's stated Notion workflow (write notes → export to PDF → paste into an AI chat) goes away entirely once Claude Code can query notes directly via MCP, and markdown is what Claude reads most naturally — rich text would just get flattened to something markdown-like anyway. Markdown also means no rich-text editor to build/maintain and notes stay trivially indexable by the existing FTS5 `search_index` table. Edited live via a WYSIWYG-style markdown editor (Toast UI Editor, bundled — see `ARCHITECTURE.md` "Notes"), not a raw markdown/preview split, so the day-to-day feel is still close to Notion. Organization is flat per course (no folders/subfolders) — the user's Notion structure was really "semester > course > session-titled note" (e.g. "W1L1"), and Atlas already provides the semester/course layers, so a note is just titled by the user (W1L1, W1L2, ...) rather than manually filed into a nested tree.
 
 ## 2. Synchronization
 

@@ -525,3 +525,57 @@ ipcMain.on('resources:courseContextMenu', (event, courseId: number) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) menu.popup({ window: win });
 });
+
+// --- IPC: notes ---
+// Flat per-course list (no folders/subfolders — the user's own workflow was
+// "course > session-titled notes", e.g. W1L1/W1L2; Atlas already provides
+// the course-level grouping, so a second manual folder layer isn't needed).
+// Content is stored as markdown (docs/open-questions.md #1), edited live via
+// the bundled Toast UI Editor in WYSIWYG mode.
+
+ipcMain.handle('notes:listByCourse', (_event, courseId: number) => {
+  const db = getDb();
+  return db.prepare('SELECT * FROM notes WHERE course_id = ? ORDER BY updated_at DESC').all(courseId);
+});
+
+ipcMain.handle('notes:create', (_event, courseId: number) => {
+  const db = getDb();
+  const insertResult = db
+    .prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (?, 'Untitled', '')")
+    .run(courseId);
+  return db.prepare('SELECT * FROM notes WHERE id = ?').get(insertResult.lastInsertRowid);
+});
+
+ipcMain.handle('notes:updateContent', (_event, noteId: number, contentMarkdown: string) => {
+  const db = getDb();
+  db.prepare("UPDATE notes SET content_markdown = ?, updated_at = datetime('now') WHERE id = ?").run(
+    contentMarkdown,
+    noteId
+  );
+});
+
+ipcMain.handle('notes:updateTitle', (_event, noteId: number, title: string) => {
+  const db = getDb();
+  db.prepare("UPDATE notes SET title = ?, updated_at = datetime('now') WHERE id = ?").run(
+    title || 'Untitled',
+    noteId
+  );
+});
+
+ipcMain.handle('notes:delete', (_event, noteId: number) => {
+  const db = getDb();
+  db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
+});
+
+ipcMain.on('notes:contextMenu', (event, noteId: number) => {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Delete',
+      click: () => {
+        event.sender.send('notes:contextMenuDelete', noteId);
+      },
+    },
+  ]);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) menu.popup({ window: win });
+});

@@ -27,6 +27,18 @@ interface WatchedFolder {
   created_at: string;
 }
 
+interface Note {
+  id: number;
+  course_id: number;
+  title: string;
+  content_markdown: string;
+  is_handwritten: number;
+  image_path: string | null;
+  ocr_text: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 type Preview =
   | { type: 'pdf'; url: string }
   | { type: 'image'; url: string; zoomLevel: number | null }
@@ -57,13 +69,25 @@ interface AtlasApi {
   showFolderContextMenu: (folderId: number) => void;
   onFolderContextMenuRemove: (handler: (folderId: number) => void) => void;
   onResourcesChanged: (handler: (courseId: number) => void) => void;
+  listNotes: (courseId: number) => Promise<Note[]>;
+  createNote: (courseId: number) => Promise<Note>;
+  updateNoteContent: (noteId: number, contentMarkdown: string) => Promise<void>;
+  updateNoteTitle: (noteId: number, title: string) => Promise<void>;
+  deleteNote: (noteId: number) => Promise<void>;
+  showNoteContextMenu: (noteId: number) => void;
+  onNoteContextMenuDelete: (handler: (noteId: number) => void) => void;
 }
 
-// Deliberately not using `import`/`export`/`declare global` here: any of
-// those make TypeScript treat this file as an ES module and emit a
-// CommonJS `exports` boilerplate header, which throws in a plain
-// non-module <script> tag (no `exports` object exists) and silently kills
-// the whole script. Casting through `any` keeps this file a plain script.
+// This file is bundled by esbuild (scripts/build-renderer.js), not compiled
+// directly by tsc, specifically so npm packages like @toast-ui/editor can be
+// `import`ed here despite the renderer having no module system at runtime
+// (contextIsolation: true, nodeIntegration: false — no `require`, and a
+// plain <script> tag has no `exports` object either). esbuild resolves and
+// inlines everything into one browser-ready IIFE. `window.atlas` still goes
+// through a cast rather than a `declare global` purely to keep this diff
+// small, not because of any remaining module-system constraint.
+import { Editor } from '@toast-ui/editor';
+
 const atlasApi: AtlasApi = (window as any).atlas;
 
 const KIND_ICON: Record<string, string> = {
@@ -80,6 +104,7 @@ const KIND_ICON: Record<string, string> = {
 
 let selectedCourse: Course | null = null;
 let viewMode: 'list' | 'icons' = 'list';
+let semesterFilter = ''; // '' = all semesters
 
 let confirmResolve: ((result: boolean) => void) | null = null;
 
@@ -104,7 +129,8 @@ function resolveConfirm(result: boolean): void {
 
 async function renderCourses(): Promise<void> {
   const list = document.getElementById('course-list')!;
-  const courses = await atlasApi.listCourses();
+  const allCourses = await atlasApi.listCourses();
+  const courses = semesterFilter ? allCourses.filter((c) => c.term === semesterFilter) : allCourses;
   list.innerHTML = '';
   for (const course of courses) {
     const li = document.createElement('li');
@@ -239,11 +265,162 @@ async function renderWatchedFolders(): Promise<void> {
   }
 }
 
+function formatNoteTimestamp(sqliteDatetime: string): string {
+  // SQLite's datetime('now') is UTC with no 'Z' suffix — append it so
+  // Date parses it as UTC instead of assuming local time.
+  const date = new Date(sqliteDatetime.replace(' ', 'T') + 'Z');
+  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+async function renderNotes(): Promise<void> {
+  const section = document.getElementById('notes-section')!;
+  const heading = document.getElementById('notes-heading')!;
+  const list = document.getElementById('note-list')!;
+
+  if (!selectedCourse) {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  heading.textContent = `Notes — ${selectedCourse.name}`;
+
+  const notes = await atlasApi.listNotes(selectedCourse.id);
+  list.innerHTML = '';
+  if (notes.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No notes yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const note of notes) {
+    const li = document.createElement('li');
+    li.dataset.noteId = String(note.id);
+
+    const title = document.createElement('span');
+    title.textContent = note.title;
+    li.appendChild(title);
+
+    const updated = document.createElement('span');
+    updated.className = 'note-updated';
+    updated.textContent = formatNoteTimestamp(note.updated_at);
+    li.appendChild(updated);
+
+    li.addEventListener('click', () => openNoteEditor(note));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showNoteContextMenu(note.id);
+    });
+
+    list.appendChild(li);
+  }
+}
+
+let noteEditorInstance: Editor | null = null;
+let currentNoteId: number | null = null;
+let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleNoteSave(): void {
+  const statusEl = document.getElementById('note-save-status')!;
+  statusEl.textContent = 'Saving…';
+  if (noteSaveTimer) clearTimeout(noteSaveTimer);
+  noteSaveTimer = setTimeout(async () => {
+    if (currentNoteId === null || !noteEditorInstance) return;
+    await atlasApi.updateNoteContent(currentNoteId, noteEditorInstance.getMarkdown());
+    statusEl.textContent = 'Saved';
+  }, 600);
+}
+
+async function flushPendingNoteSave(): Promise<void> {
+  if (noteSaveTimer) {
+    clearTimeout(noteSaveTimer);
+    noteSaveTimer = null;
+  }
+  if (currentNoteId !== null && noteEditorInstance) {
+    await atlasApi.updateNoteContent(currentNoteId, noteEditorInstance.getMarkdown());
+  }
+}
+
+async function openNoteEditor(note: Note): Promise<void> {
+  const overlay = document.getElementById('note-editor-overlay')!;
+  const titleInput = document.getElementById('note-title-input') as HTMLInputElement;
+  const statusEl = document.getElementById('note-save-status')!;
+  const root = document.getElementById('note-editor-root')!;
+
+  currentNoteId = note.id;
+  titleInput.value = note.title;
+  statusEl.textContent = '';
+  root.innerHTML = '';
+  overlay.hidden = false;
+
+  noteEditorInstance = new Editor({
+    el: root,
+    initialEditType: 'wysiwyg',
+    previewStyle: 'tab',
+    height: '100%',
+    initialValue: note.content_markdown,
+    events: {
+      change: () => scheduleNoteSave(),
+    },
+  });
+}
+
+async function closeNoteEditor(): Promise<void> {
+  await flushPendingNoteSave();
+
+  const overlay = document.getElementById('note-editor-overlay')!;
+  overlay.hidden = true;
+  overlay.classList.remove('fullscreen');
+  const fullscreenButton = document.getElementById('note-fullscreen') as HTMLButtonElement;
+  fullscreenButton.innerHTML = NOTE_MAXIMIZE_ICON;
+  fullscreenButton.title = 'Fullscreen';
+  fullscreenButton.setAttribute('aria-label', 'Fullscreen');
+
+  if (noteEditorInstance) {
+    noteEditorInstance.destroy();
+    noteEditorInstance = null;
+  }
+  currentNoteId = null;
+
+  await renderNotes();
+}
+
+const NOTE_MAXIMIZE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+const NOTE_MINIMIZE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
+
+function toggleNoteFullscreen(): void {
+  const overlay = document.getElementById('note-editor-overlay')!;
+  const button = document.getElementById('note-fullscreen') as HTMLButtonElement;
+  const isFullscreen = overlay.classList.toggle('fullscreen');
+  button.innerHTML = isFullscreen ? NOTE_MINIMIZE_ICON : NOTE_MAXIMIZE_ICON;
+  button.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+  button.setAttribute('aria-label', button.title);
+}
+
 async function selectCourse(course: Course): Promise<void> {
   selectedCourse = course;
   await renderCourses();
   await renderResources();
   await renderWatchedFolders();
+  await renderNotes();
+}
+
+async function setSemesterFilter(term: string, persist = true): Promise<void> {
+  semesterFilter = term;
+  // If the currently open course falls outside the new filter, close it
+  // rather than leaving Resources/Notes showing a course no longer listed.
+  if (selectedCourse && term && selectedCourse.term !== term) {
+    selectedCourse = null;
+  }
+  await renderCourses();
+  await renderResources();
+  await renderWatchedFolders();
+  await renderNotes();
+  if (persist) atlasApi.setSetting('semesterFilter', term);
 }
 
 // App-wide, not per-course — the user wants one view preference that
@@ -369,6 +546,12 @@ async function init(): Promise<void> {
   const savedViewMode = await atlasApi.getSetting('viewMode');
   if (savedViewMode === 'icons') setViewMode('icons', false);
 
+  const savedSemesterFilter = await atlasApi.getSetting('semesterFilter');
+  if (savedSemesterFilter) {
+    semesterFilter = savedSemesterFilter;
+    (document.getElementById('semester-filter') as HTMLSelectElement).value = savedSemesterFilter;
+  }
+
   await renderCourses();
 
   const form = document.getElementById('course-form') as HTMLFormElement;
@@ -404,13 +587,51 @@ async function init(): Promise<void> {
   document.getElementById('view-list')!.addEventListener('click', () => setViewMode('list'));
   document.getElementById('view-icons')!.addEventListener('click', () => setViewMode('icons'));
 
+  document.getElementById('semester-filter')!.addEventListener('change', (e) => {
+    setSemesterFilter((e.target as HTMLSelectElement).value);
+  });
+
+  const newNoteButton = document.getElementById('new-note-button') as HTMLButtonElement;
+  newNoteButton.addEventListener('click', async () => {
+    if (!selectedCourse) return;
+    const note = await atlasApi.createNote(selectedCourse.id);
+    await openNoteEditor(note);
+  });
+
+  const noteTitleInput = document.getElementById('note-title-input') as HTMLInputElement;
+  noteTitleInput.addEventListener('blur', async () => {
+    if (currentNoteId === null) return;
+    await atlasApi.updateNoteTitle(currentNoteId, noteTitleInput.value.trim());
+  });
+  noteTitleInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') noteTitleInput.blur();
+  });
+
+  document.getElementById('note-close')!.addEventListener('click', closeNoteEditor);
+  document.getElementById('note-fullscreen')!.addEventListener('click', toggleNoteFullscreen);
+  document.getElementById('note-editor-overlay')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeNoteEditor();
+  });
+
+  atlasApi.onNoteContextMenuDelete(async (noteId) => {
+    if (!(await showConfirm("Delete this note? This can't be undone."))) return;
+    if (currentNoteId === noteId) await closeNoteEditor();
+    await atlasApi.deleteNote(noteId);
+    await renderNotes();
+  });
+
   document.getElementById('preview-close')!.addEventListener('click', closePreview);
   document.getElementById('preview-fullscreen')!.addEventListener('click', toggleFullscreenPreview);
   document.getElementById('preview-overlay')!.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closePreview();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closePreview();
+    if (e.key !== 'Escape') return;
+    if (!(document.getElementById('note-editor-overlay') as HTMLElement).hidden) {
+      closeNoteEditor();
+    } else {
+      closePreview();
+    }
   });
 
   document.getElementById('zoom-in')!.addEventListener('click', () => setImageZoom(imageZoom + ZOOM_STEP));
@@ -441,6 +662,7 @@ async function init(): Promise<void> {
     if (selectedCourse && selectedCourse.id === courseId) selectedCourse = null;
     await renderCourses();
     await renderResources();
+    await renderNotes();
   });
 
   document.getElementById('confirm-cancel')!.addEventListener('click', () => resolveConfirm(false));

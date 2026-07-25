@@ -36,6 +36,18 @@ export type Preview =
   | { type: 'text'; text: string }
   | { type: 'unsupported'; reason?: string };
 
+export interface Note {
+  id: number;
+  course_id: number;
+  title: string;
+  content_markdown: string;
+  is_handwritten: number;
+  image_path: string | null;
+  ocr_text: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
@@ -76,5 +88,16 @@ contextBridge.exposeInMainWorld('atlas', {
   },
   onResourcesChanged: (handler: (courseId: number) => void): void => {
     ipcRenderer.on('resources:changed', (_event, courseId: number) => handler(courseId));
+  },
+  listNotes: (courseId: number): Promise<Note[]> => ipcRenderer.invoke('notes:listByCourse', courseId),
+  createNote: (courseId: number): Promise<Note> => ipcRenderer.invoke('notes:create', courseId),
+  updateNoteContent: (noteId: number, contentMarkdown: string): Promise<void> =>
+    ipcRenderer.invoke('notes:updateContent', noteId, contentMarkdown),
+  updateNoteTitle: (noteId: number, title: string): Promise<void> =>
+    ipcRenderer.invoke('notes:updateTitle', noteId, title),
+  deleteNote: (noteId: number): Promise<void> => ipcRenderer.invoke('notes:delete', noteId),
+  showNoteContextMenu: (noteId: number): void => ipcRenderer.send('notes:contextMenu', noteId),
+  onNoteContextMenuDelete: (handler: (noteId: number) => void): void => {
+    ipcRenderer.on('notes:contextMenuDelete', (_event, noteId: number) => handler(noteId));
   },
 });

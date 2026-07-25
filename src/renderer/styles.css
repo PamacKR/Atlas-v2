@@ -20,6 +20,26 @@ h1 {
   margin: 0 0 1.5rem 0;
 }
 
+.courses-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.courses-header h2 {
+  margin: 0;
+}
+
+#semester-filter {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  font-size: 0.85rem;
+}
+
 ul#course-list {
   list-style: none;
   padding: 0;
@@ -466,4 +486,154 @@ form#course-form button {
 
 #confirm-yes:hover {
   background: #8f3636;
+}
+
+section#notes-section {
+  margin-top: 2rem;
+}
+
+ul#note-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+}
+
+ul#note-list li {
+  padding: 0.6rem 0.8rem;
+  background: #1a1e24;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+ul#note-list li .note-updated {
+  color: #8a919c;
+  font-size: 0.78rem;
+}
+
+button#new-note-button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  cursor: pointer;
+}
+
+#note-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 10;
+}
+
+/* Same [hidden]-vs-ID-selector trap documented elsewhere in this file —
+   see CLAUDE.md "A recurring CSS bug to check for explicitly". */
+#note-editor-overlay:not([hidden]) {
+  display: flex;
+}
+
+#note-editor-panel {
+  background: #16191e;
+  border-radius: 8px;
+  border: 1px solid #2a2f37;
+  width: 100%;
+  height: 100%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+#note-editor-overlay.fullscreen {
+  padding: 0;
+}
+
+#note-editor-overlay.fullscreen #note-editor-panel {
+  max-width: none;
+  border-radius: 0;
+  border: none;
+  padding: 0.4rem;
+}
+
+#note-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+#note-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e6e8eb;
+}
+
+#note-title-input:hover,
+#note-title-input:focus {
+  border-color: #2a2f37;
+  background: #1a1e24;
+  outline: none;
+}
+
+#note-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+#note-save-status {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+#note-fullscreen,
+#note-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #2a2f37;
+  background: #1a1e24;
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+#note-fullscreen svg,
+#note-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+#note-fullscreen:hover,
+#note-close:hover {
+  background: #262c34;
+}
+
+#note-editor-root {
+  flex: 1;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+/* Toast UI Editor fills whatever container height it's given. */
+#note-editor-root .toastui-editor-defaultUI {
+  height: 100%;
 }

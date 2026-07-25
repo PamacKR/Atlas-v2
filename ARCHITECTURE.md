@@ -31,6 +31,12 @@ Electron was chosen over Tauri and native Python/Qt because:
 - Tauri would produce a lighter binary, but the Rust↔JS bridge adds friction for Google API calls and OCR pipelines with little payoff at V1 scale (single user, single machine).
 - Python/PyQt has a better ML/OCR ecosystem, but worse embedded-document-viewer support and a rougher desktop packaging story.
 
+### Renderer build pipeline: esbuild, added for the notes editor
+
+The renderer (`src/renderer/renderer.ts`) originally had no bundler at all — it's loaded as a plain, non-module `<script>` tag (the window has `contextIsolation: true`, `nodeIntegration: false`, so there's no `require` and no module-level `exports` object either), and `tsc` alone was enough as long as the file avoided `import`/`export` syntax (which makes `tsc` emit CommonJS boilerplate that throws in that environment).
+
+Adding the notes editor (see "Notes" below) needed a real npm UI library (`@toast-ui/editor`), and that library's published build externalizes its ProseMirror dependencies for bundler consumption — it isn't usable from a bare `<script>` tag. Rather than hand-vendor a third-party prebuilt bundle of uncertain provenance, `esbuild` was added as a dev dependency solely to bundle `renderer.ts` (`scripts/build-renderer.js`) into one browser-ready IIFE, resolving `import`s of npm packages along the way. `main.ts`/`preload.ts` are unaffected — they're proper CommonJS already and still compile via `tsc` directly. Type-checking for the renderer runs as a separate `tsc --noEmit -p tsconfig.renderer.json` step (esbuild transpiles but doesn't type-check). This also means `renderer.ts` can use normal `import`/`export` syntax going forward — the constraint that drove the original workaround no longer applies to that file.
+
 ## 2. Data store: SQLite (embedded, local-first)
 
 Atlas maintains "the canonical academic database" (PRD section 15) — course info, metadata, file locations, deadlines, announcements, assignments, OCR text, indexes, and relationships.
@@ -102,6 +108,19 @@ Every resource has a native right-click context menu (Electron `Menu`, not an in
 - Anything else (zip, unrecognized types) is streamed as an `application/octet-stream` download — the browser's natural behavior for content it can't render, same role the old "Open in default app" fallback played.
 
 This deliberately replaces what used to be "Open in default app" (`shell.openPath`, which launched the OS's associated desktop application — Word, Excel, etc.) — the user specifically wanted every file type reachable from browser tabs for fast switching while working, not separate desktop windows. It also deliberately does **not** route through Google Docs/Sheets/Slides: those can only preview a file they can fetch from a public URL, so the only way to get Office files in front of them would be uploading each one to Google Drive first — a real architecture change (Drive OAuth write scope, user files leaving local storage) that's scoped for Phase 3, not something to pull forward silently. The local-render approach reuses code that already existed for in-app preview and keeps everything on-machine.
+
+## 8. Notes: Markdown, flat per course, live-rendering editor
+
+Format and organization are both resolved — see `docs/open-questions.md` #1 for the full reasoning. Summary:
+
+- **Format: Markdown**, not rich text. The deciding factor was Claude Code integration, not editing convenience: rich text (HTML or a JSON doc tree) would just get flattened to something markdown-like before Claude could use it anyway, so storing markdown from the start avoids a lossy round-trip and keeps notes trivially indexable by the existing FTS5 `search_index` table. `notes.content_markdown` (schema already had this column from Phase 0).
+- **Organization: flat per course, no folders/subfolders.** The user's prior Notion workflow was structurally "semester > course > session-titled note" (e.g. "W1L1", "W1L2") — Atlas already provides the semester (see below) and course layers, so a note just needs a user-given title, not a second manually-maintained folder tree inside each course.
+- **Editor: Toast UI Editor** (`@toast-ui/editor`, MIT), mounted in `wysiwyg` mode — typing `#`/`**`/etc. renders live (heading/bold/etc. as you type), matching the Notion/Obsidian feel the user asked for, rather than a raw-markdown-plus-separate-preview split. Chosen over Milkdown/TipTap/ProseMirror-direct because it ships a working webpack-externalized build that a bundler can actually resolve (see "Renderer build pipeline" under §1) without Atlas having to hand-assemble a ProseMirror schema. Content autosaves 600ms after the last edit (debounced) and flushes immediately on close.
+- Notes have no on-disk file representation — content lives only in `notes.content_markdown`, consistent with "Atlas owns the data": there's no separate file for a watcher to track, no naming/collision concerns, and export (e.g. to hand to a non-MCP AI tool) is a Context Builder/static-export concern (§5–6), not a notes-storage one.
+
+### Semester filter
+
+Courses already carried a `term` field (the fixed Monsoon/Spring dropdown). A course-list filter (`#semester-filter`) was added alongside the notes work, at the user's request, to scope the visible course list to one semester at a time — client-side filtering over the existing `courses.term` column, no schema change. The selection is a persisted `app_settings` entry (same mechanism as the view-mode setting, §2), so it survives a relaunch rather than resetting to "all" every time.
 
 ## Layer summary
 
