@@ -10,10 +10,12 @@
   <div id="app-shell">
     <nav id="sidebar">
       <div id="sidebar-brand">Atlas</div>
-      <button class="sidebar-nav-item active" type="button" data-scroll-target="dashboard-section">🏠 Dashboard</button>
-      <button class="sidebar-nav-item" type="button" data-scroll-target="courses-section">📚 Courses</button>
+      <button class="sidebar-nav-item active" type="button" data-page="dashboard">🏠 Dashboard</button>
+      <button class="sidebar-nav-item" type="button" data-page="courses">📚 Courses</button>
+      <button class="sidebar-nav-item" type="button" data-page="resources">🗂️ Resources</button>
+      <button class="sidebar-nav-item" type="button" data-page="notes">📝 Notes</button>
       <button class="sidebar-nav-item" id="sidebar-search-button" type="button">🔍 Search</button>
-      <button class="sidebar-nav-item" type="button" data-scroll-target="settings-section">⚙️ Settings</button>
+      <button class="sidebar-nav-item" type="button" data-page="settings">⚙️ Settings</button>
     </nav>
 
     <div id="main-area">
@@ -25,7 +27,7 @@
         <button id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">🌙</button>
       </header>
 
-      <section id="dashboard-section">
+      <section id="page-dashboard" class="app-page">
         <h2>Dashboard</h2>
         <div id="dashboard-widgets">
           <div class="dashboard-widget">
@@ -48,18 +50,16 @@
         </div>
       </section>
 
-      <section id="courses-section">
-        <div class="courses-header">
-          <h2>Courses</h2>
-          <select id="semester-filter">
-            <option value="">All semesters</option>
-            <option value="Monsoon 26">Monsoon 26</option>
-            <option value="Spring 27">Spring 27</option>
-            <option value="Monsoon 27">Monsoon 27</option>
-            <option value="Spring 28">Spring 28</option>
-          </select>
+      <section id="page-courses" class="app-page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>Courses</h2>
+            <p class="muted">All your courses in one place.</p>
+          </div>
+          <button id="add-course-toggle" type="button">+ Add course</button>
         </div>
-        <form id="course-form">
+
+        <form id="course-form" hidden>
           <input id="course-name" type="text" placeholder="Course name" required />
           <input id="course-code" type="text" placeholder="Code (optional)" />
           <select id="course-term">
@@ -72,66 +72,148 @@
           <button type="submit">Add course</button>
         </form>
 
-        <ul id="course-list"></ul>
-      </section>
-
-      <section id="resources-section" hidden>
-        <div class="resources-header">
-          <h2 id="resources-heading">Resources</h2>
-          <div class="view-toggle">
-            <button id="view-list" type="button" class="active">List</button>
-            <button id="view-icons" type="button">Icons</button>
+        <div class="courses-toolbar">
+          <select id="semester-filter">
+            <option value="">All semesters</option>
+            <option value="Monsoon 26">Monsoon 26</option>
+            <option value="Spring 27">Spring 27</option>
+            <option value="Monsoon 27">Monsoon 27</option>
+            <option value="Spring 28">Spring 28</option>
+          </select>
+          <div class="courses-toolbar-right">
+            <select id="course-sort">
+              <option value="name">Sort by: Name</option>
+              <option value="resources">Sort by: Resources</option>
+            </select>
+            <div class="view-toggle">
+              <button id="course-view-grid" type="button" class="active">Grid</button>
+              <button id="course-view-list" type="button">List</button>
+            </div>
           </div>
         </div>
-        <ul id="resource-list" class="view-list"></ul>
-        <button id="upload-button" type="button">Upload file</button>
-      </section>
 
-      <section id="notes-section" hidden>
-        <div class="resources-header">
-          <h2 id="notes-heading">Notes</h2>
+        <ul id="course-list" class="view-grid"></ul>
+
+        <div id="course-detail" hidden>
+          <h3 id="course-detail-heading"></h3>
+
+          <section id="deadlines-section">
+            <div class="resources-header">
+              <h4 id="deadlines-heading">Deadlines</h4>
+              <div class="view-toggle">
+                <button id="deadline-view-list-toggle" type="button" class="active">List</button>
+                <button id="deadline-view-icons-toggle" type="button">Icons</button>
+              </div>
+            </div>
+            <ul id="deadline-list" class="view-list"></ul>
+            <button id="new-deadline-button" type="button">Add deadline</button>
+          </section>
+
+          <section id="watched-folders-section">
+            <h4>Watched folders</h4>
+            <p class="muted">Files added to a watched folder are copied in automatically.</p>
+            <ul id="watched-folder-list"></ul>
+            <button id="add-watch-folder" type="button">Watch a folder…</button>
+          </section>
         </div>
-        <ul id="note-list"></ul>
-        <button id="new-note-button" type="button">New note</button>
       </section>
 
-      <section id="deadlines-section" hidden>
-        <div class="resources-header">
-          <h2 id="deadlines-heading">Deadlines</h2>
+      <section id="page-resources" class="app-page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>Resources</h2>
+            <p class="muted">All your course materials in one place.</p>
+          </div>
+          <div class="resources-upload-control">
+            <select id="resources-upload-course"></select>
+            <button id="upload-button" type="button">Upload file</button>
+          </div>
         </div>
-        <ul id="deadline-list" class="view-list"></ul>
-        <button id="new-deadline-button" type="button">Add deadline</button>
+
+        <div class="chip-row" id="resources-kind-filter">
+          <button class="chip active" type="button" data-kind-filter="">All</button>
+          <button class="chip" type="button" data-kind-filter="pdf">PDF</button>
+          <button class="chip" type="button" data-kind-filter="docx,text,markdown">Document</button>
+          <button class="chip" type="button" data-kind-filter="image">Image</button>
+          <button class="chip" type="button" data-kind-filter="pptx">Presentation</button>
+          <button class="chip" type="button" data-kind-filter="xlsx">Spreadsheet</button>
+          <button class="chip" type="button" data-kind-filter="zip,other">Other</button>
+        </div>
+
+        <div class="split-layout" id="resources-split">
+          <aside class="split-rail">
+            <h4>Courses</h4>
+            <ul id="resources-course-rail"></ul>
+          </aside>
+          <div class="split-list">
+            <div class="view-toggle">
+              <button id="view-list" type="button" class="active">List</button>
+              <button id="view-icons" type="button">Icons</button>
+            </div>
+            <ul id="all-resources-list" class="view-list"></ul>
+          </div>
+          <div class="split-preview" id="resources-preview-pane" hidden>
+            <div class="split-preview-header">
+              <span id="preview-title"></span>
+              <div class="split-preview-actions">
+                <button id="preview-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+                <button id="preview-close" type="button" title="Close" aria-label="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+            <p id="preview-note" class="muted" hidden></p>
+            <div id="zoom-controls" hidden>
+              <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+              <span id="zoom-level">100%</span>
+              <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+              <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
+            </div>
+            <div id="preview-body"></div>
+          </div>
+        </div>
       </section>
 
-      <section id="watched-folders-section" hidden>
-        <h3>Watched folders</h3>
-        <p class="muted">Files added to a watched folder are copied in automatically.</p>
-        <ul id="watched-folder-list"></ul>
-        <button id="add-watch-folder" type="button">Watch a folder…</button>
+      <section id="page-notes" class="app-page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>Notes</h2>
+            <p class="muted">All your notes in one place.</p>
+          </div>
+          <div class="resources-upload-control">
+            <select id="new-note-course"></select>
+            <button id="new-note-button" type="button">+ New note</button>
+          </div>
+        </div>
+
+        <div class="split-layout" id="notes-split">
+          <div class="split-list" id="notes-list-pane">
+            <div id="all-notes-list"></div>
+          </div>
+          <div class="split-preview" id="notes-editor-pane" hidden>
+            <div class="split-preview-header">
+              <input id="note-title-input" type="text" placeholder="Untitled" />
+              <div class="split-preview-actions">
+                <span id="note-save-status" class="muted"></span>
+                <button id="note-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+                <button id="note-close" type="button" title="Close" aria-label="Close">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+            <div id="note-editor-root"></div>
+          </div>
+        </div>
       </section>
 
-      <section id="settings-section">
+      <section id="page-settings" class="app-page" hidden>
         <h2>Settings</h2>
         <p id="data-dir" class="muted"></p>
       </section>
-    </div>
-  </div>
-
-  <div id="note-editor-overlay" hidden>
-    <div id="note-editor-panel">
-      <div id="note-editor-header">
-        <input id="note-title-input" type="text" placeholder="Untitled" />
-        <div id="note-editor-actions">
-          <span id="note-save-status" class="muted"></span>
-          <button id="note-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-          </button>
-          <button id="note-close" type="button" title="Close" aria-label="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>
-      <div id="note-editor-root"></div>
     </div>
   </div>
 
@@ -180,30 +262,6 @@
           <button id="deadline-cancel-button" type="button">Cancel</button>
         </div>
       </form>
-    </div>
-  </div>
-
-  <div id="preview-overlay" hidden>
-    <div id="preview-panel">
-      <div id="preview-panel-header">
-        <span id="preview-title"></span>
-        <div id="preview-panel-actions">
-          <button id="preview-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-          </button>
-          <button id="preview-close" type="button" title="Close" aria-label="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>
-      <p id="preview-note" class="muted" hidden></p>
-      <div id="zoom-controls" hidden>
-        <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
-        <span id="zoom-level">100%</span>
-        <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
-        <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
-      </div>
-      <div id="preview-body"></div>
     </div>
   </div>
 

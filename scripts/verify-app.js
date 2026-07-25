@@ -34,28 +34,68 @@ const fs = require('fs');
   await window.waitForLoadState('domcontentloaded');
   await window.waitForTimeout(500); // let the async init() finish
 
+  // The sidebar is real page-switching (not a scroll shortcut) — most tests
+  // below need the right page active before clicking something on it.
+  async function goToPage(name) {
+    await window.click(`.sidebar-nav-item[data-page="${name}"]`);
+    await window.waitForTimeout(300);
+  }
+
   const dataDirText = await window.textContent('#data-dir');
   console.log('data-dir text:', JSON.stringify(dataDirText));
   if (!dataDirText || !dataDirText.includes(testDataDir)) {
     throw new Error('FAIL: data-dir text missing or unexpected');
   }
 
+  // --- Sidebar nav: genuine page switching, not a decorative scroll shortcut.
+  await goToPage('courses');
+  let coursesPageHidden = await window.getAttribute('#page-courses', 'hidden');
+  let dashboardPageHidden = await window.getAttribute('#page-dashboard', 'hidden');
+  console.log('after clicking Courses — courses page hidden:', coursesPageHidden, 'dashboard page hidden:', dashboardPageHidden);
+  if (coursesPageHidden !== null) throw new Error('FAIL: Courses page did not become visible');
+  if (dashboardPageHidden === null) throw new Error('FAIL: Dashboard page did not hide when switching to Courses');
+  const coursesNavActive = await window.evaluate(() =>
+    document.querySelector('.sidebar-nav-item[data-page="courses"]').classList.contains('active')
+  );
+  if (!coursesNavActive) throw new Error('FAIL: Courses sidebar nav item did not become active');
+
+  // Sidebar "Search" just focuses the search box (same as Ctrl+L) — it
+  // isn't a page, so it shouldn't change which page is active.
+  await window.click('#sidebar-search-button');
+  await window.waitForTimeout(100);
+  const focusedAfterSidebarSearch = await window.evaluate(() => document.activeElement && document.activeElement.id);
+  console.log('focused element after sidebar Search click:', focusedAfterSidebarSearch);
+  if (focusedAfterSidebarSearch !== 'search-input') {
+    throw new Error(`FAIL: sidebar Search did not focus the search input, got "${focusedAfterSidebarSearch}"`);
+  }
+  const stillOnCoursesAfterSearchClick = await window.getAttribute('#page-courses', 'hidden');
+  if (stillOnCoursesAfterSearchClick !== null) {
+    throw new Error('FAIL: clicking sidebar Search should not navigate away from the current page');
+  }
+  await window.keyboard.press('Escape');
+
   const beforeCount = (await window.$$('#course-list li')).length;
   console.log('courses before:', beforeCount);
 
+  // "+ Add course" is a rare action (a handful of courses per semester) —
+  // the form stays tucked behind this toggle rather than always on screen.
+  await window.click('#add-course-toggle');
+  await window.waitForTimeout(150);
   await window.fill('#course-name', 'Verify Script Test Course');
   await window.fill('#course-code', 'VERIFY101');
   await window.selectOption('#course-term', 'Monsoon 26');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
+  const formHiddenAfterSubmit = await window.getAttribute('#course-form', 'hidden');
+  if (formHiddenAfterSubmit === null) throw new Error('FAIL: course-form did not hide itself after submit');
 
   const items = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
   console.log('courses after:', items);
   if (!items.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: added course did not appear in the list');
   }
-  if (!items.some((t) => t && t.includes('Monsoon 26'))) {
-    throw new Error('FAIL: term dropdown value did not persist/display');
+  if (!items.some((t) => t && t.includes('0') && t.includes('Resources'))) {
+    throw new Error('FAIL: new course card did not show a resource count');
   }
 
   // Semester filter: the course was created with term "Monsoon 26" above.
@@ -82,6 +122,20 @@ const fs = require('fs');
   }
   console.log('semester filter: PASS');
 
+  // Course view toggle (grid default, list alternative) + sort.
+  await window.click('#course-view-list');
+  await window.waitForTimeout(200);
+  let courseListClass = await window.getAttribute('#course-list', 'class');
+  if (!courseListClass || !courseListClass.includes('view-list')) {
+    throw new Error('FAIL: course list view toggle to "list" did not apply');
+  }
+  await window.click('#course-view-grid');
+  await window.waitForTimeout(200);
+  courseListClass = await window.getAttribute('#course-list', 'class');
+  if (!courseListClass || !courseListClass.includes('view-grid')) {
+    throw new Error('FAIL: course list view toggle back to "grid" did not apply');
+  }
+
   // Theme toggle: dark by default, switches to light on click, and persists
   // across a reload (via the same app_settings mechanism as viewMode/
   // semesterFilter).
@@ -101,48 +155,32 @@ const fs = require('fs');
   await window.click('#theme-toggle'); // back to dark for the rest of the run
   await window.waitForTimeout(200);
 
-  // Sidebar nav: a scroll-to-section shortcut, not real client-side
-  // routing — clicking "Courses" should scroll #courses-section into view
-  // and mark that nav item active.
-  await window.click('.sidebar-nav-item[data-scroll-target="courses-section"]');
-  await window.waitForTimeout(400);
-  const coursesNavActive = await window.evaluate(() =>
-    document.querySelector('.sidebar-nav-item[data-scroll-target="courses-section"]').classList.contains('active')
-  );
-  console.log('"Courses" sidebar nav item active after click:', coursesNavActive);
-  if (!coursesNavActive) throw new Error('FAIL: clicking the Courses sidebar nav item did not mark it active');
-  const dashboardNavStillActive = await window.evaluate(() =>
-    document.querySelector('.sidebar-nav-item[data-scroll-target="dashboard-section"]').classList.contains('active')
-  );
-  if (dashboardNavStillActive) throw new Error('FAIL: Dashboard sidebar nav item should no longer be active');
+  // Reload resets to the Dashboard page — go back to Courses.
+  await goToPage('courses');
 
-  // Sidebar "Search" focuses the search input, same as Ctrl+L.
-  await window.click('#sidebar-search-button');
-  await window.waitForTimeout(100);
-  const focusedAfterSidebarSearch = await window.evaluate(() => document.activeElement && document.activeElement.id);
-  console.log('focused element after sidebar Search click:', focusedAfterSidebarSearch);
-  if (focusedAfterSidebarSearch !== 'search-input') {
-    throw new Error(`FAIL: sidebar Search did not focus the search input, got "${focusedAfterSidebarSearch}"`);
-  }
-
-  // Select the course, then upload a resource into it.
-  await window.click('#course-list li');
+  // Select the course: shows its drill-down (Deadlines + Watched folders)
+  // inline on the Courses page — Resources/Notes are separate global pages
+  // now, not shown here.
+  await window.click('#course-list li.course-card');
   await window.waitForTimeout(200);
 
-  const courseId = await window.$eval('#course-list li', (el) => Number(el.dataset.courseId));
+  const courseId = await window.$eval('#course-list li.course-card.selected', (el) => Number(el.dataset.courseId));
 
-  const resourcesHeading = await window.textContent('#resources-heading');
-  console.log('resources heading:', resourcesHeading);
-  if (!resourcesHeading || !resourcesHeading.includes('Verify Script Test Course')) {
-    throw new Error('FAIL: resources section did not show the selected course');
+  const courseDetailHidden = await window.getAttribute('#course-detail', 'hidden');
+  console.log('course-detail hidden after selecting a course:', courseDetailHidden !== null);
+  if (courseDetailHidden !== null) throw new Error('FAIL: course-detail did not show after selecting a course');
+  const courseDetailHeading = await window.textContent('#course-detail-heading');
+  if (!courseDetailHeading.includes('Verify Script Test Course')) {
+    throw new Error('FAIL: course-detail heading did not show the selected course name');
   }
 
+  // --- Resources page (global — every resource across every course) ---
+  await goToPage('resources');
+  await window.selectOption('#resources-upload-course', String(courseId));
   await window.click('#upload-button');
   await window.waitForTimeout(300);
 
-  const resourceItems = await window.$$eval('#resource-list li', (els) =>
-    els.map((e) => e.textContent)
-  );
+  const resourceItems = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
   console.log('resources after upload:', resourceItems);
   if (!resourceItems.some((t) => t && t.includes('sample-lecture-notes.md'))) {
     throw new Error('FAIL: uploaded resource did not appear in the resource list');
@@ -151,19 +189,17 @@ const fs = require('fs');
   // Captured now (list is markdown-only at this point) rather than later,
   // since a later upload (the test image) sorts before it by added_at and
   // would otherwise make "the first .resource-name" ambiguous.
-  const markdownResourceId = await window.$eval('#resource-list li', (el) =>
+  const markdownResourceId = await window.$eval('#all-resources-list li', (el) =>
     Number(el.dataset.resourceId)
   );
 
-  // Click the filename (not a separate button) to open the in-app preview.
-  // Safe to actually click here — markdown preview renders in-app, unlike
-  // "Open in default app" which would launch a real external application.
-  await window.click('#resource-list .resource-name');
+  // Click the row to open the docked inline preview (not a modal).
+  await window.click('#all-resources-list .resource-name');
   await window.waitForTimeout(300);
 
-  const previewVisible = !(await window.isHidden('#preview-overlay'));
-  console.log('preview overlay visible:', previewVisible);
-  if (!previewVisible) throw new Error('FAIL: preview overlay did not open on filename click');
+  const previewVisible = !(await window.isHidden('#resources-preview-pane'));
+  console.log('resources preview pane visible:', previewVisible);
+  if (!previewVisible) throw new Error('FAIL: preview pane did not open on filename click');
 
   const previewHtml = await window.innerHTML('#preview-body');
   console.log('preview body contains "Sample lecture notes":', previewHtml.includes('Sample lecture notes'));
@@ -171,29 +207,30 @@ const fs = require('fs');
     throw new Error('FAIL: markdown preview did not render expected content');
   }
 
-  // "F" toggles preview fullscreen, so the user doesn't have to reach for
-  // the button — guarded to not fire while typing, so pressing "f" here
-  // (with no text field focused) should toggle it on, then off again.
+  // "F" toggles preview fullscreen (collapses the rail/list columns), so
+  // the user doesn't have to reach for the button — guarded to not fire
+  // while typing, so pressing "f" here (with no text field focused) should
+  // toggle it on, then off again.
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   let previewFullscreen = await window.evaluate(() =>
-    document.getElementById('preview-overlay').classList.contains('fullscreen')
+    document.getElementById('resources-split').classList.contains('pane-fullscreen')
   );
-  console.log('preview fullscreen after pressing "f":', previewFullscreen);
+  console.log('resources pane fullscreen after pressing "f":', previewFullscreen);
   if (!previewFullscreen) throw new Error('FAIL: pressing "f" did not enter fullscreen preview');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   previewFullscreen = await window.evaluate(() =>
-    document.getElementById('preview-overlay').classList.contains('fullscreen')
+    document.getElementById('resources-split').classList.contains('pane-fullscreen')
   );
-  console.log('preview fullscreen after pressing "f" again:', previewFullscreen);
+  console.log('resources pane fullscreen after pressing "f" again:', previewFullscreen);
   if (previewFullscreen) throw new Error('FAIL: pressing "f" again did not exit fullscreen preview');
 
   // Regression check: zoom controls must stay hidden for a non-image
   // preview. This previously broke because #zoom-controls had an
   // unconditional `display: flex` on its ID selector, which outranked the
   // browser's default `[hidden] { display: none }` rule — same class of
-  // bug already hit (and fixed) for #preview-overlay and #confirm-overlay.
+  // bug hit (and fixed) several times now across different elements.
   const zoomHiddenForMarkdown = await window.isHidden('#zoom-controls');
   console.log('zoom controls hidden for markdown preview:', zoomHiddenForMarkdown);
   if (!zoomHiddenForMarkdown) {
@@ -202,8 +239,8 @@ const fs = require('fs');
 
   await window.click('#preview-close');
   await window.waitForTimeout(200);
-  if (!(await window.isHidden('#preview-overlay'))) {
-    throw new Error('FAIL: preview overlay did not close');
+  if (!(await window.isHidden('#resources-preview-pane'))) {
+    throw new Error('FAIL: preview pane did not close');
   }
 
   // "Open in browser": the native context menu itself can't be automated,
@@ -249,8 +286,7 @@ const fs = require('fs');
   const xlsxResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
   if (!xlsxResource) throw new Error('FAIL: xlsx upload did not return a resource');
   const xlsxResourceId = xlsxResource.id;
-  await window.click('#course-list li');
-  await window.waitForTimeout(200);
+  await goToPage('resources'); // force renderResourcesPage() to pick it up
   const xlsxBrowserUrl = await window.evaluate(
     (id) => window.atlas.getResourceBrowserUrl(id),
     xlsxResourceId
@@ -279,8 +315,7 @@ const fs = require('fs');
   const imageResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
   if (!imageResource) throw new Error('FAIL: image upload did not return a resource');
   const imageResourceId = imageResource.id;
-  await window.click('#course-list li');
-  await window.waitForTimeout(200);
+  await goToPage('resources');
   await window.click(`li[data-resource-id="${imageResourceId}"] .resource-name`);
   await window.waitForTimeout(300);
 
@@ -344,8 +379,7 @@ const fs = require('fs');
   }, testTxtPath);
   const txtResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
   if (!txtResource) throw new Error('FAIL: .txt upload did not return a resource');
-  await window.click('#course-list li');
-  await window.waitForTimeout(200);
+  await goToPage('resources');
   await window.click(`li[data-resource-id="${txtResource.id}"] .resource-name`);
   await window.waitForTimeout(300);
   const zoomHiddenForTxt = await window.isHidden('#zoom-controls');
@@ -356,11 +390,33 @@ const fs = require('fs');
   await window.click('#preview-close');
   await window.waitForTimeout(200);
 
+  // Kind-filter chips (All/PDF/Document/Image/.../Other).
+  await window.click('#resources-kind-filter .chip[data-kind-filter="image"]');
+  await window.waitForTimeout(200);
+  const imageFilteredTexts = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  console.log('resources with "Image" chip filter:', imageFilteredTexts);
+  if (!imageFilteredTexts.some((t) => t.includes('test-image.png')) || imageFilteredTexts.some((t) => t.includes('grades.xlsx'))) {
+    throw new Error(`FAIL: Image chip filter did not correctly scope the list: ${JSON.stringify(imageFilteredTexts)}`);
+  }
+  await window.click('#resources-kind-filter .chip[data-kind-filter=""]');
+  await window.waitForTimeout(200);
+
+  // Course rail filter.
+  await window.click(`#resources-course-rail li:has-text("Verify Script Test Course")`);
+  await window.waitForTimeout(200);
+  const courseFilteredTexts = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  console.log('resources filtered to one course:', courseFilteredTexts.length, 'items');
+  if (courseFilteredTexts.length === 0) {
+    throw new Error('FAIL: course rail filter produced no results for a course with resources');
+  }
+  await window.click('#resources-course-rail li:has-text("All Resources")');
+  await window.waitForTimeout(200);
+
   // Icon view toggle.
   await window.click('#view-icons');
   await window.waitForTimeout(200);
-  const listClass = await window.getAttribute('#resource-list', 'class');
-  console.log('resource-list class in icon mode:', listClass);
+  const listClass = await window.getAttribute('#all-resources-list', 'class');
+  console.log('all-resources-list class in icon mode:', listClass);
   if (!listClass || !listClass.includes('view-icons')) {
     throw new Error('FAIL: icon view mode did not apply');
   }
@@ -383,14 +439,17 @@ const fs = require('fs');
     throw new Error(`FAIL: view mode did not persist back to list, got ${savedViewModeAfterList}`);
   }
 
-  // Notes: create, type live-rendered markdown content (including the "- "
+  // --- Notes page (global — every note across every course) ---
+  // Create, type live-rendered markdown content (including the "- "
   // bullet-list shortcut — the whole reason Milkdown/Crepe was chosen over
   // Toast UI Editor, which didn't support it), confirm autosave, close/
   // reopen to confirm persistence, then delete.
+  await goToPage('notes');
+  await window.selectOption('#new-note-course', String(courseId));
   await window.click('#new-note-button');
   await window.waitForTimeout(500);
-  const noteEditorVisible = !(await window.isHidden('#note-editor-overlay'));
-  console.log('note editor overlay visible:', noteEditorVisible);
+  const noteEditorVisible = !(await window.isHidden('#notes-editor-pane'));
+  console.log('notes editor pane visible:', noteEditorVisible);
   if (!noteEditorVisible) throw new Error('FAIL: note editor did not open on "New note"');
 
   await window.fill('#note-title-input', 'W1L1');
@@ -412,13 +471,13 @@ const fs = require('fs');
   console.log('typing "- " created a real bullet list item:', bulletCreated);
   if (!bulletCreated) throw new Error('FAIL: "- " did not convert to a real bullet list item');
 
-  // "F" toggles note fullscreen, but only when not actually typing in the
-  // note — typing "f" into the editor itself must produce a literal "f",
-  // never hijacked into a fullscreen toggle.
+  // "F" toggles note fullscreen (collapses the list column), but only when
+  // not actually typing in the note — typing "f" into the editor itself
+  // must produce a literal "f", never hijacked into a fullscreen toggle.
   await window.keyboard.type('f');
   await window.waitForTimeout(200);
   let noteFullscreenWhileTyping = await window.evaluate(() =>
-    document.getElementById('note-editor-overlay').classList.contains('fullscreen')
+    document.getElementById('notes-split').classList.contains('pane-fullscreen')
   );
   console.log('note fullscreen after typing "f" inside the editor (should stay false):', noteFullscreenWhileTyping);
   if (noteFullscreenWhileTyping) {
@@ -438,14 +497,14 @@ const fs = require('fs');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   let noteFullscreen = await window.evaluate(() =>
-    document.getElementById('note-editor-overlay').classList.contains('fullscreen')
+    document.getElementById('notes-split').classList.contains('pane-fullscreen')
   );
   console.log('note fullscreen after pressing "f" outside a text field:', noteFullscreen);
   if (!noteFullscreen) throw new Error('FAIL: pressing "f" did not enter note fullscreen');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   noteFullscreen = await window.evaluate(() =>
-    document.getElementById('note-editor-overlay').classList.contains('fullscreen')
+    document.getElementById('notes-split').classList.contains('pane-fullscreen')
   );
   console.log('note fullscreen after pressing "f" again:', noteFullscreen);
   if (noteFullscreen) throw new Error('FAIL: pressing "f" again did not exit note fullscreen');
@@ -453,27 +512,21 @@ const fs = require('fs');
   await window.click('#note-close');
   await window.waitForTimeout(300);
 
-  // Notes follow the same shared list/icon view toggle as resources.
-  await window.click('#view-icons');
-  await window.waitForTimeout(200);
-  const noteListClassInIcons = await window.getAttribute('#note-list', 'class');
-  console.log('note-list class in icon mode:', noteListClassInIcons);
-  if (!noteListClassInIcons || !noteListClassInIcons.includes('view-icons')) {
-    throw new Error('FAIL: icon view mode did not apply to the note list');
-  }
-  if ((await window.$$('#note-list li.icon-tile')).length === 0) {
-    throw new Error('FAIL: no icon tiles rendered for notes in icon view');
-  }
-  await window.click('#view-list');
-  await window.waitForTimeout(200);
-
-  const noteListAfterClose = await window.$$eval('#note-list li', (els) => els.map((e) => e.textContent));
+  const noteListAfterClose = await window.$$eval('#all-notes-list li[data-note-id]', (els) =>
+    els.map((e) => e.textContent)
+  );
   console.log('notes after close:', noteListAfterClose);
   if (!noteListAfterClose.some((t) => t && t.includes('W1L1'))) {
     throw new Error('FAIL: created note did not appear in the note list with its title');
   }
+  // Grouped by recency (Today/This week/Older) — a freshly-created note
+  // must land under "Today".
+  const todayGroupText = await window.textContent('.notes-group-header');
+  if (!todayGroupText.includes('Today')) {
+    throw new Error(`FAIL: expected the "Today" group header first, got "${todayGroupText}"`);
+  }
 
-  const noteId = await window.$eval('#note-list li', (el) => Number(el.dataset.noteId));
+  const noteId = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
   await window.click(`li[data-note-id="${noteId}"]`);
   await window.waitForTimeout(500);
   const reopenedNoteText = await window.textContent(noteEditableSelector);
@@ -501,9 +554,11 @@ const fs = require('fs');
   // Delete via the underlying API (native context menu can't be automated,
   // same limitation as course/resource/watched-folder delete).
   await window.evaluate((id) => window.atlas.deleteNote(id), noteId);
-  await window.click('#course-list li'); // reselect to force a refresh
+  await goToPage('notes'); // force a refresh
   await window.waitForTimeout(300);
-  const noteListAfterDelete = await window.$$eval('#note-list li', (els) => els.map((e) => e.textContent));
+  const noteListAfterDelete = await window.$$eval('#all-notes-list li[data-note-id]', (els) =>
+    els.map((e) => e.textContent)
+  );
   console.log('notes after delete:', noteListAfterDelete);
   if (noteListAfterDelete.some((t) => t && t.includes('W1L1'))) {
     throw new Error('FAIL: note still present after delete');
@@ -532,20 +587,16 @@ const fs = require('fs');
   await window.keyboard.press('Control+a');
   await window.keyboard.press('Control+b');
   await window.waitForTimeout(1200);
-  const boldNoteId = await window.evaluate(() => {
-    const li = document.querySelector('#note-list li');
-    return li ? Number(li.dataset.noteId) : null;
-  });
   await window.click('#note-close');
   await window.waitForTimeout(300);
-  const boldTitleInList = await window.$eval('#note-list li', (el) => el.textContent);
+  const boldTitleInList = await window.textContent('#all-notes-list li[data-note-id] .note-item-title');
   console.log('title derived from a bolded first line:', boldTitleInList);
   if (!boldTitleInList.includes('W2L3 Recap') || boldTitleInList.includes('**')) {
     throw new Error(`FAIL: title should be "W2L3 Recap" with no markdown markers, got "${boldTitleInList}"`);
   }
-  await window.evaluate((id) => window.atlas.deleteNote(id), boldNoteId);
-  await window.click('#course-list li');
-  await window.waitForTimeout(200);
+  const boldNoteIdActual = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
+  await window.evaluate((id) => window.atlas.deleteNote(id), boldNoteIdActual);
+  await goToPage('notes');
 
   // Confirm on-disk layout: course folder named after the course (not
   // course-<id>), and the uploaded file keeping its original filename.
@@ -564,7 +615,7 @@ const fs = require('fs');
   // earlier ("sample-lecture-notes.md") is still the only thing in the
   // index at this point (the notes created above were already deleted), so
   // a search for its content should surface exactly that one result and
-  // clicking it should open the resource preview.
+  // clicking it should open the resource preview (on the Resources page).
   await window.fill('#search-input', 'lecture');
   await window.waitForTimeout(500); // debounce (250ms) + IPC round-trip
   const searchResultTexts = await window.$$eval('#search-results li', (els) => els.map((e) => e.textContent));
@@ -574,7 +625,7 @@ const fs = require('fs');
   }
   await window.click('#search-results li');
   await window.waitForTimeout(400);
-  const previewVisibleAfterSearchClick = !(await window.isHidden('#preview-overlay'));
+  const previewVisibleAfterSearchClick = !(await window.isHidden('#resources-preview-pane'));
   console.log('preview opened from a search result:', previewVisibleAfterSearchClick);
   if (!previewVisibleAfterSearchClick) {
     throw new Error('FAIL: clicking a search result did not open the resource preview');
@@ -598,7 +649,7 @@ const fs = require('fs');
   }
   await window.press('#search-input', 'Enter');
   await window.waitForTimeout(400);
-  const previewVisibleAfterKeyboardNav = !(await window.isHidden('#preview-overlay'));
+  const previewVisibleAfterKeyboardNav = !(await window.isHidden('#resources-preview-pane'));
   console.log('preview opened via keyboard nav (ArrowDown + Enter):', previewVisibleAfterKeyboardNav);
   if (!previewVisibleAfterKeyboardNav) {
     throw new Error('FAIL: ArrowDown + Enter did not open the search result');
@@ -612,7 +663,7 @@ const fs = require('fs');
   await window.waitForTimeout(500);
   await window.press('#search-input', 'Enter');
   await window.waitForTimeout(400);
-  const previewVisibleAfterBareEnter = !(await window.isHidden('#preview-overlay'));
+  const previewVisibleAfterBareEnter = !(await window.isHidden('#resources-preview-pane'));
   console.log('preview opened via bare Enter (no ArrowDown):', previewVisibleAfterBareEnter);
   if (!previewVisibleAfterBareEnter) {
     throw new Error('FAIL: Enter alone did not open the top search result');
@@ -632,9 +683,8 @@ const fs = require('fs');
   await window.fill('#search-input', '');
   await window.keyboard.press('Escape');
 
-  // Ctrl+L jumps focus to search from anywhere, browser-address-bar style —
-  // click somewhere else first so this actually proves focus moved.
-  await window.click('#course-list li');
+  // Ctrl+L jumps focus to search from anywhere, browser-address-bar style.
+  await goToPage('courses');
   await window.keyboard.press('Control+l');
   await window.waitForTimeout(100);
   const focusedElementId = await window.evaluate(() => document.activeElement?.id);
@@ -644,14 +694,11 @@ const fs = require('fs');
   }
   (await window.$('#search-input'))?.evaluate((el) => el.blur());
 
-  // Deadlines: one unified per-course timeline (assignment/reading/quiz/
-  // .../manual), sorted incomplete-first then soonest-due-first, with
-  // completed items struck through. No separate "Assignments" tab was
-  // built — see docs/open-questions.md #13 for why that's deferred.
-  // Added via the add/edit modal (typed dd-mm-yyyy date, optional time,
-  // optional description with @-mention autocomplete) rather than an inline
-  // form, per later user feedback wanting more fields (time, description,
-  // file/note references) than an inline row could reasonably hold.
+  // --- Deadlines: nested in the Courses page's drill-down for the selected
+  // course. One unified per-course timeline (assignment/reading/quiz/.../
+  // manual), sorted incomplete-first then soonest-due-first, with completed
+  // items struck through. No separate "Assignments" tab was built — see
+  // docs/open-questions.md #13 for why that's deferred.
   async function fillDeadlineForm({ title, kind, date, time, description }) {
     await window.fill('#deadline-edit-title', title);
     if (kind) await window.selectOption('#deadline-edit-kind', kind);
@@ -724,9 +771,11 @@ const fs = require('fs');
   await window.waitForTimeout(300);
 
   // Icon view: deadlines share the app-wide list/icon toggle with
-  // resources/notes (no separate per-section toggle), and each kind gets
-  // its own icon.
-  await window.click('#view-icons');
+  // resources (a shared `viewMode` preference), but has its own toggle
+  // buttons on the Courses page — since Deadlines and Resources are
+  // separate pages now, the Resources page's toggle isn't reachable while
+  // looking at a course's deadlines.
+  await window.click('#deadline-view-icons-toggle');
   await window.waitForTimeout(200);
   const deadlineListClassInIcons = await window.getAttribute('#deadline-list', 'class');
   console.log('deadline-list class in icon mode:', deadlineListClassInIcons);
@@ -736,7 +785,7 @@ const fs = require('fs');
   if ((await window.$$('#deadline-list li.icon-tile')).length === 0) {
     throw new Error('FAIL: no icon tiles rendered for deadlines in icon view');
   }
-  await window.click('#view-list');
+  await window.click('#deadline-view-list-toggle');
   await window.waitForTimeout(200);
 
   // Viewer + @-mention: open "Homework 1", add a description referencing the
@@ -785,13 +834,14 @@ const fs = require('fs');
   }
   await window.click('#deadline-view-description .deadline-mention');
   await window.waitForTimeout(400);
-  const previewVisibleAfterMentionClick = !(await window.isHidden('#preview-overlay'));
+  const previewVisibleAfterMentionClick = !(await window.isHidden('#resources-preview-pane'));
   console.log('preview opened by clicking a description mention:', previewVisibleAfterMentionClick);
   if (!previewVisibleAfterMentionClick) {
     throw new Error('FAIL: clicking a description mention did not open the referenced resource');
   }
   await window.click('#preview-close');
   await window.waitForTimeout(200);
+  await goToPage('courses');
 
   // Editing: title/kind changes on an existing deadline should persist, not
   // create a duplicate.
@@ -840,7 +890,7 @@ const fs = require('fs');
     Number(el.dataset.deadlineId)
   );
   await window.evaluate((id) => window.atlas.deleteDeadline(id), dueTodayId);
-  await window.click('#course-list li'); // reselect to force a refresh
+  await window.click('#course-list li.course-card.selected'); // reselect to force a deadlines refresh
   await window.waitForTimeout(300);
   const deadlineTitlesAfterDelete = await window.$$eval(
     '#deadline-list li.deadline-item .deadline-title',
@@ -862,9 +912,9 @@ const fs = require('fs');
     throw new Error('FAIL: menu bar is not set to auto-hide');
   }
 
-  // Dashboard "My courses" card: lists every course with a colored initial
-  // avatar and its resource count, and clicking one selects that course and
-  // scrolls to the Courses section.
+  // --- Dashboard: global overview, not scoped to any one course ---
+  await goToPage('dashboard');
+
   const dashboardCourseTexts = await window.$$eval('#dashboard-course-list li', (els) =>
     els.map((e) => e.textContent)
   );
@@ -878,13 +928,18 @@ const fs = require('fs');
   }
   await window.click('#dashboard-course-list li');
   await window.waitForTimeout(400);
-  const coursesSectionSelectedAfterCardClick = await window.evaluate(
+  const onCoursesPageAfterCardClick = await window.getAttribute('#page-courses', 'hidden');
+  console.log('on Courses page after clicking a dashboard course card:', onCoursesPageAfterCardClick === null);
+  if (onCoursesPageAfterCardClick !== null) {
+    throw new Error('FAIL: clicking a dashboard "My courses" entry did not navigate to the Courses page');
+  }
+  const courseSelectedAfterCardClick = await window.evaluate(
     () => document.querySelector('#course-list li.selected') !== null
   );
-  console.log('course selected after clicking its dashboard card:', coursesSectionSelectedAfterCardClick);
-  if (!coursesSectionSelectedAfterCardClick) {
+  if (!courseSelectedAfterCardClick) {
     throw new Error('FAIL: clicking a dashboard "My courses" entry did not select that course');
   }
+  await goToPage('dashboard');
 
   // Dashboard (PRD §13): global across every course, not scoped to whatever
   // course happens to be open. At this point the test course still has the
@@ -914,8 +969,8 @@ const fs = require('fs');
     throw new Error(`FAIL: dashboard "what changed today" missing today's resource: ${JSON.stringify(dashboardActivityTexts)}`);
   }
 
-  // Clicking a dashboard item should select its course and open it directly
-  // — same navigation pattern as a global search result.
+  // Clicking a dashboard item should navigate to and open it directly —
+  // same navigation pattern as a global search result.
   await window.click('#dashboard-deadlines li');
   await window.waitForTimeout(400);
   const deadlineViewerVisibleFromDashboard = !(await window.isHidden('#deadline-editor-overlay'));
@@ -925,13 +980,20 @@ const fs = require('fs');
   }
   await window.click('#deadline-view-close');
   await window.waitForTimeout(200);
+  await goToPage('dashboard');
 
   await window.click('#dashboard-resources li');
   await window.waitForTimeout(400);
-  const previewVisibleFromDashboard = !(await window.isHidden('#preview-overlay'));
-  console.log('resource preview opened from dashboard:', previewVisibleFromDashboard);
-  if (!previewVisibleFromDashboard) {
-    throw new Error('FAIL: clicking a dashboard resource did not open its preview');
+  const onResourcesPageFromDashboard = await window.getAttribute('#page-resources', 'hidden');
+  const previewVisibleFromDashboard = !(await window.isHidden('#resources-preview-pane'));
+  console.log(
+    'on Resources page from dashboard:',
+    onResourcesPageFromDashboard === null,
+    '— preview visible:',
+    previewVisibleFromDashboard
+  );
+  if (onResourcesPageFromDashboard !== null || !previewVisibleFromDashboard) {
+    throw new Error('FAIL: clicking a dashboard resource did not navigate to Resources and open its preview');
   }
   await window.click('#preview-close');
   await window.waitForTimeout(200);
@@ -946,9 +1008,8 @@ const fs = require('fs');
   // item calls), rather than the native menu interaction itself. The
   // right-click -> menu -> click path needs a manual check by the user.
   await window.evaluate((id) => window.atlas.deleteResource(id), markdownResourceId);
-  await window.click('#course-list li'); // reselect to force a resources refresh
-  await window.waitForTimeout(300);
-  const resourcesAfterDelete = await window.$$eval('#resource-list li', (els) =>
+  await goToPage('resources'); // force a refresh
+  const resourcesAfterDelete = await window.$$eval('#all-resources-list li', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('resources after delete:', resourcesAfterDelete);
@@ -971,13 +1032,16 @@ const fs = require('fs');
   // deleted above) and point a watched folder at a throwaway directory that
   // already has a file in it, confirming the pre-existing file gets picked
   // up automatically (not just future ones).
+  await goToPage('courses');
+  await window.click('#add-course-toggle');
+  await window.waitForTimeout(150);
   await window.fill('#course-name', 'Watch Test Course');
   await window.selectOption('#course-term', 'Spring 27');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
-  await window.click('#course-list li');
+  await window.click('#course-list li.course-card');
   await window.waitForTimeout(200);
-  const watchCourseId = await window.$eval('#course-list li', (el) => Number(el.dataset.courseId));
+  const watchCourseId = await window.$eval('#course-list li.course-card.selected', (el) => Number(el.dataset.courseId));
 
   const watchFolderDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-watch-'));
   const preExistingFile = path.join(watchFolderDir, 'pre-existing-syllabus.txt');
@@ -997,10 +1061,11 @@ const fs = require('fs');
     throw new Error('FAIL: watched folder did not appear in the list');
   }
 
+  await goToPage('resources');
   // Chokidar's initial scan is async; poll briefly rather than a fixed sleep.
   let resourcesAfterWatch = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterWatch = await window.$$eval('#resource-list li', (els) => els.map((e) => e.textContent));
+    resourcesAfterWatch = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
     if (resourcesAfterWatch.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
     await window.waitForTimeout(300);
   }
@@ -1014,7 +1079,7 @@ const fs = require('fs');
   fs.writeFileSync(newFile, 'New notes dropped in while the folder was already being watched.');
   let resourcesAfterNewFile = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterNewFile = await window.$$eval('#resource-list li', (els) =>
+    resourcesAfterNewFile = await window.$$eval('#all-resources-list li', (els) =>
       els.map((e) => e.textContent)
     );
     if (resourcesAfterNewFile.some((t) => t && t.includes('week1-notes.txt'))) break;
@@ -1031,7 +1096,7 @@ const fs = require('fs');
   fs.unlinkSync(preExistingFile);
   let resourcesAfterSourceDelete = resourcesAfterNewFile;
   for (let i = 0; i < 10; i++) {
-    resourcesAfterSourceDelete = await window.$$eval('#resource-list li', (els) =>
+    resourcesAfterSourceDelete = await window.$$eval('#all-resources-list li', (els) =>
       els.map((e) => e.textContent)
     );
     if (!resourcesAfterSourceDelete.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
@@ -1065,7 +1130,7 @@ const fs = require('fs');
 
   let resourcesAfterManualDrop = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterManualDrop = await window.$$eval('#resource-list li', (els) =>
+    resourcesAfterManualDrop = await window.$$eval('#all-resources-list li', (els) =>
       els.map((e) => e.textContent)
     );
     if (resourcesAfterManualDrop.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;
@@ -1079,7 +1144,7 @@ const fs = require('fs');
   fs.unlinkSync(manuallyDroppedFile);
   let resourcesAfterManualStorageDelete = resourcesAfterManualDrop;
   for (let i = 0; i < 10; i++) {
-    resourcesAfterManualStorageDelete = await window.$$eval('#resource-list li', (els) =>
+    resourcesAfterManualStorageDelete = await window.$$eval('#all-resources-list li', (els) =>
       els.map((e) => e.textContent)
     );
     if (!resourcesAfterManualStorageDelete.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;
@@ -1098,6 +1163,8 @@ const fs = require('fs');
   // image URL gets baked directly into the saved note markdown — so a
   // previously-inserted image 404'd on the very next launch once the port
   // changed. Fixed by pinning the server to a fixed port (localServer.ts).
+  await goToPage('notes');
+  await window.selectOption('#new-note-course', String(watchCourseId));
   await window.click('#new-note-button');
   await window.waitForTimeout(500);
   const imageNoteEditableSelector = '.milkdown [contenteditable="true"]';
@@ -1128,7 +1195,7 @@ const fs = require('fs');
 
   await window.click('#note-close');
   await window.waitForTimeout(300);
-  const imageNoteId = await window.$eval('#note-list li', (el) => Number(el.dataset.noteId));
+  const imageNoteId = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
 
   // The exported .md file must link back to this course's own notes/note-images/
   // store via a relative path, not a per-note copy — no duplicated image bytes.
@@ -1165,6 +1232,7 @@ const fs = require('fs');
   // same data dir — this is the actual scenario the user asked about
   // ("even after a fresh launch"), not just that the setting persists in
   // the DB.
+  await goToPage('resources');
   await window.click('#view-icons');
   await window.waitForTimeout(200);
   await app.close();
@@ -1176,6 +1244,8 @@ const fs = require('fs');
   const relaunchedWindow = await relaunchedApp.firstWindow();
   await relaunchedWindow.waitForLoadState('domcontentloaded');
   await relaunchedWindow.waitForTimeout(500);
+  await relaunchedWindow.click('.sidebar-nav-item[data-page="resources"]');
+  await relaunchedWindow.waitForTimeout(300);
   const viewIconsActiveOnRelaunch = await relaunchedWindow.evaluate(() =>
     document.getElementById('view-icons').classList.contains('active')
   );
@@ -1184,7 +1254,7 @@ const fs = require('fs');
     throw new Error('FAIL: view mode did not survive a fresh app relaunch');
   }
 
-  await relaunchedWindow.click('#course-list li');
+  await relaunchedWindow.click('.sidebar-nav-item[data-page="notes"]');
   await relaunchedWindow.waitForTimeout(300);
   await relaunchedWindow.click(`li[data-note-id="${imageNoteId}"]`);
   await relaunchedWindow.waitForTimeout(800);

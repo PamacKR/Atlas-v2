@@ -475,10 +475,40 @@ ipcMain.handle('dashboard:courseSummaries', () => {
   return db
     .prepare(
       `SELECT courses.*,
-              (SELECT COUNT(*) FROM resources WHERE resources.course_id = courses.id) AS resource_count
+              (SELECT COUNT(*) FROM resources WHERE resources.course_id = courses.id) AS resource_count,
+              (SELECT COUNT(*) FROM deadlines WHERE deadlines.course_id = courses.id) AS deadline_count
        FROM courses
        WHERE courses.archived = 0
        ORDER BY courses.name`
+    )
+    .all();
+});
+
+// Cross-course listings for the global Resources/Notes pages (§7/§8) — the
+// per-course listResources/listNotes handlers still exist for course-scoped
+// callers (deadline mentions, dashboard drill-through), these two just add
+// the course name so a flat, unscoped list can still say which course each
+// item belongs to.
+ipcMain.handle('resources:listAll', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT resources.*, courses.name AS course_name
+       FROM resources
+       JOIN courses ON courses.id = resources.course_id
+       ORDER BY resources.added_at DESC`
+    )
+    .all();
+});
+
+ipcMain.handle('notes:listAll', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT notes.*, courses.name AS course_name
+       FROM notes
+       JOIN courses ON courses.id = notes.course_id
+       ORDER BY notes.updated_at DESC`
     )
     .all();
 });

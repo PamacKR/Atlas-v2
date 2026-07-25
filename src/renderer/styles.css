@@ -431,14 +431,441 @@ ul#course-list li.selected {
 }
 
 ul#course-list li .code,
-ul#resource-list li .code {
+ul#all-resources-list li .code {
   color: var(--color-text-muted);
   font-size: 0.8rem;
   margin-left: 0.5rem;
 }
 
-section#resources-section {
-  margin-top: 2rem;
+/* Shared by every top-level page (Courses/Resources/Notes): a title +
+   subtitle on the left, one prominent action on the right — matches the
+   mockup's header treatment across all three. */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.page-header h2 {
+  margin: 0 0 0.2rem 0;
+}
+
+.page-header .muted {
+  margin: 0;
+}
+
+#add-course-toggle {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: var(--color-accent);
+  color: white;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+
+.courses-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.courses-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+#course-sort {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+/* Grid is the default course view (matches the mockup); .view-list falls
+   back to the plain row layout course-list already had before this. */
+ul#course-list.view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem 0;
+}
+
+li.course-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 1rem;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+ul#course-list.view-grid li.course-card.selected {
+  outline: 2px solid var(--color-accent);
+}
+
+.course-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-bottom: 0.9rem;
+}
+
+.course-card-title-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.course-card-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.course-card-code {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+.course-card-menu {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+.course-card-menu:hover {
+  background: var(--color-hover-bg);
+}
+
+.course-card-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--color-border-soft);
+  padding-top: 0.7rem;
+}
+
+/* Flat-row alternative to the card grid (view-list toggle) */
+ul#course-list.view-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem 0;
+}
+
+ul#course-list.view-list li.course-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+  padding: 0.6rem 0.8rem;
+}
+
+ul#course-list.view-list li.course-card .course-card-top {
+  flex: 1;
+  margin-bottom: 0;
+  align-items: center;
+}
+
+ul#course-list.view-list li.course-card .course-card-counts {
+  border-top: none;
+  padding-top: 0;
+  flex-shrink: 0;
+}
+
+#course-detail {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+#course-detail-heading {
+  margin: 0 0 1rem 0;
+}
+
+/* Kind-filter chip row (Resources page) */
+.chip-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.chip.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.resources-upload-control {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.resources-upload-control select {
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+/* Three-column split for Resources (rail | list | preview) and two-column
+   for Notes (list | editor, no rail) — grid-template-columns differs per
+   page but the pane/list building blocks are shared. */
+.split-layout {
+  display: grid;
+  grid-template-columns: 180px minmax(260px, 1fr) minmax(0, 1.4fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+#notes-split {
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 1.6fr);
+}
+
+.split-rail h4 {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.split-rail ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.split-rail li {
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-rail li:hover {
+  background: var(--color-hover-bg);
+}
+
+.split-rail li.selected {
+  background: var(--color-hover-bg);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.split-list {
+  min-width: 0;
+}
+
+.split-preview {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 0;
+  flex-direction: column;
+  min-height: 400px;
+}
+
+/* Same [hidden]-vs-own-selector trap documented elsewhere in this file —
+   see CLAUDE.md "A recurring CSS bug to check for explicitly". This time
+   it's a class selector rather than an ID, but the same fix applies: an
+   author-stylesheet rule beats the browser's default `[hidden] { display:
+   none }` regardless of specificity, since author origin outranks
+   user-agent origin in the cascade — so `display` must be conditioned on
+   :not([hidden]) rather than set unconditionally on .split-preview itself. */
+.split-preview:not([hidden]) {
+  display: flex;
+}
+
+.split-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.split-preview-header #preview-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-preview-header input#note-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text);
+}
+
+.split-preview-header input#note-title-input:hover,
+.split-preview-header input#note-title-input:focus {
+  border-color: var(--color-border);
+  background: var(--color-bg-elevated);
+  outline: none;
+}
+
+.split-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.split-preview-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.split-preview-actions button:hover {
+  background: var(--color-hover-bg);
+}
+
+.split-preview-actions button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* "Fullscreen" collapses the rail/list columns so the preview/editor pane
+   fills the page — there's no overlay to expand over the whole window
+   anymore, since both panes are docked inline. */
+.split-layout.pane-fullscreen > *:not(.split-preview) {
+  display: none;
+}
+
+.split-layout.pane-fullscreen {
+  grid-template-columns: 1fr;
+}
+
+#preview-body {
+  flex: 1;
+  overflow: auto;
+  background: var(--color-canvas);
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+#preview-body.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#preview-body iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
+#note-editor-root {
+  flex: 1;
+  overflow: auto;
+  border-radius: 6px;
+}
+
+.icon-course {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  margin-top: 0.15rem;
+}
+
+/* Notes page: grouped by recency, flat headers + lists rather than one
+   long undifferentiated list. */
+.notes-group-header {
+  margin: 1.2rem 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.notes-group-header:first-child {
+  margin-top: 0;
+}
+
+ul.notes-group-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+ul.notes-group-list li {
+  padding: 0.6rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 0.3rem;
+}
+
+ul.notes-group-list li:hover {
+  background: var(--color-hover-bg);
+}
+
+ul.notes-group-list li.selected {
+  background: var(--color-hover-bg);
+  outline: 1px solid var(--color-accent);
+}
+
+.note-item-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-item-meta {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
 }
 
 .resources-header {
@@ -448,7 +875,8 @@ section#resources-section {
   margin-bottom: 0.75rem;
 }
 
-.resources-header h2 {
+.resources-header h2,
+.resources-header h4 {
   margin: 0;
 }
 
@@ -473,13 +901,13 @@ section#resources-section {
   border-color: var(--color-accent);
 }
 
-ul#resource-list {
+ul#all-resources-list {
   list-style: none;
   padding: 0;
   margin: 0 0 1rem 0;
 }
 
-ul#resource-list.view-list li {
+ul#all-resources-list.view-list li {
   padding: 0.6rem 0.8rem;
   background: var(--color-bg-elevated);
   border-radius: 6px;
@@ -496,7 +924,7 @@ ul#resource-list.view-list li {
   text-decoration: underline;
 }
 
-ul#resource-list.view-icons {
+ul#all-resources-list.view-icons {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 0.75rem;
@@ -570,7 +998,11 @@ button#add-watch-folder {
   font-size: 0.85rem;
 }
 
-form#course-form {
+/* Same [hidden]-vs-own-ID-selector trap as documented elsewhere in this
+   file (CLAUDE.md) — #course-form is now toggled via the `hidden`
+   attribute (the "+ Add course" button), so `display` must be conditioned
+   on :not([hidden]) rather than set unconditionally here. */
+form#course-form:not([hidden]) {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1.25rem;
@@ -592,122 +1024,6 @@ form#course-form button {
   background: var(--color-accent);
   color: white;
   cursor: pointer;
-}
-
-#preview-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-/* The [hidden] attribute's default `display: none` must win over the flex
-   layout below — an ID selector setting `display` unconditionally would
-   otherwise outrank it and keep the overlay visible (and click-blocking)
-   even while hidden. */
-#preview-overlay:not([hidden]) {
-  display: flex;
-}
-
-#preview-panel {
-  background: var(--color-bg-elevated-2);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  width: 100%;
-  height: 100%;
-  max-width: 900px;
-  display: flex;
-  flex-direction: column;
-  padding: 1rem;
-}
-
-#preview-overlay.fullscreen {
-  padding: 0;
-}
-
-#preview-overlay.fullscreen #preview-panel {
-  max-width: none;
-  border-radius: 0;
-  border: none;
-  padding: 0.4rem;
-}
-
-#preview-overlay.fullscreen #preview-panel-header {
-  margin-bottom: 0.3rem;
-}
-
-#preview-overlay.fullscreen #preview-body {
-  padding: 0.4rem;
-  border-radius: 0;
-}
-
-#preview-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
-#preview-title {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-#preview-panel-actions {
-  display: flex;
-  gap: 0.4rem;
-  flex-shrink: 0;
-}
-
-#preview-fullscreen,
-#preview-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 4px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
-  cursor: pointer;
-}
-
-#preview-fullscreen svg,
-#preview-close svg {
-  width: 16px;
-  height: 16px;
-}
-
-#preview-fullscreen:hover,
-#preview-close:hover {
-  background: var(--color-hover-bg);
-}
-
-#preview-body {
-  flex: 1;
-  overflow: auto;
-  background: var(--color-canvas);
-  border-radius: 6px;
-  padding: 1rem;
-}
-
-#preview-body.centered {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-#preview-body iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: white;
 }
 
 /* Zoom/scale styling is exclusive to the standalone image preview
@@ -1139,130 +1455,9 @@ ul#deadline-mention-suggestions li.active {
   background: var(--color-border-soft);
 }
 
-#note-editor-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  z-index: 10;
-  /* The Milkdown editing surface inside is a separately-themed library
-     component (Crepe's own bundled `frame-dark` theme, imported once and
-     not built to swap at runtime) that doesn't follow Atlas's light/dark
-     toggle. Rather than the chrome (title bar, buttons) switching to light
-     while the editor body stays dark — a jarring half-and-half look —
-     these variables are pinned to their dark values here, so the whole
-     note editor always reads as one consistent themed surface regardless
-     of the app-wide theme. Supporting a real light Milkdown theme would
-     mean bundling Crepe's `frame` theme too and switching between them on
-     note open, which is a bigger, separate piece of work. */
-  --color-bg-elevated: #1a1e24;
-  --color-bg-elevated-2: #16191e;
-  --color-border: #2a2f37;
-  --color-hover-bg: #262c34;
-  --color-text: #e6e8eb;
-  --color-text-muted: #8a919c;
-}
-
-/* Same [hidden]-vs-ID-selector trap documented elsewhere in this file —
-   see CLAUDE.md "A recurring CSS bug to check for explicitly". */
-#note-editor-overlay:not([hidden]) {
-  display: flex;
-}
-
-#note-editor-panel {
-  background: var(--color-bg-elevated-2);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  width: 100%;
-  height: 100%;
-  max-width: 900px;
-  display: flex;
-  flex-direction: column;
-  padding: 1rem;
-}
-
-#note-editor-overlay.fullscreen {
-  padding: 0;
-}
-
-#note-editor-overlay.fullscreen #note-editor-panel {
-  max-width: none;
-  border-radius: 0;
-  border: none;
-  padding: 0.4rem;
-}
-
-#note-editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-#note-title-input {
-  flex: 1;
-  min-width: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  padding: 0.4rem 0.6rem;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--color-text);
-}
-
-#note-title-input:hover,
-#note-title-input:focus {
-  border-color: var(--color-border);
-  background: var(--color-bg-elevated);
-  outline: none;
-}
-
-#note-editor-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-shrink: 0;
-}
-
 #note-save-status {
   margin: 0;
   font-size: 0.78rem;
-}
-
-#note-fullscreen,
-#note-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 4px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
-  cursor: pointer;
-}
-
-#note-fullscreen svg,
-#note-close svg {
-  width: 16px;
-  height: 16px;
-}
-
-#note-fullscreen:hover,
-#note-close:hover {
-  background: var(--color-hover-bg);
-}
-
-#note-editor-root {
-  flex: 1;
-  overflow: auto;
-  border-radius: 6px;
 }
 
 #note-editor-root .milkdown {
@@ -1282,4 +1477,59 @@ ul#deadline-mention-suggestions li.active {
 #note-editor-root .milkdown h6,
 #note-editor-root .milkdown blockquote {
   font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+/* Crepe/Milkdown's own theme is just this fixed set of `--crepe-*` custom
+   properties on `.milkdown` (confirmed by reading Crepe's actual theme CSS
+   files, frame-dark/style.css and frame/style.css — each one is only ~30
+   lines of variables, nothing structural). Both variable sets are inlined
+   here directly, gated by the same [data-theme='light'] attribute the rest
+   of the app uses, instead of statically importing one fixed theme file —
+   so the note editor genuinely follows Atlas's theme toggle rather than
+   being stuck on whichever theme was imported at build time. */
+.milkdown {
+  --crepe-color-background: #1a1a1a;
+  --crepe-color-on-background: #e6e6e6;
+  --crepe-color-surface: #121212;
+  --crepe-color-surface-low: #1c1c1c;
+  --crepe-color-on-surface: #d1d1d1;
+  --crepe-color-on-surface-variant: #a9a9a9;
+  --crepe-color-outline: #757575;
+  --crepe-color-primary: #b5b5b5;
+  --crepe-color-secondary: #4d4d4d;
+  --crepe-color-on-secondary: #d6d6d6;
+  --crepe-color-inverse: #e5e5e5;
+  --crepe-color-on-inverse: #2a2a2a;
+  --crepe-color-inline-code: #ff6666;
+  --crepe-color-error: #ff6666;
+  --crepe-color-hover: #232323;
+  --crepe-color-selected: #2f2f2f;
+  --crepe-color-inline-area: #2b2b2b;
+  --crepe-font-title: -apple-system, Segoe UI, Roboto, sans-serif;
+  --crepe-font-default: -apple-system, Segoe UI, Roboto, sans-serif;
+  --crepe-font-code: 'Space Mono', Fira Code, Menlo, Monaco, 'Courier New', Courier, monospace;
+  --crepe-shadow-1: 0px 1px 2px 0px rgba(255, 255, 255, 0.3), 0px 1px 3px 1px rgba(255, 255, 255, 0.15);
+  --crepe-shadow-2: 0px 1px 2px 0px rgba(255, 255, 255, 0.3), 0px 2px 6px 2px rgba(255, 255, 255, 0.15);
+}
+
+:root[data-theme='light'] .milkdown {
+  --crepe-color-background: #ffffff;
+  --crepe-color-on-background: #000000;
+  --crepe-color-surface: #f7f7f7;
+  --crepe-color-surface-low: #ededed;
+  --crepe-color-on-surface: #1c1c1c;
+  --crepe-color-on-surface-variant: #4d4d4d;
+  --crepe-color-outline: #a8a8a8;
+  --crepe-color-primary: #333333;
+  --crepe-color-secondary: #cfcfcf;
+  --crepe-color-on-secondary: #000000;
+  --crepe-color-inverse: #f0f0f0;
+  --crepe-color-on-inverse: #1a1a1a;
+  --crepe-color-inline-code: #ba1a1a;
+  --crepe-color-error: #ba1a1a;
+  --crepe-color-hover: #e0e0e0;
+  --crepe-color-selected: #d5d5d5;
+  --crepe-color-inline-area: #cacaca;
+  --crepe-shadow-1: 0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
+  --crepe-shadow-2: 0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
 }

@@ -87,6 +87,15 @@ interface DashboardActivityItem {
 
 interface CourseSummary extends Course {
   resource_count: number;
+  deadline_count: number;
+}
+
+interface ResourceWithCourse extends Resource {
+  course_name: string;
+}
+
+interface NoteWithCourse extends Note {
+  course_name: string;
 }
 
 type Preview =
@@ -152,6 +161,8 @@ interface AtlasApi {
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
   getCourseSummaries: () => Promise<CourseSummary[]>;
+  listAllResources: () => Promise<ResourceWithCourse[]>;
+  listAllNotes: () => Promise<NoteWithCourse[]>;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -175,7 +186,11 @@ import { Crepe } from '@milkdown/crepe';
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 import '@milkdown/crepe/theme/common/style.css';
-import '@milkdown/crepe/theme/frame-dark.css';
+// Crepe's frame/frame-dark theme files are just `--crepe-*` custom
+// properties on `.milkdown` — both variable sets are inlined directly in
+// styles.css instead (scoped by :root[data-theme='light']), so the editor
+// genuinely follows Atlas's own theme toggle rather than a statically
+// imported, permanently-dark stylesheet.
 
 const atlasApi: AtlasApi = (window as any).atlas;
 
@@ -233,6 +248,28 @@ let selectedCourse: Course | null = null;
 let viewMode: 'list' | 'icons' = 'list';
 let semesterFilter = ''; // '' = all semesters
 
+// Real page switching, not a scroll shortcut — exactly one of these is
+// visible at a time. Dashboard/Courses/Resources/Notes/Settings are genuine
+// pages; Search stays a floating dropdown over whichever page is active
+// (see focusSearch()), so it isn't one of these.
+type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'settings';
+let currentPage: AppPage = 'dashboard';
+
+function showPage(page: AppPage): void {
+  currentPage = page;
+  document.querySelectorAll<HTMLElement>('.app-page').forEach((el) => {
+    el.hidden = el.id !== `page-${page}`;
+  });
+  document.querySelectorAll<HTMLElement>('.sidebar-nav-item[data-page]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.page === page);
+  });
+
+  if (page === 'dashboard') void renderDashboard();
+  else if (page === 'courses') void renderCourses();
+  else if (page === 'resources') void renderResourcesPage();
+  else if (page === 'notes') void renderNotesPage();
+}
+
 let confirmResolve: ((result: boolean) => void) | null = null;
 
 function showConfirm(message: string): Promise<boolean> {
@@ -254,34 +291,72 @@ function resolveConfirm(result: boolean): void {
   }
 }
 
+let courseViewMode: 'grid' | 'list' = 'grid';
+let courseSort: 'name' | 'resources' = 'name';
+
+// Card grid by default (matches the mockup the user provided), a flat list
+// as the alternative — same view-toggle convention used for resources/
+// deadlines elsewhere, just a separate mode since a course card carries
+// more information (counts, code) than a resource/deadline row does.
 async function renderCourses(): Promise<void> {
   void renderDashboard();
   const list = document.getElementById('course-list')!;
-  const allCourses = await atlasApi.listCourses();
-  const courses = semesterFilter ? allCourses.filter((c) => c.term === semesterFilter) : allCourses;
+  const allSummaries = await atlasApi.getCourseSummaries();
+  let courses = semesterFilter ? allSummaries.filter((c) => c.term === semesterFilter) : allSummaries;
+  courses = [...courses].sort((a, b) =>
+    courseSort === 'resources' ? b.resource_count - a.resource_count : a.name.localeCompare(b.name)
+  );
+
+  list.className = courseViewMode === 'grid' ? 'view-grid' : 'view-list';
   list.innerHTML = '';
+
   for (const course of courses) {
     const li = document.createElement('li');
+    li.className = 'course-card';
     li.dataset.courseId = String(course.id);
-    li.appendChild(makeCourseAvatar(course));
-    const name = document.createElement('span');
+    if (selectedCourse && selectedCourse.id === course.id) li.classList.add('selected');
+
+    const top = document.createElement('div');
+    top.className = 'course-card-top';
+    top.appendChild(makeCourseAvatar(course));
+
+    const titleBlock = document.createElement('div');
+    titleBlock.className = 'course-card-title-block';
+    const name = document.createElement('div');
+    name.className = 'course-card-name';
     name.textContent = course.name;
-    li.appendChild(name);
+    titleBlock.appendChild(name);
     if (course.code) {
-      const code = document.createElement('span');
-      code.className = 'code';
+      const code = document.createElement('div');
+      code.className = 'course-card-code';
       code.textContent = course.code;
-      li.appendChild(code);
+      titleBlock.appendChild(code);
     }
-    if (course.term) {
-      const term = document.createElement('span');
-      term.className = 'code';
-      term.textContent = course.term;
-      li.appendChild(term);
-    }
-    if (selectedCourse && selectedCourse.id === course.id) {
-      li.classList.add('selected');
-    }
+    top.appendChild(titleBlock);
+
+    const menuButton = document.createElement('button');
+    menuButton.type = 'button';
+    menuButton.className = 'course-card-menu';
+    menuButton.textContent = '⋯';
+    menuButton.title = 'Course options';
+    menuButton.setAttribute('aria-label', 'Course options');
+    menuButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      atlasApi.showCourseContextMenu(course.id);
+    });
+    top.appendChild(menuButton);
+    li.appendChild(top);
+
+    const counts = document.createElement('div');
+    counts.className = 'course-card-counts';
+    const resourceCount = document.createElement('span');
+    resourceCount.textContent = `📄 ${course.resource_count} Resources`;
+    counts.appendChild(resourceCount);
+    const deadlineCount = document.createElement('span');
+    deadlineCount.textContent = `📌 ${course.deadline_count} Deadlines`;
+    counts.appendChild(deadlineCount);
+    li.appendChild(counts);
+
     li.addEventListener('click', () => selectCourse(course));
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -291,104 +366,135 @@ async function renderCourses(): Promise<void> {
   }
 }
 
-function renderResourceListView(resources: Resource[]): void {
-  const list = document.getElementById('resource-list')!;
-  list.className = 'view-list';
-  list.innerHTML = '';
-
-  for (const resource of resources) {
-    const li = document.createElement('li');
-    li.dataset.resourceId = String(resource.id);
-
-    const name = document.createElement('span');
-    name.className = 'resource-name';
-    name.textContent = resource.title;
-    name.addEventListener('click', () => openPreview(resource));
-    li.appendChild(name);
-
-    const kind = document.createElement('span');
-    kind.className = 'code';
-    kind.textContent = resource.kind;
-    li.appendChild(kind);
-
-    li.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      atlasApi.showResourceContextMenu(resource.id);
-    });
-
-    list.appendChild(li);
-  }
+function setCourseViewMode(mode: 'grid' | 'list'): void {
+  courseViewMode = mode;
+  document.getElementById('course-view-grid')!.classList.toggle('active', mode === 'grid');
+  document.getElementById('course-view-list')!.classList.toggle('active', mode === 'list');
+  void renderCourses();
 }
 
-function renderResourceIconView(resources: Resource[]): void {
-  const list = document.getElementById('resource-list')!;
-  list.className = 'view-icons';
-  list.innerHTML = '';
+// --- Global Resources page: every resource across every course, not
+// scoped to whichever course is selected — filterable by kind (chip row)
+// and by course (left rail), with an inline docked preview pane instead of
+// the modal overlay this used to be.
 
-  for (const resource of resources) {
-    const li = document.createElement('li');
+let resourcesKindFilter = ''; // '' = all; otherwise a comma-separated list of kinds
+let resourcesCourseFilterId: number | null = null; // null = all courses
+
+function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTMLLIElement {
+  const li = document.createElement('li');
+  li.dataset.resourceId = String(resource.id);
+
+  if (iconView) {
     li.className = 'icon-tile';
-    li.dataset.resourceId = String(resource.id);
-
     const icon = document.createElement('div');
     icon.className = 'icon-glyph';
     icon.textContent = KIND_ICON[resource.kind] ?? KIND_ICON.other;
     li.appendChild(icon);
-
     const name = document.createElement('div');
     name.className = 'icon-name';
     name.textContent = resource.title;
     li.appendChild(name);
+    const course = document.createElement('div');
+    course.className = 'icon-course';
+    course.textContent = resource.course_name;
+    li.appendChild(course);
+  } else {
+    const name = document.createElement('span');
+    name.className = 'resource-name';
+    name.textContent = resource.title;
+    li.appendChild(name);
+    const course = document.createElement('span');
+    course.className = 'code';
+    course.textContent = resource.course_name;
+    li.appendChild(course);
+    const kind = document.createElement('span');
+    kind.className = 'code';
+    kind.textContent = resource.kind;
+    li.appendChild(kind);
+  }
 
-    li.addEventListener('click', () => openPreview(resource));
-    li.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      atlasApi.showResourceContextMenu(resource.id);
-    });
+  li.addEventListener('click', () => openPreview(resource));
+  li.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    atlasApi.showResourceContextMenu(resource.id);
+  });
+  return li;
+}
 
+function renderAllResourcesList(resources: ResourceWithCourse[]): void {
+  const list = document.getElementById('all-resources-list')!;
+  list.className = viewMode === 'list' ? 'view-list' : 'view-icons';
+  list.innerHTML = '';
+
+  if (resources.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No resources match this filter.';
     list.appendChild(li);
+    return;
+  }
+
+  for (const resource of resources) {
+    list.appendChild(resourceListItem(resource, viewMode === 'icons'));
   }
 }
 
-async function renderResources(): Promise<void> {
+async function populateCourseSelect(select: HTMLSelectElement, courses: Course[]): Promise<void> {
+  const previousValue = select.value;
+  select.innerHTML = '';
+  for (const course of courses) {
+    const option = document.createElement('option');
+    option.value = String(course.id);
+    option.textContent = course.name;
+    select.appendChild(option);
+  }
+  if (previousValue && courses.some((c) => String(c.id) === previousValue)) select.value = previousValue;
+}
+
+async function renderResourcesPage(): Promise<void> {
   void renderDashboard();
-  const section = document.getElementById('resources-section')!;
-  const heading = document.getElementById('resources-heading')!;
-  const list = document.getElementById('resource-list')!;
+  const courses = await atlasApi.listCourses();
 
-  if (!selectedCourse) {
-    section.hidden = true;
-    return;
-  }
+  await populateCourseSelect(document.getElementById('resources-upload-course') as HTMLSelectElement, courses);
 
-  section.hidden = false;
-  heading.textContent = `Resources — ${selectedCourse.name}`;
-
-  const resources = await atlasApi.listResources(selectedCourse.id);
-  if (resources.length === 0) {
-    list.className = 'view-list';
-    list.innerHTML = '';
+  const rail = document.getElementById('resources-course-rail')!;
+  rail.innerHTML = '';
+  const allLi = document.createElement('li');
+  allLi.textContent = 'All Resources';
+  allLi.classList.toggle('selected', resourcesCourseFilterId === null);
+  allLi.addEventListener('click', () => {
+    resourcesCourseFilterId = null;
+    void renderResourcesPage();
+  });
+  rail.appendChild(allLi);
+  for (const course of courses) {
     const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = 'No resources yet.';
-    list.appendChild(li);
-    return;
+    li.textContent = course.name;
+    li.classList.toggle('selected', resourcesCourseFilterId === course.id);
+    li.addEventListener('click', () => {
+      resourcesCourseFilterId = course.id;
+      void renderResourcesPage();
+    });
+    rail.appendChild(li);
   }
 
-  if (viewMode === 'list') renderResourceListView(resources);
-  else renderResourceIconView(resources);
+  const allResources = await atlasApi.listAllResources();
+  let filtered = allResources;
+  if (resourcesCourseFilterId !== null) {
+    filtered = filtered.filter((r) => r.course_id === resourcesCourseFilterId);
+  }
+  if (resourcesKindFilter) {
+    const kinds = resourcesKindFilter.split(',');
+    filtered = filtered.filter((r) => kinds.includes(r.kind));
+  }
+  renderAllResourcesList(filtered);
 }
 
 async function renderWatchedFolders(): Promise<void> {
-  const section = document.getElementById('watched-folders-section')!;
   const list = document.getElementById('watched-folder-list')!;
   list.innerHTML = '';
-
-  if (!selectedCourse) {
-    section.hidden = true;
-    return;
-  }
-  section.hidden = false;
+  if (!selectedCourse) return;
 
   const folders = await atlasApi.listWatchedFolders(selectedCourse.id);
   for (const folder of folders) {
@@ -403,6 +509,7 @@ async function renderWatchedFolders(): Promise<void> {
   }
 }
 
+
 function formatNoteTimestamp(sqliteDatetime: string): string {
   // SQLite's datetime('now') is UTC with no 'Z' suffix — append it so
   // Date parses it as UTC instead of assuming local time.
@@ -410,91 +517,85 @@ function formatNoteTimestamp(sqliteDatetime: string): string {
   return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function renderNoteListView(notes: Note[]): void {
-  const list = document.getElementById('note-list')!;
-  list.className = 'view-list';
-  list.innerHTML = '';
+// --- Global Notes page: every note across every course, grouped by
+// recency (Today / This week / Older), with an inline docked editor
+// instead of the modal overlay this used to be.
 
-  for (const note of notes) {
-    const li = document.createElement('li');
-    li.dataset.noteId = String(note.id);
-
-    const title = document.createElement('span');
-    title.textContent = note.title;
-    li.appendChild(title);
-
-    const updated = document.createElement('span');
-    updated.className = 'note-updated';
-    updated.textContent = formatNoteTimestamp(note.updated_at);
-    li.appendChild(updated);
-
-    li.addEventListener('click', () => openNoteEditor(note));
-    li.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      atlasApi.showNoteContextMenu(note.id);
-    });
-
-    list.appendChild(li);
-  }
+function isThisWeekLocal(sqliteDatetimeUtc: string): boolean {
+  const date = new Date(sqliteDatetimeUtc.replace(' ', 'T') + 'Z');
+  const now = new Date();
+  const diffDays = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays >= 0 && diffDays < 7;
 }
 
-function renderNoteIconView(notes: Note[]): void {
-  const list = document.getElementById('note-list')!;
-  list.className = 'view-icons';
-  list.innerHTML = '';
-
-  for (const note of notes) {
-    const li = document.createElement('li');
-    li.className = 'icon-tile';
-    li.dataset.noteId = String(note.id);
-
-    const icon = document.createElement('div');
-    icon.className = 'icon-glyph';
-    icon.textContent = '📝';
-    li.appendChild(icon);
-
-    const name = document.createElement('div');
-    name.className = 'icon-name';
-    name.textContent = note.title;
-    li.appendChild(name);
-
-    li.addEventListener('click', () => openNoteEditor(note));
-    li.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      atlasApi.showNoteContextMenu(note.id);
-    });
-
-    list.appendChild(li);
-  }
+function noteGroupLabel(note: NoteWithCourse): 'Today' | 'This week' | 'Older' {
+  if (isTodayLocal(note.updated_at)) return 'Today';
+  if (isThisWeekLocal(note.updated_at)) return 'This week';
+  return 'Older';
 }
 
-async function renderNotes(): Promise<void> {
-  void renderDashboard();
-  const section = document.getElementById('notes-section')!;
-  const heading = document.getElementById('notes-heading')!;
-  const list = document.getElementById('note-list')!;
+function renderAllNotesList(notes: NoteWithCourse[]): void {
+  const container = document.getElementById('all-notes-list')!;
+  container.innerHTML = '';
 
-  if (!selectedCourse) {
-    section.hidden = true;
-    return;
-  }
-
-  section.hidden = false;
-  heading.textContent = `Notes — ${selectedCourse.name}`;
-
-  const notes = await atlasApi.listNotes(selectedCourse.id);
   if (notes.length === 0) {
-    list.className = 'view-list';
-    list.innerHTML = '';
-    const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = 'No notes yet.';
-    list.appendChild(li);
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'No notes yet.';
+    container.appendChild(p);
     return;
   }
 
-  if (viewMode === 'list') renderNoteListView(notes);
-  else renderNoteIconView(notes);
+  const groups: Record<'Today' | 'This week' | 'Older', NoteWithCourse[]> = {
+    Today: [],
+    'This week': [],
+    Older: [],
+  };
+  for (const note of notes) groups[noteGroupLabel(note)].push(note);
+
+  for (const groupName of ['Today', 'This week', 'Older'] as const) {
+    const items = groups[groupName];
+    if (items.length === 0) continue;
+
+    const header = document.createElement('h4');
+    header.className = 'notes-group-header';
+    header.textContent = `${groupName} (${items.length})`;
+    container.appendChild(header);
+
+    const ul = document.createElement('ul');
+    ul.className = 'notes-group-list';
+    for (const note of items) {
+      const li = document.createElement('li');
+      li.dataset.noteId = String(note.id);
+      if (currentNoteId === note.id) li.classList.add('selected');
+
+      const title = document.createElement('div');
+      title.className = 'note-item-title';
+      title.textContent = note.title;
+      li.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'note-item-meta';
+      meta.textContent = `${note.course_name} · ${formatNoteTimestamp(note.updated_at)}`;
+      li.appendChild(meta);
+
+      li.addEventListener('click', () => openNoteEditor(note));
+      li.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        atlasApi.showNoteContextMenu(note.id);
+      });
+      ul.appendChild(li);
+    }
+    container.appendChild(ul);
+  }
+}
+
+async function renderNotesPage(): Promise<void> {
+  void renderDashboard();
+  const courses = await atlasApi.listCourses();
+  await populateCourseSelect(document.getElementById('new-note-course') as HTMLSelectElement, courses);
+  const notes = await atlasApi.listAllNotes();
+  renderAllNotesList(notes);
 }
 
 // `due_at` is 'YYYY-MM-DD' (date only) or 'YYYY-MM-DDTHH:MM' (date + optional
@@ -644,7 +745,7 @@ async function renderDeadlines(): Promise<void> {
   }
 
   section.hidden = false;
-  heading.textContent = `Deadlines — ${selectedCourse.name}`;
+  heading.textContent = 'Deadlines';
 
   const deadlines = await atlasApi.listDeadlines(selectedCourse.id);
   if (deadlines.length === 0) {
@@ -663,8 +764,8 @@ async function renderDeadlines(): Promise<void> {
 
 // --- Dashboard (PRD §13): global, not per-course — upcoming deadlines
 // across every course, recently added resources across every course, and
-// what changed today. Refreshed opportunistically from renderResources()/
-// renderNotes()/renderDeadlines() (fire-and-forget, not awaited — it's a
+// what changed today. Refreshed opportunistically from renderResourcesPage()/
+// renderNotesPage()/renderDeadlines() (fire-and-forget, not awaited — it's a
 // secondary overview widget, not the thing the user is actively waiting on)
 // rather than hooking every individual mutation call site, since those
 // three functions already run after every resource/note/deadline change.
@@ -733,8 +834,8 @@ async function renderDashboardCourses(): Promise<void> {
 }
 
 async function openDashboardCourse(course: Course): Promise<void> {
+  showPage('courses');
   await selectCourse(course);
-  document.getElementById('courses-section')!.scrollIntoView({ behavior: 'smooth' });
 }
 
 // Two stacked rows per item (icon + title on top, course + optional meta
@@ -847,33 +948,27 @@ async function renderDashboardActivity(): Promise<void> {
 }
 
 async function openDashboardDeadline(deadline: DashboardDeadline): Promise<void> {
+  showPage('courses');
   const courses = await atlasApi.listCourses();
   const course = courses.find((c) => c.id === deadline.course_id);
-  if (!course) return;
-  await selectCourse(course);
+  if (course) await selectCourse(course);
   await openDeadlineViewer(deadline);
 }
 
+// Resources/Notes are global pages now — opening one doesn't need to
+// "select" its course first (that's only meaningful for the Courses page's
+// own drill-down), just find it in the global list and open it.
 async function openDashboardResource(resource: DashboardResource): Promise<void> {
-  const courses = await atlasApi.listCourses();
-  const course = courses.find((c) => c.id === resource.course_id);
-  if (!course) return;
-  await selectCourse(course);
   await openPreview(resource);
 }
 
 async function openDashboardActivityItem(item: DashboardActivityItem): Promise<void> {
-  const courses = await atlasApi.listCourses();
-  const course = courses.find((c) => c.id === item.course_id);
-  if (!course) return;
-  await selectCourse(course);
-
   if (item.entity_type === 'note') {
-    const notes = await atlasApi.listNotes(course.id);
+    const notes = await atlasApi.listAllNotes();
     const note = notes.find((n) => n.id === item.id);
     if (note) await openNoteEditor(note);
   } else {
-    const resources = await atlasApi.listResources(course.id);
+    const resources = await atlasApi.listAllResources();
     const resource = resources.find((r) => r.id === item.id);
     if (resource) await openPreview(resource);
   }
@@ -904,6 +999,12 @@ function scheduleNoteSave(): void {
     const result = await atlasApi.updateNoteContent(currentNoteId, noteEditorInstance.getMarkdown());
     if (result) applyDerivedTitle(result.title);
     statusEl.textContent = 'Saved';
+    // The Notes page keeps the note list visible right alongside the
+    // editor (unlike the old modal, where the list wasn't on screen while
+    // editing) — so a derived-title update has to refresh that list too,
+    // or it goes stale showing the pre-edit title/timestamp right next to
+    // the now-current one in the editor pane.
+    void renderNotesPage();
   }, 600);
 }
 
@@ -949,8 +1050,12 @@ async function flushPendingNoteSave(): Promise<void> {
   }
 }
 
+// Docked inline in the Notes page (`#notes-editor-pane`), not a modal —
+// same reasoning as openPreview(). Any caller from elsewhere (Dashboard,
+// Search, a deadline mention) switches to the Notes page first.
 async function openNoteEditor(note: Note): Promise<void> {
-  const overlay = document.getElementById('note-editor-overlay')!;
+  showPage('notes');
+  const pane = document.getElementById('notes-editor-pane')!;
   const titleInput = document.getElementById('note-title-input') as HTMLInputElement;
   const statusEl = document.getElementById('note-save-status')!;
   const root = document.getElementById('note-editor-root')!;
@@ -959,7 +1064,7 @@ async function openNoteEditor(note: Note): Promise<void> {
   titleInput.value = note.title;
   statusEl.textContent = '';
   root.innerHTML = '';
-  overlay.hidden = false;
+  pane.hidden = false;
 
   const saveImage = async (file: File): Promise<string> => {
     const buffer = await file.arrayBuffer();
@@ -1003,9 +1108,10 @@ async function openNoteEditor(note: Note): Promise<void> {
 async function closeNoteEditor(): Promise<void> {
   await flushPendingNoteSave();
 
-  const overlay = document.getElementById('note-editor-overlay')!;
-  overlay.hidden = true;
-  overlay.classList.remove('fullscreen');
+  const pane = document.getElementById('notes-editor-pane')!;
+  const split = document.getElementById('notes-split')!;
+  pane.hidden = true;
+  split.classList.remove('pane-fullscreen');
   const fullscreenButton = document.getElementById('note-fullscreen') as HTMLButtonElement;
   fullscreenButton.innerHTML = NOTE_MAXIMIZE_ICON;
   fullscreenButton.title = 'Fullscreen';
@@ -1017,7 +1123,7 @@ async function closeNoteEditor(): Promise<void> {
   }
   currentNoteId = null;
 
-  await renderNotes();
+  await renderNotesPage();
 }
 
 const NOTE_MAXIMIZE_ICON =
@@ -1025,36 +1131,39 @@ const NOTE_MAXIMIZE_ICON =
 const NOTE_MINIMIZE_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
 
+// Same "fullscreen == collapse the list column" meaning as the resources
+// pane's fullscreen toggle — there's no overlay to cover the app window
+// with anymore.
 function toggleNoteFullscreen(): void {
-  const overlay = document.getElementById('note-editor-overlay')!;
+  const split = document.getElementById('notes-split')!;
   const button = document.getElementById('note-fullscreen') as HTMLButtonElement;
-  const isFullscreen = overlay.classList.toggle('fullscreen');
+  const isFullscreen = split.classList.toggle('pane-fullscreen');
   button.innerHTML = isFullscreen ? NOTE_MINIMIZE_ICON : NOTE_MAXIMIZE_ICON;
   button.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
   button.setAttribute('aria-label', button.title);
 }
 
+// Selecting a course only affects the Courses page's own drill-down
+// (Deadlines + Watched folders for that course) — Resources and Notes are
+// global pages now, independent of which course is selected here.
 async function selectCourse(course: Course): Promise<void> {
   selectedCourse = course;
+  document.getElementById('course-detail')!.hidden = false;
+  document.getElementById('course-detail-heading')!.textContent = course.name;
   await renderCourses();
-  await renderResources();
-  await renderNotes();
   await renderDeadlines();
   await renderWatchedFolders();
 }
 
 async function setSemesterFilter(term: string, persist = true): Promise<void> {
   semesterFilter = term;
-  // If the currently open course falls outside the new filter, close it
-  // rather than leaving Resources/Notes showing a course no longer listed.
+  // If the currently open course falls outside the new filter, close its
+  // drill-down rather than leaving it showing a course no longer listed.
   if (selectedCourse && term && selectedCourse.term !== term) {
     selectedCourse = null;
+    document.getElementById('course-detail')!.hidden = true;
   }
   await renderCourses();
-  await renderResources();
-  await renderNotes();
-  await renderDeadlines();
-  await renderWatchedFolders();
   if (persist) atlasApi.setSetting('semesterFilter', term);
 }
 
@@ -1065,9 +1174,14 @@ function setViewMode(mode: 'list' | 'icons', persist = true): void {
   viewMode = mode;
   document.getElementById('view-list')!.classList.toggle('active', mode === 'list');
   document.getElementById('view-icons')!.classList.toggle('active', mode === 'icons');
-  renderResources();
-  renderNotes();
-  renderDeadlines();
+  // Deadlines has its own copy of this toggle (see index.html) — Resources
+  // and Deadlines are separate pages now, so the one on the Resources page
+  // isn't visible/reachable while looking at a course's deadlines. Both
+  // toggles drive the same shared `viewMode` preference.
+  document.getElementById('deadline-view-list-toggle')!.classList.toggle('active', mode === 'list');
+  document.getElementById('deadline-view-icons-toggle')!.classList.toggle('active', mode === 'icons');
+  void renderResourcesPage();
+  void renderDeadlines();
   if (persist) atlasApi.setSetting('viewMode', mode);
 }
 
@@ -1097,8 +1211,14 @@ function setImageZoom(zoom: number): void {
   }
 }
 
+// Docked inline in the Resources page (`#resources-preview-pane`), not a
+// modal overlay — matches the mockup's persistent split-pane layout. Any
+// caller from elsewhere in the app (Dashboard, Search, a deadline mention)
+// switches to the Resources page first so the docked pane is actually on
+// screen when this populates it.
 async function openPreview(resource: Resource): Promise<void> {
-  const overlay = document.getElementById('preview-overlay')!;
+  showPage('resources');
+  const pane = document.getElementById('resources-preview-pane')!;
   const title = document.getElementById('preview-title')!;
   const note = document.getElementById('preview-note') as HTMLParagraphElement;
   const body = document.getElementById('preview-body')!;
@@ -1109,7 +1229,7 @@ async function openPreview(resource: Resource): Promise<void> {
   zoomControls.hidden = true;
   body.classList.remove('centered');
   body.innerHTML = '<p class="muted">Loading preview…</p>';
-  overlay.hidden = false;
+  pane.hidden = false;
   currentPreviewResourceId = resource.id;
 
   const preview = await atlasApi.getPreview(resource.id);
@@ -1150,11 +1270,12 @@ async function openPreview(resource: Resource): Promise<void> {
 }
 
 function closePreview(): void {
-  const overlay = document.getElementById('preview-overlay')!;
+  const pane = document.getElementById('resources-preview-pane')!;
   const body = document.getElementById('preview-body')!;
+  const split = document.getElementById('resources-split')!;
   const fullscreenButton = document.getElementById('preview-fullscreen') as HTMLButtonElement;
-  overlay.hidden = true;
-  overlay.classList.remove('fullscreen'); // always reopen non-fullscreen
+  pane.hidden = true;
+  split.classList.remove('pane-fullscreen'); // always reopen non-fullscreen
   fullscreenButton.innerHTML = MAXIMIZE_ICON;
   fullscreenButton.title = 'Fullscreen';
   fullscreenButton.setAttribute('aria-label', 'Fullscreen');
@@ -1167,10 +1288,14 @@ const MAXIMIZE_ICON =
 const MINIMIZE_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
 
+// "Fullscreen" now means "collapse the rail/list columns and let the docked
+// preview pane fill the Resources page" (`.pane-fullscreen` on the split
+// container), not covering the whole app window — there's no more overlay
+// to cover it with.
 function toggleFullscreenPreview(): void {
-  const overlay = document.getElementById('preview-overlay')!;
+  const split = document.getElementById('resources-split')!;
   const button = document.getElementById('preview-fullscreen') as HTMLButtonElement;
-  const isFullscreen = overlay.classList.toggle('fullscreen');
+  const isFullscreen = split.classList.toggle('pane-fullscreen');
   button.innerHTML = isFullscreen ? MINIMIZE_ICON : MAXIMIZE_ICON;
   button.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
   button.setAttribute('aria-label', button.title);
@@ -1258,17 +1383,12 @@ async function runSearch(query: string): Promise<void> {
 }
 
 async function openSearchResult(result: SearchResult): Promise<void> {
-  const courses = await atlasApi.listCourses();
-  const course = courses.find((c) => c.id === result.courseId);
-  if (!course) return;
-  await selectCourse(course);
-
   if (result.entityType === 'note') {
-    const notes = await atlasApi.listNotes(course.id);
+    const notes = await atlasApi.listAllNotes();
     const note = notes.find((n) => n.id === result.entityId);
     if (note) await openNoteEditor(note);
   } else if (result.entityType === 'resource') {
-    const resources = await atlasApi.listResources(course.id);
+    const resources = await atlasApi.listAllResources();
     const resource = resources.find((r) => r.id === result.entityId);
     if (resource) await openPreview(resource);
   }
@@ -1319,21 +1439,14 @@ function wireMentionClicks(container: HTMLElement): void {
       e.preventDefault();
       const type = link.dataset.type as 'resource' | 'note';
       const id = Number(link.dataset.id);
-      if (!currentViewingDeadline) return;
-      const courseId = currentViewingDeadline.course_id;
       closeDeadlineEditor();
 
-      const courses = await atlasApi.listCourses();
-      const course = courses.find((c) => c.id === courseId);
-      if (!course) return;
-      await selectCourse(course);
-
       if (type === 'note') {
-        const notes = await atlasApi.listNotes(courseId);
+        const notes = await atlasApi.listAllNotes();
         const note = notes.find((n) => n.id === id);
         if (note) await openNoteEditor(note);
       } else {
-        const resources = await atlasApi.listResources(courseId);
+        const resources = await atlasApi.listAllResources();
         const resource = resources.find((r) => r.id === id);
         if (resource) await openPreview(resource);
       }
@@ -1544,6 +1657,14 @@ async function init(): Promise<void> {
   await renderDashboard();
 
   const form = document.getElementById('course-form') as HTMLFormElement;
+  const addCourseToggle = document.getElementById('add-course-toggle') as HTMLButtonElement;
+  // "Add course" is a rare, one-off action (a handful of courses per
+  // semester, then done) — the form stays tucked away behind this toggle
+  // instead of permanently occupying space at the top of the page.
+  addCourseToggle.addEventListener('click', () => {
+    form.hidden = !form.hidden;
+    if (!form.hidden) (document.getElementById('course-name') as HTMLInputElement).focus();
+  });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = (document.getElementById('course-name') as HTMLInputElement).value.trim();
@@ -1553,14 +1674,24 @@ async function init(): Promise<void> {
 
     await atlasApi.createCourse(name, code, term);
     form.reset();
+    form.hidden = true;
     await renderCourses();
+  });
+
+  document.getElementById('course-view-grid')!.addEventListener('click', () => setCourseViewMode('grid'));
+  document.getElementById('course-view-list')!.addEventListener('click', () => setCourseViewMode('list'));
+  document.getElementById('course-sort')!.addEventListener('change', (e) => {
+    courseSort = (e.target as HTMLSelectElement).value as 'name' | 'resources';
+    void renderCourses();
   });
 
   const uploadButton = document.getElementById('upload-button') as HTMLButtonElement;
   uploadButton.addEventListener('click', async () => {
-    if (!selectedCourse) return;
-    const resource = await atlasApi.uploadResource(selectedCourse.id);
-    if (resource) await renderResources();
+    const courseSelect = document.getElementById('resources-upload-course') as HTMLSelectElement;
+    const courseId = Number(courseSelect.value);
+    if (!courseId) return;
+    const resource = await atlasApi.uploadResource(courseId);
+    if (resource) await renderResourcesPage();
   });
 
   const addWatchFolderButton = document.getElementById('add-watch-folder') as HTMLButtonElement;
@@ -1569,12 +1700,23 @@ async function init(): Promise<void> {
     const folder = await atlasApi.addWatchedFolder(selectedCourse.id);
     if (folder) {
       await renderWatchedFolders();
-      await renderResources(); // pick up any files already sitting in the folder
+      await renderResourcesPage(); // pick up any files already sitting in the folder
     }
   });
 
   document.getElementById('view-list')!.addEventListener('click', () => setViewMode('list'));
   document.getElementById('view-icons')!.addEventListener('click', () => setViewMode('icons'));
+  document.getElementById('deadline-view-list-toggle')!.addEventListener('click', () => setViewMode('list'));
+  document.getElementById('deadline-view-icons-toggle')!.addEventListener('click', () => setViewMode('icons'));
+
+  document.querySelectorAll<HTMLButtonElement>('#resources-kind-filter .chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#resources-kind-filter .chip').forEach((el) => el.classList.remove('active'));
+      chip.classList.add('active');
+      resourcesKindFilter = chip.dataset.kindFilter ?? '';
+      void renderResourcesPage();
+    });
+  });
 
   document.getElementById('theme-toggle')!.addEventListener('click', () => {
     const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
@@ -1583,28 +1725,14 @@ async function init(): Promise<void> {
     atlasApi.setSetting('theme', next);
   });
 
-  // Sidebar nav: a scroll-shortcut to a section that's already on the page
-  // (Atlas is still one continuous scrolling view, not separate routed
-  // pages), not real client-side routing — clicking one just highlights it
-  // and smooth-scrolls there.
-  document.querySelectorAll<HTMLButtonElement>('.sidebar-nav-item[data-scroll-target]').forEach((button) => {
-    button.addEventListener('click', () => {
-      document.querySelectorAll('.sidebar-nav-item').forEach((el) => el.classList.remove('active'));
-      button.classList.add('active');
-      document.getElementById(button.dataset.scrollTarget!)?.scrollIntoView({ behavior: 'smooth' });
-    });
+  // Sidebar nav: genuine page switching (see showPage()) — exactly one
+  // page visible at a time. "Search" isn't a page; it just focuses the
+  // floating search box over whichever page is currently shown.
+  document.querySelectorAll<HTMLButtonElement>('.sidebar-nav-item[data-page]').forEach((button) => {
+    button.addEventListener('click', () => showPage(button.dataset.page as AppPage));
   });
-  document.getElementById('sidebar-search-button')!.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar-nav-item').forEach((el) => el.classList.remove('active'));
-    focusSearch();
-  });
-  document.getElementById('manage-courses-button')!.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar-nav-item').forEach((el) => el.classList.remove('active'));
-    document
-      .querySelector('.sidebar-nav-item[data-scroll-target="courses-section"]')
-      ?.classList.add('active');
-    document.getElementById('courses-section')!.scrollIntoView({ behavior: 'smooth' });
-  });
+  document.getElementById('sidebar-search-button')!.addEventListener('click', focusSearch);
+  document.getElementById('manage-courses-button')!.addEventListener('click', () => showPage('courses'));
 
   document.getElementById('semester-filter')!.addEventListener('change', (e) => {
     setSemesterFilter((e.target as HTMLSelectElement).value);
@@ -1612,8 +1740,10 @@ async function init(): Promise<void> {
 
   const newNoteButton = document.getElementById('new-note-button') as HTMLButtonElement;
   newNoteButton.addEventListener('click', async () => {
-    if (!selectedCourse) return;
-    const note = await atlasApi.createNote(selectedCourse.id);
+    const courseSelect = document.getElementById('new-note-course') as HTMLSelectElement;
+    const courseId = Number(courseSelect.value);
+    if (!courseId) return;
+    const note = await atlasApi.createNote(courseId);
     await openNoteEditor(note);
   });
 
@@ -1630,7 +1760,7 @@ async function init(): Promise<void> {
     // note's first line.
     if (newTitle === noteTitleBeforeEdit) return;
     await atlasApi.updateNoteTitle(currentNoteId, newTitle);
-    await renderNotes();
+    await renderNotesPage();
   });
   noteTitleInput.addEventListener('keydown', (e) => {
     // Enter confirms the rename; Escape cancels editing the title (reverts
@@ -1651,14 +1781,11 @@ async function init(): Promise<void> {
     if (!(await showConfirm("Delete this note? This can't be undone."))) return;
     if (currentNoteId === noteId) await closeNoteEditor();
     await atlasApi.deleteNote(noteId);
-    await renderNotes();
+    await renderNotesPage();
   });
 
   document.getElementById('preview-close')!.addEventListener('click', closePreview);
   document.getElementById('preview-fullscreen')!.addEventListener('click', toggleFullscreenPreview);
-  document.getElementById('preview-overlay')!.addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) closePreview();
-  });
   document.addEventListener('keydown', (e) => {
     // Ctrl+L jumps to search from anywhere, same convention as a browser's
     // address bar — selects any existing text so typing immediately
@@ -1669,36 +1796,40 @@ async function init(): Promise<void> {
       return;
     }
 
+    const active = document.activeElement;
+    const isTyping =
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLSelectElement ||
+      (active instanceof HTMLElement && active.isContentEditable);
+
     // "F" toggles fullscreen for whichever resource preview or note editor
-    // is currently open, so the user doesn't have to reach for the
-    // fullscreen button. Guarded to only fire when focus isn't in a text
-    // field — the note editor's Milkdown surface is a contenteditable, so
-    // typing a literal "f" while actually writing a note is never hijacked,
-    // same as it isn't for a deadline title or any other text field.
-    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey) {
-      const previewOpen = !(document.getElementById('preview-overlay') as HTMLElement).hidden;
-      const noteEditorOpen = !(document.getElementById('note-editor-overlay') as HTMLElement).hidden;
-      const active = document.activeElement;
-      const isTyping =
-        active instanceof HTMLInputElement ||
-        active instanceof HTMLTextAreaElement ||
-        active instanceof HTMLSelectElement ||
-        (active instanceof HTMLElement && active.isContentEditable);
-      if (!isTyping && (previewOpen || noteEditorOpen)) {
+    // pane is currently open on its own page, so the user doesn't have to
+    // reach for the fullscreen button. Guarded to only fire when focus
+    // isn't in a text field — the note editor's Milkdown surface is a
+    // contenteditable, so typing a literal "f" while actually writing a
+    // note is never hijacked, same as it isn't for a deadline title.
+    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey && !isTyping) {
+      if (currentPage === 'resources' && !(document.getElementById('resources-preview-pane') as HTMLElement).hidden) {
         e.preventDefault();
-        if (previewOpen) toggleFullscreenPreview();
-        else toggleNoteFullscreen();
+        toggleFullscreenPreview();
+        return;
+      }
+      if (currentPage === 'notes' && !(document.getElementById('notes-editor-pane') as HTMLElement).hidden) {
+        e.preventDefault();
+        toggleNoteFullscreen();
         return;
       }
     }
 
-    if (e.key !== 'Escape') return;
-    // Deliberately does NOT close the note editor — an editor with
+    // Escape closes the docked resource preview pane — but deliberately
+    // never the note editor pane, even via this same key: an editor with
     // in-progress typing shouldn't disappear because of an incidental
-    // Escape (e.g. cancelling a text selection or a title edit above).
-    // The X button is the only way to close a note; matches how Notion
-    // itself behaves (Escape doesn't close a page).
-    if ((document.getElementById('note-editor-overlay') as HTMLElement).hidden) {
+    // Escape (e.g. cancelling a text selection or a title edit). The X
+    // button is the only way to close a note, matching how Notion itself
+    // behaves (Escape doesn't close a page there either).
+    if (e.key !== 'Escape' || isTyping) return;
+    if (currentPage === 'resources' && !(document.getElementById('resources-preview-pane') as HTMLElement).hidden) {
       closePreview();
     }
   });
@@ -1722,16 +1853,19 @@ async function init(): Promise<void> {
   atlasApi.onContextMenuDelete(async (resourceId) => {
     if (!(await showConfirm("Delete this resource? This can't be undone."))) return;
     await atlasApi.deleteResource(resourceId);
-    await renderResources();
+    await renderResourcesPage();
   });
 
   atlasApi.onCourseContextMenuDelete(async (courseId) => {
     if (!(await showConfirm("Delete this course and all its resources? This can't be undone."))) return;
     await atlasApi.deleteCourse(courseId);
-    if (selectedCourse && selectedCourse.id === courseId) selectedCourse = null;
+    if (selectedCourse && selectedCourse.id === courseId) {
+      selectedCourse = null;
+      document.getElementById('course-detail')!.hidden = true;
+    }
     await renderCourses();
-    await renderResources();
-    await renderNotes();
+    await renderResourcesPage();
+    await renderNotesPage();
     await renderDeadlines();
   });
 
@@ -1851,9 +1985,11 @@ async function init(): Promise<void> {
   });
 
   // Fired by the main process when a watched folder picks up a new file —
-  // refresh the resource list if that's the course currently open.
-  atlasApi.onResourcesChanged(async (courseId) => {
-    if (selectedCourse && selectedCourse.id === courseId) await renderResources();
+  // the global Resources page isn't scoped to one course, so just refresh
+  // it outright rather than checking which course the event was for.
+  atlasApi.onResourcesChanged(async () => {
+    if (currentPage === 'resources') await renderResourcesPage();
+    else void renderDashboard();
   });
 
   const searchInput = document.getElementById('search-input') as HTMLInputElement;
