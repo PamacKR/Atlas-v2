@@ -321,6 +321,7 @@ async function renderNotes(): Promise<void> {
 let noteEditorInstance: Editor | null = null;
 let currentNoteId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let noteTitleBeforeEdit = '';
 
 function scheduleNoteSave(): void {
   const statusEl = document.getElementById('note-save-status')!;
@@ -357,6 +358,7 @@ async function openNoteEditor(note: Note): Promise<void> {
 
   noteEditorInstance = new Editor({
     el: root,
+    theme: 'dark',
     initialEditType: 'wysiwyg',
     previewStyle: 'tab',
     height: '100%',
@@ -599,19 +601,27 @@ async function init(): Promise<void> {
   });
 
   const noteTitleInput = document.getElementById('note-title-input') as HTMLInputElement;
+  noteTitleInput.addEventListener('focus', () => {
+    noteTitleBeforeEdit = noteTitleInput.value;
+  });
   noteTitleInput.addEventListener('blur', async () => {
     if (currentNoteId === null) return;
     await atlasApi.updateNoteTitle(currentNoteId, noteTitleInput.value.trim());
   });
   noteTitleInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') noteTitleInput.blur();
+    // Enter confirms the rename; Escape cancels editing the title (reverts
+    // to the last saved value) without touching the note itself — neither
+    // should close the whole editor.
+    if (e.key === 'Enter') {
+      noteTitleInput.blur();
+    } else if (e.key === 'Escape') {
+      noteTitleInput.value = noteTitleBeforeEdit;
+      noteTitleInput.blur();
+    }
   });
 
   document.getElementById('note-close')!.addEventListener('click', closeNoteEditor);
   document.getElementById('note-fullscreen')!.addEventListener('click', toggleNoteFullscreen);
-  document.getElementById('note-editor-overlay')!.addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) closeNoteEditor();
-  });
 
   atlasApi.onNoteContextMenuDelete(async (noteId) => {
     if (!(await showConfirm("Delete this note? This can't be undone."))) return;
@@ -627,9 +637,12 @@ async function init(): Promise<void> {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!(document.getElementById('note-editor-overlay') as HTMLElement).hidden) {
-      closeNoteEditor();
-    } else {
+    // Deliberately does NOT close the note editor — an editor with
+    // in-progress typing shouldn't disappear because of an incidental
+    // Escape (e.g. cancelling a text selection or a title edit above).
+    // The X button is the only way to close a note; matches how Notion
+    // itself behaves (Escape doesn't close a page).
+    if ((document.getElementById('note-editor-overlay') as HTMLElement).hidden) {
       closePreview();
     }
   });
