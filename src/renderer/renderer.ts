@@ -77,6 +77,7 @@ interface AtlasApi {
   showNoteContextMenu: (noteId: number) => void;
   onNoteContextMenuDelete: (handler: (noteId: number) => void) => void;
   getNoteBrowserUrl: (noteId: number) => Promise<string>;
+  saveNoteImage: (buffer: ArrayBuffer, extension: string) => Promise<string>;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -97,6 +98,8 @@ interface AtlasApi {
 // working correctly in Crepe before switching. Crepe also bundles KaTeX math
 // rendering out of the box, which the user needs for academic notes.
 import { Crepe } from '@milkdown/crepe';
+import { $prose } from '@milkdown/kit/utils';
+import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame-dark.css';
 
@@ -290,28 +293,10 @@ function formatNoteTimestamp(sqliteDatetime: string): string {
   return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-async function renderNotes(): Promise<void> {
-  const section = document.getElementById('notes-section')!;
-  const heading = document.getElementById('notes-heading')!;
+function renderNoteListView(notes: Note[]): void {
   const list = document.getElementById('note-list')!;
-
-  if (!selectedCourse) {
-    section.hidden = true;
-    return;
-  }
-
-  section.hidden = false;
-  heading.textContent = `Notes — ${selectedCourse.name}`;
-
-  const notes = await atlasApi.listNotes(selectedCourse.id);
+  list.className = 'view-list';
   list.innerHTML = '';
-  if (notes.length === 0) {
-    const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = 'No notes yet.';
-    list.appendChild(li);
-    return;
-  }
 
   for (const note of notes) {
     const li = document.createElement('li');
@@ -334,6 +319,64 @@ async function renderNotes(): Promise<void> {
 
     list.appendChild(li);
   }
+}
+
+function renderNoteIconView(notes: Note[]): void {
+  const list = document.getElementById('note-list')!;
+  list.className = 'view-icons';
+  list.innerHTML = '';
+
+  for (const note of notes) {
+    const li = document.createElement('li');
+    li.className = 'icon-tile';
+    li.dataset.noteId = String(note.id);
+
+    const icon = document.createElement('div');
+    icon.className = 'icon-glyph';
+    icon.textContent = '📝';
+    li.appendChild(icon);
+
+    const name = document.createElement('div');
+    name.className = 'icon-name';
+    name.textContent = note.title;
+    li.appendChild(name);
+
+    li.addEventListener('click', () => openNoteEditor(note));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      atlasApi.showNoteContextMenu(note.id);
+    });
+
+    list.appendChild(li);
+  }
+}
+
+async function renderNotes(): Promise<void> {
+  const section = document.getElementById('notes-section')!;
+  const heading = document.getElementById('notes-heading')!;
+  const list = document.getElementById('note-list')!;
+
+  if (!selectedCourse) {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  heading.textContent = `Notes — ${selectedCourse.name}`;
+
+  const notes = await atlasApi.listNotes(selectedCourse.id);
+  if (notes.length === 0) {
+    list.className = 'view-list';
+    list.innerHTML = '';
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No notes yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  if (viewMode === 'list') renderNoteListView(notes);
+  else renderNoteIconView(notes);
 }
 
 let noteEditorInstance: Crepe | null = null;
@@ -364,6 +407,38 @@ function scheduleNoteSave(): void {
   }, 600);
 }
 
+// Headings should read as bold by default (Crepe's own theme renders them
+// at font-weight 400 — distinguishing size only, no weight — which the
+// user found visually flat), but Ctrl+B must still be able to un-bold one.
+// A CSS-forced weight on <h1>-<h6> can't satisfy both: it would win over
+// any mark, so toggling bold off would have no visible effect. Instead this
+// applies a real `strong` mark automatically the moment a heading is empty
+// (freshly created, or emptied out again) by priming ProseMirror's
+// `storedMarks` so the next character typed comes out bold — the same
+// mechanism as clicking Bold then typing. Once real text exists, this
+// stops touching the node, so it never fights a manual Ctrl+B afterward.
+const autoboldHeadingPlugin = $prose(
+  () =>
+    new Plugin({
+      key: new PluginKey('atlas-autobold-heading'),
+      appendTransaction: (transactions, _oldState, newState) => {
+        if (!transactions.some((tr) => tr.docChanged)) return null;
+
+        const headingType = newState.schema.nodes.heading;
+        const strongType = newState.schema.marks.strong;
+        if (!headingType || !strongType) return null;
+
+        const parent = newState.selection.$from.parent;
+        if (parent.type !== headingType || parent.content.size !== 0) return null;
+
+        const stored = newState.storedMarks ?? newState.selection.$from.marks();
+        if (strongType.isInSet(stored)) return null;
+
+        return newState.tr.setStoredMarks([strongType.create()]);
+      },
+    })
+);
+
 async function flushPendingNoteSave(): Promise<void> {
   if (noteSaveTimer) {
     clearTimeout(noteSaveTimer);
@@ -386,10 +461,38 @@ async function openNoteEditor(note: Note): Promise<void> {
   root.innerHTML = '';
   overlay.hidden = false;
 
+  const saveImage = async (file: File): Promise<string> => {
+    const buffer = await file.arrayBuffer();
+    const dot = file.name.lastIndexOf('.');
+    const extension = dot >= 0 ? file.name.slice(dot) : '';
+    return atlasApi.saveNoteImage(buffer, extension);
+  };
+
   const crepe = new Crepe({
     root,
     defaultValue: note.content_markdown,
+    featureConfigs: {
+      [Crepe.Feature.ImageBlock]: {
+        onUpload: saveImage,
+        inlineOnUpload: saveImage,
+        blockOnUpload: saveImage,
+      },
+      // Shorter, search/scan-friendly labels in the slash menu — "H1"
+      // instead of "Heading 1", per the user's request. Only the heading
+      // entries change; everything else keeps Crepe's defaults.
+      [Crepe.Feature.BlockEdit]: {
+        textGroup: {
+          h1: { label: 'H1' },
+          h2: { label: 'H2' },
+          h3: { label: 'H3' },
+          h4: { label: 'H4' },
+          h5: { label: 'H5' },
+          h6: { label: 'H6' },
+        },
+      },
+    },
   });
+  crepe.editor.use(autoboldHeadingPlugin);
   crepe.on((listener) => {
     listener.markdownUpdated(() => scheduleNoteSave());
   });
@@ -461,6 +564,7 @@ function setViewMode(mode: 'list' | 'icons', persist = true): void {
   document.getElementById('view-list')!.classList.toggle('active', mode === 'list');
   document.getElementById('view-icons')!.classList.toggle('active', mode === 'icons');
   renderResources();
+  renderNotes();
   if (persist) atlasApi.setSetting('viewMode', mode);
 }
 

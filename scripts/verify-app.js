@@ -354,6 +354,20 @@ const fs = require('fs');
   await window.click('#note-close');
   await window.waitForTimeout(300);
 
+  // Notes follow the same shared list/icon view toggle as resources.
+  await window.click('#view-icons');
+  await window.waitForTimeout(200);
+  const noteListClassInIcons = await window.getAttribute('#note-list', 'class');
+  console.log('note-list class in icon mode:', noteListClassInIcons);
+  if (!noteListClassInIcons || !noteListClassInIcons.includes('view-icons')) {
+    throw new Error('FAIL: icon view mode did not apply to the note list');
+  }
+  if ((await window.$$('#note-list li.icon-tile')).length === 0) {
+    throw new Error('FAIL: no icon tiles rendered for notes in icon view');
+  }
+  await window.click('#view-list');
+  await window.waitForTimeout(200);
+
   const noteListAfterClose = await window.$$eval('#note-list li', (els) => els.map((e) => e.textContent));
   console.log('notes after close:', noteListAfterClose);
   if (!noteListAfterClose.some((t) => t && t.includes('W1L1'))) {
@@ -381,6 +395,32 @@ const fs = require('fs');
   if (noteListAfterDelete.some((t) => t && t.includes('W1L1'))) {
     throw new Error('FAIL: note still present after delete');
   }
+
+  // Title auto-derivation must strip inline formatting (bold/italic/etc.),
+  // not just block-level markers — a bolded first line should produce a
+  // plain-text title, not one with literal ** in it.
+  await window.click('#new-note-button');
+  await window.waitForTimeout(500);
+  await window.click(noteEditableSelector, { force: true });
+  await window.keyboard.type('W2L3 Recap');
+  await window.waitForTimeout(150);
+  await window.keyboard.press('Control+a');
+  await window.keyboard.press('Control+b');
+  await window.waitForTimeout(1200);
+  const boldNoteId = await window.evaluate(() => {
+    const li = document.querySelector('#note-list li');
+    return li ? Number(li.dataset.noteId) : null;
+  });
+  await window.click('#note-close');
+  await window.waitForTimeout(300);
+  const boldTitleInList = await window.$eval('#note-list li', (el) => el.textContent);
+  console.log('title derived from a bolded first line:', boldTitleInList);
+  if (!boldTitleInList.includes('W2L3 Recap') || boldTitleInList.includes('**')) {
+    throw new Error(`FAIL: title should be "W2L3 Recap" with no markdown markers, got "${boldTitleInList}"`);
+  }
+  await window.evaluate((id) => window.atlas.deleteNote(id), boldNoteId);
+  await window.click('#course-list li');
+  await window.waitForTimeout(200);
 
   // Confirm on-disk layout: course folder named after the course (not
   // course-<id>), and the uploaded file keeping its original filename.
@@ -550,6 +590,45 @@ const fs = require('fs');
   }
   console.log('managed-storage watching: PASS');
 
+  // Note images: inserted via Crepe's image block (slash menu -> Image ->
+  // upload), must survive both an app restart and the read-only browser
+  // view. Regression guard for a real bug found during development: the
+  // local HTTP server used to pick a random port every launch, and the
+  // image URL gets baked directly into the saved note markdown — so a
+  // previously-inserted image 404'd on the very next launch once the port
+  // changed. Fixed by pinning the server to a fixed port (localServer.ts).
+  await window.click('#new-note-button');
+  await window.waitForTimeout(500);
+  const imageNoteEditableSelector = '.milkdown [contenteditable="true"]';
+  await window.click(imageNoteEditableSelector, { force: true });
+  await window.keyboard.type('/');
+  await window.waitForTimeout(400);
+  const imageMenuItem = await window.$('.milkdown-slash-menu >> text=Image');
+  await imageMenuItem.click();
+  await window.waitForTimeout(400);
+
+  const noteTestImagePath = path.join(testDataDir, 'note-test-image.png');
+  fs.writeFileSync(
+    noteTestImagePath,
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    )
+  );
+  const noteImageFileInput = await window.$('input[type="file"]');
+  await noteImageFileInput.setInputFiles(noteTestImagePath);
+  await window.waitForTimeout(1000);
+
+  const imageSrcBeforeClose = await window.$eval('.milkdown img', (el) => el.getAttribute('src'));
+  console.log('note image src:', imageSrcBeforeClose);
+  if (!imageSrcBeforeClose.includes('/note-image/')) {
+    throw new Error(`FAIL: note image src is not a stable local-server URL: ${imageSrcBeforeClose}`);
+  }
+
+  await window.click('#note-close');
+  await window.waitForTimeout(300);
+  const imageNoteId = await window.$eval('#note-list li', (el) => Number(el.dataset.noteId));
+
   // Leave the view mode on icons, then fully relaunch the app against the
   // same data dir — this is the actual scenario the user asked about
   // ("even after a fresh launch"), not just that the setting persists in
@@ -572,6 +651,36 @@ const fs = require('fs');
   if (!viewIconsActiveOnRelaunch) {
     throw new Error('FAIL: view mode did not survive a fresh app relaunch');
   }
+
+  await relaunchedWindow.click('#course-list li');
+  await relaunchedWindow.waitForTimeout(300);
+  await relaunchedWindow.click(`li[data-note-id="${imageNoteId}"]`);
+  await relaunchedWindow.waitForTimeout(800);
+  const imageLoadedAfterRelaunch = await relaunchedWindow.$eval(
+    '.milkdown img',
+    (el) => el.complete && el.naturalWidth > 0
+  );
+  console.log('note image still loads after a fresh relaunch:', imageLoadedAfterRelaunch);
+  if (!imageLoadedAfterRelaunch) {
+    throw new Error('FAIL: note image did not survive a fresh app relaunch');
+  }
+  await relaunchedWindow.click('#note-close');
+  await relaunchedWindow.waitForTimeout(200);
+
+  const noteImageBrowserUrl = await relaunchedWindow.evaluate(
+    (id) => window.atlas.getNoteBrowserUrl(id),
+    imageNoteId
+  );
+  const imageNoteResponse = await fetch(noteImageBrowserUrl);
+  const imageNoteHtml = await imageNoteResponse.text();
+  const imgSrcInBrowserView = imageNoteHtml.match(/<img[^>]*src="([^"]+)"/);
+  if (!imgSrcInBrowserView) throw new Error('FAIL: browser view of the note has no <img> tag');
+  const imageFetchViaBrowserView = await fetch(imgSrcInBrowserView[1]);
+  console.log('note image fetch via browser view ok:', imageFetchViaBrowserView.ok);
+  if (!imageFetchViaBrowserView.ok) {
+    throw new Error('FAIL: note image is not reachable from the read-only browser view');
+  }
+
   await relaunchedApp.close();
 
   // Throwaway data dirs, safe to delete entirely.

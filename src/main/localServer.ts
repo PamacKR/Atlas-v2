@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import katex from 'katex';
 import { getDb } from './db/database';
 import { getPreview } from './preview';
+import { getNoteImagesDir } from './paths';
 
 // Backs "Open in browser": serves a resource's content over a loopback-only
 // HTTP endpoint so it can be opened in the user's real browser (real tabs,
@@ -76,6 +77,25 @@ function renderNoteMarkdown(markdownText: string): string {
 }
 
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  // Images embedded in note content (see notes:saveImage in main.ts) — same
+  // stable-URL treatment resources get, so an image survives an app
+  // restart and works in the read-only browser view too, unlike the blob:
+  // URLs Crepe's image block defaults to (which die with the page/process
+  // that created them).
+  const noteImageMatch = (req.url ?? '').match(/^\/note-image\/([\w-]+\.\w+)$/);
+  if (noteImageMatch) {
+    const imagesDir = getNoteImagesDir();
+    const imagePath = path.join(imagesDir, noteImageMatch[1]);
+    if (!imagePath.startsWith(imagesDir) || !fs.existsSync(imagePath)) {
+      res.writeHead(404).end('Not found');
+      return;
+    }
+    const ext = path.extname(imagePath).toLowerCase();
+    res.writeHead(200, { 'Content-Type': CONTENT_TYPE_BY_EXTENSION[ext] ?? 'application/octet-stream' });
+    fs.createReadStream(imagePath).pipe(res);
+    return;
+  }
+
   if (req.url === '/katex.css') {
     // KaTeX's CSS references font files via relative "fonts/..." URLs —
     // point those at the /katex-fonts/ route below instead.
@@ -187,16 +207,39 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   fs.createReadStream(resource.file_path).pipe(res);
 }
 
+// Deliberately a fixed port, not an ephemeral one (server.listen(0, ...)) —
+// note images embed this server's URL directly into content_markdown, which
+// is persisted in the database. An ephemeral port picked fresh each launch
+// would bake in a port number that's already dead by the next launch,
+// breaking every previously-inserted image (this actually happened during
+// development: confirmed via a restart test that a saved image's <img src>
+// pointed at the *previous* session's port and 404'd). "Open in browser"
+// URLs for resources/notes don't have this problem since they're generated
+// fresh on demand, never persisted — only note images are baked into
+// stored content, so only they needed a stable port to be safe long-term.
+const FIXED_PORT = 47823;
+
 export function startLocalServer(): Promise<number> {
   return new Promise((resolve) => {
     server = http.createServer((req, res) => {
       handleRequest(req, res).catch(() => res.writeHead(500).end('Internal error'));
     });
-    server.listen(0, '127.0.0.1', () => {
+
+    const onListening = () => {
       const address = server!.address();
       port = typeof address === 'object' && address ? address.port : 0;
       resolve(port);
+    };
+
+    // Fall back to an ephemeral port only in the unlikely case the fixed
+    // one is unavailable (another process holding it) — better a working
+    // session with fresh-generated URLs than a failed launch, even though
+    // any already-saved image references won't resolve for that session.
+    server.once('error', () => {
+      server!.removeAllListeners('error');
+      server!.listen(0, '127.0.0.1', onListening);
     });
+    server.listen(FIXED_PORT, '127.0.0.1', onListening);
   });
 }
 
@@ -213,4 +256,8 @@ export function getResourceBrowserUrl(resourceId: number): string {
 
 export function getNoteBrowserUrl(noteId: number): string {
   return `http://127.0.0.1:${port}/note/${noteId}`;
+}
+
+export function getNoteImageUrl(filename: string): string {
+  return `http://127.0.0.1:${port}/note-image/${filename}`;
 }

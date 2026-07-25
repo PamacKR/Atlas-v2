@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@milkdown/crepe": "^7.21.3",
+    "@milkdown/kit": "^7.21.3",
     "adm-zip": "^0.6.0",
     "better-sqlite3": "^11.7.0",
     "chokidar": "^4.0.3",

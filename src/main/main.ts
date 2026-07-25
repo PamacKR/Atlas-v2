@@ -2,10 +2,17 @@ import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
+import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
-import { getDataDir, getFilesDir } from './paths';
+import { getDataDir, getFilesDir, getNoteImagesDir } from './paths';
 import { getPreview } from './preview';
-import { startLocalServer, stopLocalServer, getResourceBrowserUrl, getNoteBrowserUrl } from './localServer';
+import {
+  startLocalServer,
+  stopLocalServer,
+  getResourceBrowserUrl,
+  getNoteBrowserUrl,
+  getNoteImageUrl,
+} from './localServer';
 
 const KIND_BY_EXTENSION: Record<string, string> = {
   '.pdf': 'pdf',
@@ -549,15 +556,30 @@ ipcMain.handle('notes:create', (_event, courseId: number) => {
 // Google-Docs-style default title: the first non-empty line, with common
 // markdown prefixes (heading marks, list/checkbox markers, blockquote)
 // stripped, so "# W1L1" or "- W1L1" both just become "W1L1".
+// Strips inline emphasis marks (bold/italic/strikethrough/code) so a title
+// derived from "**W1L1**" or "_W1L1_" is just "W1L1" — the user shouldn't
+// have to avoid formatting their first line to keep the title clean.
+function stripInlineFormatting(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+}
+
 function deriveTitleFromMarkdown(markdown: string): string {
   for (const line of markdown.split('\n')) {
-    const stripped = line
-      .trim()
-      .replace(/^#{1,6}\s+/, '')
-      .replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '')
-      .replace(/^\d+\.\s+/, '')
-      .replace(/^>\s+/, '')
-      .trim();
+    const stripped = stripInlineFormatting(
+      line
+        .trim()
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^[-*+]\s+(\[[ xX]\]\s+)?/, '')
+        .replace(/^\d+\.\s+/, '')
+        .replace(/^>\s+/, '')
+        .trim()
+    ).trim();
     if (stripped) return stripped.slice(0, 100);
   }
   return 'Untitled';
@@ -594,6 +616,21 @@ ipcMain.handle('notes:updateTitle', (_event, noteId: number, title: string) => {
 ipcMain.handle('notes:delete', (_event, noteId: number) => {
   const db = getDb();
   db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
+});
+
+// Images embedded in note content: copied into a stable, Atlas-owned
+// location and served over the local HTTP server (see localServer.ts),
+// rather than left as the blob: URL Crepe's image block defaults to —
+// a blob: URL only lives as long as the renderer process that created it,
+// so it went dead on every app restart and could never work in the
+// read-only browser view at all (a separate process/origin entirely).
+ipcMain.handle('notes:saveImage', (_event, buffer: ArrayBuffer, extension: string) => {
+  const dir = getNoteImagesDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const safeExt = /^\.[a-zA-Z0-9]+$/.test(extension) ? extension : '';
+  const filename = `${randomUUID()}${safeExt}`;
+  fs.writeFileSync(path.join(dir, filename), Buffer.from(buffer));
+  return getNoteImageUrl(filename);
 });
 
 ipcMain.handle('notes:browserUrl', (_event, noteId: number) => getNoteBrowserUrl(noteId));

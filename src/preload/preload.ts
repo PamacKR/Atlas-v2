@@ -101,4 +101,6 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.on('notes:contextMenuDelete', (_event, noteId: number) => handler(noteId));
   },
   getNoteBrowserUrl: (noteId: number): Promise<string> => ipcRenderer.invoke('notes:browserUrl', noteId),
+  saveNoteImage: (buffer: ArrayBuffer, extension: string): Promise<string> =>
+    ipcRenderer.invoke('notes:saveImage', buffer, extension),
 });

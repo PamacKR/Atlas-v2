@@ -496,7 +496,7 @@ ul#note-list {
   margin: 0 0 1rem 0;
 }
 
-ul#note-list li {
+ul#note-list.view-list li {
   padding: 0.6rem 0.8rem;
   background: #1a1e24;
   border-radius: 6px;
@@ -510,6 +510,12 @@ ul#note-list li {
 ul#note-list li .note-updated {
   color: #8a919c;
   font-size: 0.78rem;
+}
+
+ul#note-list.view-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.75rem;
 }
 
 button#new-note-button {

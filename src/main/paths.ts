@@ -23,3 +23,10 @@ export function getDbPath(): string {
 export function getFilesDir(): string {
   return path.join(getDataDir(), 'files');
 }
+
+// Images pasted/dropped into a note's editor — a flat store since they're
+// not tied to the per-course files/ layout the way resources are; the note
+// referencing an image is what ties it to a course, not its folder location.
+export function getNoteImagesDir(): string {
+  return path.join(getDataDir(), 'note-images');
+}
