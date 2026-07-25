@@ -66,6 +66,12 @@ Still open, lower urgency (not blocking Phase 1): sync frequency/manual-vs-autom
 - Also ticked off "Unified Resource Library" on `ROADMAP.md`, noticing it was already effectively done (manual upload and folder watching already share one per-course resource list/table regardless of source) but hadn't been marked as such.
 - `scripts/verify-app.js` extended: confirms all three widgets show the expected data for the test course, and that clicking a dashboard deadline/resource opens the deadline viewer/resource preview respectively.
 - **Also logged, not fixed**: the user flagged (with a screenshot) multiple scrollbars appearing at once in some views — looked like Chromium's PDF-viewer scrollbar nested alongside the page's own. Explicitly asked to defer this, not fix it now — logged as `docs/open-questions.md` #14 for a later dedicated UI/layout pass.
+- **Follow-up round, same session — 4 small requests:**
+  1. **Visual separator (`•`) between course name and due/changed date-time** in the deadlines and activity dashboard widgets, so e.g. "Data Structures & Algorithms Tomorrow at 23:45" doesn't read as one run-on clause.
+  2. Answered: **"Recently added resources" is the last 8 by `added_at`, not a time window** — could be from just now or from weeks ago, whichever 8 were added most recently.
+  3. Answered: **"What changed today" only covers resources added and notes updated today** — not resource deletions, and not deadlines (which don't currently have a created/updated timestamp column at all).
+  4. **"F" toggles fullscreen for an open resource preview**, same as clicking the fullscreen button — guarded to not fire while a text field has focus, so typing a literal "f" (e.g. into a deadline title) is never hijacked.
+  - `scripts/verify-app.js` extended: confirms pressing "f" enters and then exits preview fullscreen.
 
 ## Session 31 additions
 

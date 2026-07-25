@@ -128,6 +128,24 @@ const fs = require('fs');
     throw new Error('FAIL: markdown preview did not render expected content');
   }
 
+  // "F" toggles preview fullscreen, so the user doesn't have to reach for
+  // the button — guarded to not fire while typing, so pressing "f" here
+  // (with no text field focused) should toggle it on, then off again.
+  await window.keyboard.press('f');
+  await window.waitForTimeout(200);
+  let previewFullscreen = await window.evaluate(() =>
+    document.getElementById('preview-overlay').classList.contains('fullscreen')
+  );
+  console.log('preview fullscreen after pressing "f":', previewFullscreen);
+  if (!previewFullscreen) throw new Error('FAIL: pressing "f" did not enter fullscreen preview');
+  await window.keyboard.press('f');
+  await window.waitForTimeout(200);
+  previewFullscreen = await window.evaluate(() =>
+    document.getElementById('preview-overlay').classList.contains('fullscreen')
+  );
+  console.log('preview fullscreen after pressing "f" again:', previewFullscreen);
+  if (previewFullscreen) throw new Error('FAIL: pressing "f" again did not exit fullscreen preview');
+
   // Regression check: zoom controls must stay hidden for a non-image
   // preview. This previously broke because #zoom-controls had an
   // unconditional `display: flex` on its ID selector, which outranked the

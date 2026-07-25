@@ -173,6 +173,17 @@ section#dashboard-section > h2 {
   flex-shrink: 0;
 }
 
+/* Visual separator between the course name and the due/changed date-time
+   that follows it, so the two don't run together at a glance (e.g. "Data
+   Structures & Algorithms Tomorrow at 23:45" read as one clause). Only
+   .dashboard-item-meta elements are preceded by a course name in the
+   deadlines/activity widgets, so this is safe to apply unconditionally. */
+.dashboard-item-meta::before {
+  content: '•';
+  margin-right: 0.4rem;
+  color: #4a505a;
+}
+
 .courses-header {
   display: flex;
   align-items: center;

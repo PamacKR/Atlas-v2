@@ -1529,6 +1529,26 @@ async function init(): Promise<void> {
       return;
     }
 
+    // "F" toggles fullscreen for whichever resource preview is currently
+    // open, so the user doesn't have to reach for the fullscreen button.
+    // Guarded to only fire when the preview is actually open and focus
+    // isn't in a text field — otherwise typing a literal "f" somewhere
+    // (e.g. a deadline title) would unexpectedly toggle fullscreen.
+    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const previewOpen = !(document.getElementById('preview-overlay') as HTMLElement).hidden;
+      const active = document.activeElement;
+      const isTyping =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement ||
+        (active instanceof HTMLElement && active.isContentEditable);
+      if (previewOpen && !isTyping) {
+        e.preventDefault();
+        toggleFullscreenPreview();
+        return;
+      }
+    }
+
     if (e.key !== 'Escape') return;
     // Deliberately does NOT close the note editor — an editor with
     // in-progress typing shouldn't disappear because of an incidental
