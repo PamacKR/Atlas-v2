@@ -611,16 +611,19 @@ function exportNoteToFile(noteId: number): void {
     note.exported_path
   );
 
-  // Relative link straight back to the shared note-images/ store, not a
-  // per-note copy — one physical file, not two. Trade-off, chosen
-  // deliberately over duplication: this only resolves correctly as long as
-  // the exported .md stays somewhere under Atlas-Storage (or note-images/
-  // travels with it) — copying a single note file completely on its own
-  // elsewhere would leave the image link broken. Forward slashes always,
+  // Relative link straight back to this course's own note-images/ store
+  // (files/<course>/notes/note-images/), not a per-note copy — one physical
+  // file, not two. Both live under the same notes/ folder, so the link is
+  // always just "note-images/<filename>" and travels safely with the whole
+  // notes/ folder if it's copied elsewhere; only a single .md file lifted out
+  // on its own would leave the link broken. Forward slashes always,
   // regardless of OS, since that's what Markdown/browsers expect in a link.
-  const relativeImagesPath = path.relative(notesDir, getNoteImagesDir()).split(path.sep).join('/');
+  const relativeImagesPath = path
+    .relative(notesDir, getNoteImagesDir(course.folder_name))
+    .split(path.sep)
+    .join('/');
   const rewritten = note.content_markdown.replace(
-    /http:\/\/127\.0\.0\.1:\d+\/note-image\/([\w-]+\.\w+)/g,
+    /http:\/\/127\.0\.0\.1:\d+\/note-image\/\d+\/([\w-]+\.\w+)/g,
     (_whole, filename) => `${relativeImagesPath}/${filename}`
   );
 
@@ -724,13 +727,19 @@ ipcMain.handle('notes:delete', (_event, noteId: number) => {
 // a blob: URL only lives as long as the renderer process that created it,
 // so it went dead on every app restart and could never work in the
 // read-only browser view at all (a separate process/origin entirely).
-ipcMain.handle('notes:saveImage', (_event, buffer: ArrayBuffer, extension: string) => {
-  const dir = getNoteImagesDir();
+ipcMain.handle('notes:saveImage', (_event, courseId: number, buffer: ArrayBuffer, extension: string) => {
+  const db = getDb();
+  const course = db.prepare('SELECT folder_name FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
+  if (!course) return null;
+
+  const dir = getNoteImagesDir(course.folder_name);
   fs.mkdirSync(dir, { recursive: true });
   const safeExt = /^\.[a-zA-Z0-9]+$/.test(extension) ? extension : '';
   const filename = `${randomUUID()}${safeExt}`;
   fs.writeFileSync(path.join(dir, filename), Buffer.from(buffer));
-  return getNoteImageUrl(filename);
+  return getNoteImageUrl(courseId, filename);
 });
 
 ipcMain.handle('notes:browserUrl', (_event, noteId: number) => getNoteBrowserUrl(noteId));

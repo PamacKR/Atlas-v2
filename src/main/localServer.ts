@@ -7,6 +7,13 @@ import { getDb } from './db/database';
 import { getPreview } from './preview';
 import { getNoteImagesDir } from './paths';
 
+function resolveCourseFolderName(db: ReturnType<typeof getDb>, courseId: number): string | undefined {
+  const course = db.prepare('SELECT folder_name FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
+  return course?.folder_name;
+}
+
 // Backs "Open in browser": serves a resource's content over a loopback-only
 // HTTP endpoint so it can be opened in the user's real browser (real tabs,
 // not Electron's preview panel) instead of shelling out to a native desktop
@@ -82,10 +89,15 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   // restart and works in the read-only browser view too, unlike the blob:
   // URLs Crepe's image block defaults to (which die with the page/process
   // that created them).
-  const noteImageMatch = (req.url ?? '').match(/^\/note-image\/([\w-]+\.\w+)$/);
+  const noteImageMatch = (req.url ?? '').match(/^\/note-image\/(\d+)\/([\w-]+\.\w+)$/);
   if (noteImageMatch) {
-    const imagesDir = getNoteImagesDir();
-    const imagePath = path.join(imagesDir, noteImageMatch[1]);
+    const folderName = resolveCourseFolderName(getDb(), Number(noteImageMatch[1]));
+    if (!folderName) {
+      res.writeHead(404).end('Not found');
+      return;
+    }
+    const imagesDir = getNoteImagesDir(folderName);
+    const imagePath = path.join(imagesDir, noteImageMatch[2]);
     if (!imagePath.startsWith(imagesDir) || !fs.existsSync(imagePath)) {
       res.writeHead(404).end('Not found');
       return;
@@ -258,6 +270,6 @@ export function getNoteBrowserUrl(noteId: number): string {
   return `http://127.0.0.1:${port}/note/${noteId}`;
 }
 
-export function getNoteImageUrl(filename: string): string {
-  return `http://127.0.0.1:${port}/note-image/${filename}`;
+export function getNoteImageUrl(courseId: number, filename: string): string {
+  return `http://127.0.0.1:${port}/note-image/${courseId}/${filename}`;
 }

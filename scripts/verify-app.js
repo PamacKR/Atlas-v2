@@ -655,8 +655,8 @@ const fs = require('fs');
   await window.waitForTimeout(300);
   const imageNoteId = await window.$eval('#note-list li', (el) => Number(el.dataset.noteId));
 
-  // The exported .md file must link back to the shared note-images/ store
-  // via a relative path, not a per-note copy — no duplicated image bytes.
+  // The exported .md file must link back to this course's own notes/note-images/
+  // store via a relative path, not a per-note copy — no duplicated image bytes.
   const exportedNoteFiles = fs.readdirSync(path.join(testDataDir, 'files', 'Watch Test Course', 'notes'));
   console.log('files in notes/ after image insert (should be just the .md, no .assets folder):', exportedNoteFiles);
   if (exportedNoteFiles.some((f) => f.endsWith('.assets'))) {
@@ -675,8 +675,8 @@ const fs = require('fs');
   );
   const relativeImageLinkMatch = exportedMdContent.match(/\]\(([^)]+)\)/);
   console.log('relative image link in exported file:', relativeImageLinkMatch && relativeImageLinkMatch[1]);
-  if (!relativeImageLinkMatch || !relativeImageLinkMatch[1].startsWith('../../../note-images/')) {
-    throw new Error(`FAIL: exported note does not link to the shared note-images/ store: ${exportedMdContent}`);
+  if (!relativeImageLinkMatch || !relativeImageLinkMatch[1].startsWith('note-images/')) {
+    throw new Error(`FAIL: exported note does not link to the course's own notes/note-images/ store: ${exportedMdContent}`);
   }
   const resolvedImagePath = path.resolve(
     path.join(testDataDir, 'files', 'Watch Test Course', 'notes'),

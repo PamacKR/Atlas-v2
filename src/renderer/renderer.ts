@@ -77,7 +77,7 @@ interface AtlasApi {
   showNoteContextMenu: (noteId: number) => void;
   onNoteContextMenuDelete: (handler: (noteId: number) => void) => void;
   getNoteBrowserUrl: (noteId: number) => Promise<string>;
-  saveNoteImage: (buffer: ArrayBuffer, extension: string) => Promise<string>;
+  saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string) => Promise<string>;
 }
 
 // This file is bundled by esbuild (scripts/build-renderer.js), not compiled
@@ -465,7 +465,7 @@ async function openNoteEditor(note: Note): Promise<void> {
     const buffer = await file.arrayBuffer();
     const dot = file.name.lastIndexOf('.');
     const extension = dot >= 0 ? file.name.slice(dot) : '';
-    return atlasApi.saveNoteImage(buffer, extension);
+    return atlasApi.saveNoteImage(note.course_id, buffer, extension);
   };
 
   const crepe = new Crepe({

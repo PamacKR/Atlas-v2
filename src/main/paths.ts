@@ -24,9 +24,12 @@ export function getFilesDir(): string {
   return path.join(getDataDir(), 'files');
 }
 
-// Images pasted/dropped into a note's editor — a flat store since they're
-// not tied to the per-course files/ layout the way resources are; the note
-// referencing an image is what ties it to a course, not its folder location.
-export function getNoteImagesDir(): string {
-  return path.join(getDataDir(), 'note-images');
+// Images pasted/dropped into a note's editor — stored inside that course's
+// own notes/ folder (files/<course>/notes/note-images/), right alongside the
+// exported .md that references them, rather than a global flat store. Keeps
+// everything for a course self-contained under its own folder, and means the
+// exported note's image links are always a short, same-folder-tree relative
+// path instead of reaching back out to a shared top-level directory.
+export function getNoteImagesDir(courseFolderName: string): string {
+  return path.join(getFilesDir(), courseFolderName, 'notes', 'note-images');
 }
