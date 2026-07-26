@@ -27,11 +27,15 @@ const CLASSROOM_REFRESH_TOKEN_SETTING_KEY = 'google_classroom_refresh_token';
 
 // `.me` scopes ("coursework assigned to me") rather than `.students`, which
 // requires teacher/domain-admin-level access — this is a student account
-// (docs/open-questions.md #8).
+// (docs/open-questions.md #8). classroom.courseworkmaterials.readonly has no
+// `.me` variant (unlike coursework) — it's the same scope for both teacher
+// and student contexts — needed once courseWorkMaterials.list (the
+// ungraded "Classwork" tab, docs/open-questions.md #21) was added.
 const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
   'https://www.googleapis.com/auth/classroom.announcements.readonly',
+  'https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly',
 ];
 
 interface GoogleClientCredentials {
