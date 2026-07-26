@@ -603,6 +603,27 @@ ul#all-resources-list li .code {
   font-size: 0.9rem;
 }
 
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+#ashoka-import-button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+#ashoka-import-button:hover {
+  background: var(--color-hover-bg);
+}
+
 .courses-toolbar {
   display: flex;
   align-items: center;
@@ -2191,6 +2212,101 @@ form#course-form button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#ashoka-review-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 10;
+}
+
+#ashoka-review-overlay:not([hidden]) {
+  display: flex;
+}
+
+#ashoka-review-panel {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+#ashoka-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.ashoka-review-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--color-border-soft);
+  font-size: 0.85rem;
+}
+
+.ashoka-review-row:first-child {
+  border-top: none;
+}
+
+.ashoka-review-row input[type='checkbox'] {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.ashoka-review-row-info {
+  overflow: hidden;
+}
+
+.ashoka-review-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ashoka-review-row-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ashoka-review-row.ashoka-review-row-imported {
+  color: var(--color-text-muted);
+}
+
+#ashoka-review-footer {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--color-border-soft);
+  margin-top: 0.4rem;
+}
+
+#ashoka-review-import {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  border: none;
+  background: var(--color-accent);
+  color: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+#ashoka-review-import:hover {
+  opacity: 0.9;
 }
 
 .notes-header-actions {

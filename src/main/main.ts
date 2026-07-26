@@ -33,6 +33,12 @@ import {
   registerAttachmentSaver,
 } from './googleClassroom';
 import {
+  getAshokaPlannerDbPath,
+  setAshokaPlannerDbPath,
+  listSecuredAshokaCourses,
+  AshokaCourseCandidate,
+} from './ashokaPlanner';
+import {
   startLocalServer,
   stopLocalServer,
   getResourceBrowserUrl,
@@ -944,6 +950,47 @@ ipcMain.handle(
     return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
   }
 );
+
+// --- Ashoka Planner course import (docs/open-questions.md #15) ---
+// A one-shot, user-invoked import (never automatic, never polled) that reads
+// the user's separate ashoka-planner app's own SQLite file directly —
+// there's no network/OAuth involved, it's a local-file-to-local-file read.
+// Atlas never writes back to planner.db.
+ipcMain.handle('ashoka:getDbPath', () => getAshokaPlannerDbPath());
+
+ipcMain.handle('ashoka:pickDbPath', async () => {
+  if (!mainWindow) return { ok: false as const, error: 'No window available.' };
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'SQLite database', extensions: ['db', 'sqlite', 'sqlite3'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { ok: false as const, error: null };
+  return setAshokaPlannerDbPath(result.filePaths[0]);
+});
+
+ipcMain.handle('ashoka:listSecuredCourses', () => listSecuredAshokaCourses());
+
+// Creates a real Atlas course per selected candidate, same folder-creation
+// steps as courses:create — reused directly since this is exactly a course
+// creation, just with the name/code/term/description already known instead
+// of typed in by hand.
+ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidate[]) => {
+  const db = getDb();
+  const created: unknown[] = [];
+  for (const candidate of candidates) {
+    const insertResult = db
+      .prepare('INSERT INTO courses (name, code, term, folder_name, description) VALUES (?, ?, ?, ?, ?)')
+      .run(candidate.title, candidate.code, candidate.semester, '', candidate.description);
+    const courseId = insertResult.lastInsertRowid;
+
+    const folderName = uniqueCourseFolderName(sanitizeFolderName(candidate.title), getFilesDir());
+    db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
+    startWatchingCourseStorage(Number(courseId), folderName);
+
+    created.push(db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId));
+  }
+  return created;
+});
 
 ipcMain.handle('app:getSetting', (_event, key: string) => {
   const db = getDb();

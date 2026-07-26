@@ -114,7 +114,10 @@
               <h2>Courses</h2>
               <p class="muted">All your courses in one place.</p>
             </div>
-            <button id="add-course-toggle" type="button">+ Add course</button>
+            <div class="page-header-actions">
+              <button id="ashoka-import-button" type="button">Import from Ashoka Planner</button>
+              <button id="add-course-toggle" type="button">+ Add course</button>
+            </div>
           </div>
 
           <form id="course-form" hidden>
@@ -475,6 +478,23 @@
         <button id="classroom-review-bulk-ignore" type="button">Ignore</button>
       </div>
       <ul id="classroom-review-list"></ul>
+    </div>
+  </div>
+
+  <div id="ashoka-review-overlay" hidden>
+    <div id="ashoka-review-panel">
+      <div class="split-preview-header">
+        <span>Import courses from Ashoka Planner</span>
+        <div class="split-preview-actions">
+          <button id="ashoka-review-close" type="button" title="Cancel" aria-label="Cancel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <ul id="ashoka-review-list"></ul>
+      <div id="ashoka-review-footer">
+        <button id="ashoka-review-import" type="button">Import selected</button>
+      </div>
     </div>
   </div>
 

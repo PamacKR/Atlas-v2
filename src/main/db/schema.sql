@@ -16,7 +16,12 @@ CREATE TABLE IF NOT EXISTS courses (
   -- Classroom course ID this course was mapped to via the course-mapping
   -- review panel (see classroom_pending_courses below). NULL for a course
   -- never linked to Classroom.
-  classroom_course_id TEXT
+  classroom_course_id TEXT,
+  -- Course description, populated when a course is created via the Ashoka
+  -- Planner import (docs/open-questions.md #15) from that app's own
+  -- course_description data. NULL for manually-created/Classroom-mapped
+  -- courses, which have no description source.
+  description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS resources (

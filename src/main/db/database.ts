@@ -39,6 +39,9 @@ function migrate(db: Database.Database): void {
   if (!courseColumns.includes('classroom_course_id')) {
     db.exec('ALTER TABLE courses ADD COLUMN classroom_course_id TEXT');
   }
+  if (!courseColumns.includes('description')) {
+    db.exec('ALTER TABLE courses ADD COLUMN description TEXT');
+  }
 
   const resourceColumns = (
     db.prepare('PRAGMA table_info(resources)').all() as { name: string }[]

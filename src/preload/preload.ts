@@ -142,6 +142,17 @@ export interface ClassroomPendingCourse {
   detected_at: string;
 }
 
+export interface AshokaCourseCandidate {
+  code: string;
+  title: string;
+  category: string | null;
+  faculty: string | null;
+  credits: number | null;
+  description: string | null;
+  semester: string | null;
+  alreadyImported: boolean;
+}
+
 contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
@@ -188,6 +199,13 @@ contextBridge.exposeInMainWorld('atlas', {
   onClassroomChanged: (handler: () => void): void => {
     ipcRenderer.on('classroom:changed', () => handler());
   },
+  getAshokaDbPath: (): Promise<string | null> => ipcRenderer.invoke('ashoka:getDbPath'),
+  pickAshokaDbPath: (): Promise<{ ok: true } | { ok: false; error: string | null }> =>
+    ipcRenderer.invoke('ashoka:pickDbPath'),
+  listSecuredAshokaCourses: (): Promise<AshokaCourseCandidate[]> =>
+    ipcRenderer.invoke('ashoka:listSecuredCourses'),
+  importAshokaCourses: (candidates: AshokaCourseCandidate[]): Promise<Course[]> =>
+    ipcRenderer.invoke('ashoka:importCourses', candidates),
   getResourceBrowserUrl: (resourceId: number): Promise<string> =>
     ipcRenderer.invoke('resources:browserUrl', resourceId),
   listResources: (courseId: number): Promise<Resource[]> =>
