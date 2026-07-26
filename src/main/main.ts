@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
 import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
-import { getDataDir, getFilesDir, getNoteImagesDir } from './paths';
+import { getFilesDir, getNoteImagesDir } from './paths';
 import { getPreview } from './preview';
 import {
   startLocalServer,
@@ -350,10 +350,54 @@ function stopWatchingCourseStorage(courseId: number): void {
 
 let mainWindow: BrowserWindow | null = null;
 
+// Remembers the window's size/position/maximized state across launches
+// (persisted in app_settings, same mechanism the renderer uses for its own
+// preferences) — per the user's request that the app either open maximized
+// or at least reopen the way it was left, rather than always resetting to a
+// fixed 1280x800. No saved state (first run) defaults to maximized.
+interface WindowState {
+  width: number;
+  height: number;
+  x: number | undefined;
+  y: number | undefined;
+  isMaximized: boolean;
+}
+
+function loadWindowState(): WindowState | null {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('windowState') as
+    | { value: string }
+    | undefined;
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as WindowState;
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowState(win: BrowserWindow): void {
+  const isMaximized = win.isMaximized();
+  // getBounds() while maximized reports the maximized size, not the
+  // restored one — getNormalBounds() always reports the un-maximized
+  // bounds regardless of current state, which is what should be restored
+  // into next launch if the window is ever un-maximized.
+  const bounds = win.getNormalBounds();
+  const state: WindowState = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y, isMaximized };
+  const db = getDb();
+  db.prepare(
+    'INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?'
+  ).run('windowState', JSON.stringify(state), JSON.stringify(state));
+}
+
 function createWindow(): void {
+  const savedState = loadWindowState();
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: savedState?.width ?? 1280,
+    height: savedState?.height ?? 800,
+    x: savedState?.x,
+    y: savedState?.y,
     // Hidden by default to save screen space (per user request) — Alt still
     // reveals it temporarily, Electron/Chromium's standard behavior for an
     // auto-hidden menu bar on Windows/Linux. No effect on macOS, which never
@@ -364,6 +408,26 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  if (savedState === null || savedState.isMaximized) mainWindow.maximize();
+
+  // Debounced — resize/move fire continuously while dragging, and only the
+  // final state after the user stops actually needs to be persisted.
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleSave = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (mainWindow) saveWindowState(mainWindow);
+    }, 500);
+  };
+  mainWindow.on('resize', scheduleSave);
+  mainWindow.on('move', scheduleSave);
+  mainWindow.on('maximize', scheduleSave);
+  mainWindow.on('unmaximize', scheduleSave);
+  mainWindow.on('close', () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    if (mainWindow) saveWindowState(mainWindow);
   });
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -452,6 +516,27 @@ ipcMain.handle('search:query', (_event, query: string) => {
 // announcements/assignments widgets are v2, once those have real data
 // behind them (see docs/open-questions.md #13).
 
+// A small stat-tile row shown above the four dashboard widgets — the user
+// felt the dashboard "looks so empty" even with real data behind it; the
+// four widgets are all lists that read as sparse/empty whenever the list
+// itself is short, with no other visual weight on the page. A stats strip
+// gives the top of the page real content regardless of how many items are
+// in any one list below it.
+ipcMain.handle('dashboard:stats', () => {
+  const db = getDb();
+  const courseCount = (
+    db.prepare('SELECT COUNT(*) AS count FROM courses WHERE archived = 0').get() as { count: number }
+  ).count;
+  const resourceCount = (db.prepare('SELECT COUNT(*) AS count FROM resources').get() as { count: number }).count;
+  const noteCount = (db.prepare('SELECT COUNT(*) AS count FROM notes').get() as { count: number }).count;
+  const upcomingDeadlineCount = (
+    db
+      .prepare('SELECT COUNT(*) AS count FROM deadlines WHERE completed = 0 AND due_at IS NOT NULL')
+      .get() as { count: number }
+  ).count;
+  return { courseCount, resourceCount, noteCount, upcomingDeadlineCount };
+});
+
 ipcMain.handle('dashboard:upcomingDeadlines', () => {
   const db = getDb();
   // Only deadlines with an actual due date — an "upcoming" list is
@@ -476,7 +561,8 @@ ipcMain.handle('dashboard:courseSummaries', () => {
     .prepare(
       `SELECT courses.*,
               (SELECT COUNT(*) FROM resources WHERE resources.course_id = courses.id) AS resource_count,
-              (SELECT COUNT(*) FROM deadlines WHERE deadlines.course_id = courses.id) AS deadline_count
+              (SELECT COUNT(*) FROM deadlines WHERE deadlines.course_id = courses.id) AS deadline_count,
+              (SELECT COUNT(*) FROM notes WHERE notes.course_id = courses.id) AS note_count
        FROM courses
        WHERE courses.archived = 0
        ORDER BY courses.name`
@@ -576,8 +662,6 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
 
   return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
-
-ipcMain.handle('app:dataDir', () => getDataDir());
 
 ipcMain.handle('app:getSetting', (_event, key: string) => {
   const db = getDb();

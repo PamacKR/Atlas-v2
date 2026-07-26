@@ -41,12 +41,6 @@ const fs = require('fs');
     await window.waitForTimeout(300);
   }
 
-  const dataDirText = await window.textContent('#data-dir');
-  console.log('data-dir text:', JSON.stringify(dataDirText));
-  if (!dataDirText || !dataDirText.includes(testDataDir)) {
-    throw new Error('FAIL: data-dir text missing or unexpected');
-  }
-
   // --- Sidebar nav: genuine page switching, not a decorative scroll shortcut.
   await goToPage('courses');
   let coursesPageHidden = await window.getAttribute('#page-courses', 'hidden');
@@ -58,21 +52,6 @@ const fs = require('fs');
     document.querySelector('.sidebar-nav-item[data-page="courses"]').classList.contains('active')
   );
   if (!coursesNavActive) throw new Error('FAIL: Courses sidebar nav item did not become active');
-
-  // Sidebar "Search" just focuses the search box (same as Ctrl+L) — it
-  // isn't a page, so it shouldn't change which page is active.
-  await window.click('#sidebar-search-button');
-  await window.waitForTimeout(100);
-  const focusedAfterSidebarSearch = await window.evaluate(() => document.activeElement && document.activeElement.id);
-  console.log('focused element after sidebar Search click:', focusedAfterSidebarSearch);
-  if (focusedAfterSidebarSearch !== 'search-input') {
-    throw new Error(`FAIL: sidebar Search did not focus the search input, got "${focusedAfterSidebarSearch}"`);
-  }
-  const stillOnCoursesAfterSearchClick = await window.getAttribute('#page-courses', 'hidden');
-  if (stillOnCoursesAfterSearchClick !== null) {
-    throw new Error('FAIL: clicking sidebar Search should not navigate away from the current page');
-  }
-  await window.keyboard.press('Escape');
 
   const beforeCount = (await window.$$('#course-list li')).length;
   console.log('courses before:', beforeCount);
@@ -155,6 +134,20 @@ const fs = require('fs');
   await window.click('#theme-toggle'); // back to dark for the rest of the run
   await window.waitForTimeout(200);
 
+  // Sidebar collapse: icon-only rail, persists across a reload the same way.
+  await window.click('#sidebar-collapse-toggle');
+  await window.waitForTimeout(200);
+  let sidebarCollapsed = await window.evaluate(() => document.getElementById('sidebar').classList.contains('collapsed'));
+  console.log('sidebar collapsed after toggle:', sidebarCollapsed);
+  if (!sidebarCollapsed) throw new Error('FAIL: sidebar did not collapse on toggle click');
+  await window.reload();
+  await window.waitForTimeout(500);
+  sidebarCollapsed = await window.evaluate(() => document.getElementById('sidebar').classList.contains('collapsed'));
+  console.log('sidebar collapsed after reload (should stay collapsed):', sidebarCollapsed);
+  if (!sidebarCollapsed) throw new Error('FAIL: sidebar collapse state did not persist across a reload');
+  await window.click('#sidebar-collapse-toggle'); // back to expanded for the rest of the run
+  await window.waitForTimeout(200);
+
   // Reload resets to the Dashboard page — go back to Courses.
   await goToPage('courses');
 
@@ -166,17 +159,35 @@ const fs = require('fs');
 
   const courseId = await window.$eval('#course-list li.course-card.selected', (el) => Number(el.dataset.courseId));
 
-  const courseDetailHidden = await window.getAttribute('#course-detail', 'hidden');
-  console.log('course-detail hidden after selecting a course:', courseDetailHidden !== null);
-  if (courseDetailHidden !== null) throw new Error('FAIL: course-detail did not show after selecting a course');
+  const courseDetailHidden = await window.getAttribute('#courses-detail-view', 'hidden');
+  console.log('course detail view hidden after selecting a course:', courseDetailHidden !== null);
+  if (courseDetailHidden !== null) throw new Error('FAIL: course detail view did not show after selecting a course');
+  const listViewHiddenAfterSelect = await window.getAttribute('#courses-list-view', 'hidden');
+  if (listViewHiddenAfterSelect === null) {
+    throw new Error('FAIL: course grid should hide once a course detail view is shown');
+  }
   const courseDetailHeading = await window.textContent('#course-detail-heading');
   if (!courseDetailHeading.includes('Verify Script Test Course')) {
-    throw new Error('FAIL: course-detail heading did not show the selected course name');
+    throw new Error('FAIL: course detail heading did not show the selected course name');
   }
+
+  // "Back to Courses" returns to the grid, clears selection.
+  await window.click('#course-detail-back');
+  await window.waitForTimeout(200);
+  if ((await window.getAttribute('#courses-list-view', 'hidden')) !== null) {
+    throw new Error('FAIL: "Back to Courses" did not show the course grid again');
+  }
+  if ((await window.getAttribute('#courses-detail-view', 'hidden')) === null) {
+    throw new Error('FAIL: "Back to Courses" did not hide the course detail view');
+  }
+  await window.click('#course-list li.course-card');
+  await window.waitForTimeout(200);
 
   // --- Resources page (global — every resource across every course) ---
   await goToPage('resources');
-  await window.selectOption('#resources-upload-course', String(courseId));
+  // Only one course exists at this point in the run, so the course-picker
+  // menu pickCourse() would otherwise show is skipped automatically (nothing
+  // to actually choose) and Upload proceeds directly against it.
   await window.click('#upload-button');
   await window.waitForTimeout(300);
 
@@ -193,13 +204,13 @@ const fs = require('fs');
     Number(el.dataset.resourceId)
   );
 
-  // Click the row to open the docked inline preview (not a modal).
+  // Click the row to open the full overlay preview modal.
   await window.click('#all-resources-list .resource-name');
   await window.waitForTimeout(300);
 
-  const previewVisible = !(await window.isHidden('#resources-preview-pane'));
-  console.log('resources preview pane visible:', previewVisible);
-  if (!previewVisible) throw new Error('FAIL: preview pane did not open on filename click');
+  const previewVisible = !(await window.isHidden('#preview-overlay'));
+  console.log('resources preview overlay visible:', previewVisible);
+  if (!previewVisible) throw new Error('FAIL: preview overlay did not open on filename click');
 
   const previewHtml = await window.innerHTML('#preview-body');
   console.log('preview body contains "Sample lecture notes":', previewHtml.includes('Sample lecture notes'));
@@ -207,23 +218,23 @@ const fs = require('fs');
     throw new Error('FAIL: markdown preview did not render expected content');
   }
 
-  // "F" toggles preview fullscreen (collapses the rail/list columns), so
-  // the user doesn't have to reach for the button — guarded to not fire
-  // while typing, so pressing "f" here (with no text field focused) should
-  // toggle it on, then off again.
+  // "F" toggles preview fullscreen (the overlay panel expands to fill the
+  // whole window), so the user doesn't have to reach for the button —
+  // guarded to not fire while typing, so pressing "f" here (with no text
+  // field focused) should toggle it on, then off again.
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   let previewFullscreen = await window.evaluate(() =>
-    document.getElementById('resources-split').classList.contains('pane-fullscreen')
+    document.getElementById('preview-overlay').classList.contains('fullscreen')
   );
-  console.log('resources pane fullscreen after pressing "f":', previewFullscreen);
+  console.log('preview overlay fullscreen after pressing "f":', previewFullscreen);
   if (!previewFullscreen) throw new Error('FAIL: pressing "f" did not enter fullscreen preview');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   previewFullscreen = await window.evaluate(() =>
-    document.getElementById('resources-split').classList.contains('pane-fullscreen')
+    document.getElementById('preview-overlay').classList.contains('fullscreen')
   );
-  console.log('resources pane fullscreen after pressing "f" again:', previewFullscreen);
+  console.log('preview overlay fullscreen after pressing "f" again:', previewFullscreen);
   if (previewFullscreen) throw new Error('FAIL: pressing "f" again did not exit fullscreen preview');
 
   // Regression check: zoom controls must stay hidden for a non-image
@@ -239,8 +250,8 @@ const fs = require('fs');
 
   await window.click('#preview-close');
   await window.waitForTimeout(200);
-  if (!(await window.isHidden('#resources-preview-pane'))) {
-    throw new Error('FAIL: preview pane did not close');
+  if (!(await window.isHidden('#preview-overlay'))) {
+    throw new Error('FAIL: preview overlay did not close');
   }
 
   // "Open in browser": the native context menu itself can't be automated,
@@ -412,23 +423,23 @@ const fs = require('fs');
   await window.click('#resources-course-rail li:has-text("All Resources")');
   await window.waitForTimeout(200);
 
-  // Icon view toggle.
-  await window.click('#view-icons');
+  // Grid view toggle.
+  await window.click('#view-grid');
   await window.waitForTimeout(200);
   const listClass = await window.getAttribute('#all-resources-list', 'class');
-  console.log('all-resources-list class in icon mode:', listClass);
-  if (!listClass || !listClass.includes('view-icons')) {
-    throw new Error('FAIL: icon view mode did not apply');
+  console.log('all-resources-list class in grid mode:', listClass);
+  if (!listClass || !listClass.includes('view-grid')) {
+    throw new Error('FAIL: grid view mode did not apply');
   }
   const iconTiles = await window.$$('li.icon-tile');
-  if (iconTiles.length === 0) throw new Error('FAIL: no icon tiles rendered in icon view');
+  if (iconTiles.length === 0) throw new Error('FAIL: no icon tiles rendered in grid view');
 
   // View mode is meant to be a single app-wide, persisted preference (not
   // per-course, not reset on relaunch) — confirm the choice actually landed
   // in app_settings via the same getSetting() init() reads on startup.
   const savedViewMode = await window.evaluate(() => window.atlas.getSetting('viewMode'));
-  console.log('persisted viewMode setting after switching to icons:', savedViewMode);
-  if (savedViewMode !== 'icons') {
+  console.log('persisted viewMode setting after switching to grid:', savedViewMode);
+  if (savedViewMode !== 'grid') {
     throw new Error(`FAIL: view mode was not persisted, got ${savedViewMode}`);
   }
 
@@ -445,7 +456,7 @@ const fs = require('fs');
   // Toast UI Editor, which didn't support it), confirm autosave, close/
   // reopen to confirm persistence, then delete.
   await goToPage('notes');
-  await window.selectOption('#new-note-course', String(courseId));
+  // Same single-course auto-skip as the Resources upload above.
   await window.click('#new-note-button');
   await window.waitForTimeout(500);
   const noteEditorVisible = !(await window.isHidden('#notes-editor-pane'));
@@ -625,7 +636,7 @@ const fs = require('fs');
   }
   await window.click('#search-results li');
   await window.waitForTimeout(400);
-  const previewVisibleAfterSearchClick = !(await window.isHidden('#resources-preview-pane'));
+  const previewVisibleAfterSearchClick = !(await window.isHidden('#preview-overlay'));
   console.log('preview opened from a search result:', previewVisibleAfterSearchClick);
   if (!previewVisibleAfterSearchClick) {
     throw new Error('FAIL: clicking a search result did not open the resource preview');
@@ -649,7 +660,7 @@ const fs = require('fs');
   }
   await window.press('#search-input', 'Enter');
   await window.waitForTimeout(400);
-  const previewVisibleAfterKeyboardNav = !(await window.isHidden('#resources-preview-pane'));
+  const previewVisibleAfterKeyboardNav = !(await window.isHidden('#preview-overlay'));
   console.log('preview opened via keyboard nav (ArrowDown + Enter):', previewVisibleAfterKeyboardNav);
   if (!previewVisibleAfterKeyboardNav) {
     throw new Error('FAIL: ArrowDown + Enter did not open the search result');
@@ -663,7 +674,7 @@ const fs = require('fs');
   await window.waitForTimeout(500);
   await window.press('#search-input', 'Enter');
   await window.waitForTimeout(400);
-  const previewVisibleAfterBareEnter = !(await window.isHidden('#resources-preview-pane'));
+  const previewVisibleAfterBareEnter = !(await window.isHidden('#preview-overlay'));
   console.log('preview opened via bare Enter (no ArrowDown):', previewVisibleAfterBareEnter);
   if (!previewVisibleAfterBareEnter) {
     throw new Error('FAIL: Enter alone did not open the top search result');
@@ -693,6 +704,12 @@ const fs = require('fs');
     throw new Error(`FAIL: Ctrl+L did not focus the search input, focused "${focusedElementId}" instead`);
   }
   (await window.$('#search-input'))?.evaluate((el) => el.blur());
+
+  // Navigating to Courses fresh always lands on the grid now (not whichever
+  // course's detail view happened to be open before) — reselect the course
+  // to reach its detail view (Deadlines/Watched folders) again.
+  await window.click('#course-list li.course-card');
+  await window.waitForTimeout(200);
 
   // --- Deadlines: nested in the Courses page's drill-down for the selected
   // course. One unified per-course timeline (assignment/reading/quiz/.../
@@ -770,17 +787,17 @@ const fs = require('fs');
   await window.click(`li[data-deadline-id="${deadlineIds[0]}"] input[type="checkbox"]`);
   await window.waitForTimeout(300);
 
-  // Icon view: deadlines share the app-wide list/icon toggle with
+  // Grid view: deadlines share the app-wide list/grid toggle with
   // resources (a shared `viewMode` preference), but has its own toggle
   // buttons on the Courses page — since Deadlines and Resources are
   // separate pages now, the Resources page's toggle isn't reachable while
   // looking at a course's deadlines.
-  await window.click('#deadline-view-icons-toggle');
+  await window.click('#deadline-view-grid-toggle');
   await window.waitForTimeout(200);
   const deadlineListClassInIcons = await window.getAttribute('#deadline-list', 'class');
-  console.log('deadline-list class in icon mode:', deadlineListClassInIcons);
-  if (!deadlineListClassInIcons || !deadlineListClassInIcons.includes('view-icons')) {
-    throw new Error('FAIL: icon view mode did not apply to the deadline list');
+  console.log('deadline-list class in grid mode:', deadlineListClassInIcons);
+  if (!deadlineListClassInIcons || !deadlineListClassInIcons.includes('view-grid')) {
+    throw new Error('FAIL: grid view mode did not apply to the deadline list');
   }
   if ((await window.$$('#deadline-list li.icon-tile')).length === 0) {
     throw new Error('FAIL: no icon tiles rendered for deadlines in icon view');
@@ -834,7 +851,7 @@ const fs = require('fs');
   }
   await window.click('#deadline-view-description .deadline-mention');
   await window.waitForTimeout(400);
-  const previewVisibleAfterMentionClick = !(await window.isHidden('#resources-preview-pane'));
+  const previewVisibleAfterMentionClick = !(await window.isHidden('#preview-overlay'));
   console.log('preview opened by clicking a description mention:', previewVisibleAfterMentionClick);
   if (!previewVisibleAfterMentionClick) {
     throw new Error('FAIL: clicking a description mention did not open the referenced resource');
@@ -842,6 +859,10 @@ const fs = require('fs');
   await window.click('#preview-close');
   await window.waitForTimeout(200);
   await goToPage('courses');
+  // Navigating to Courses fresh lands on the grid — reselect the course to
+  // reach its detail view (Deadlines) again.
+  await window.click('#course-list li.course-card');
+  await window.waitForTimeout(200);
 
   // Editing: title/kind changes on an existing deadline should persist, not
   // create a duplicate.
@@ -890,7 +911,12 @@ const fs = require('fs');
     Number(el.dataset.deadlineId)
   );
   await window.evaluate((id) => window.atlas.deleteDeadline(id), dueTodayId);
-  await window.click('#course-list li.course-card.selected'); // reselect to force a deadlines refresh
+  // Reselect to force a deadlines refresh — the grid itself is hidden while
+  // the course detail view is showing, so go back to it first (Playwright's
+  // click() requires the target to be visible).
+  await window.click('#course-detail-back');
+  await window.waitForTimeout(150);
+  await window.click('#course-list li.course-card');
   await window.waitForTimeout(300);
   const deadlineTitlesAfterDelete = await window.$$eval(
     '#deadline-list li.deadline-item .deadline-title',
@@ -914,6 +940,14 @@ const fs = require('fs');
 
   // --- Dashboard: global overview, not scoped to any one course ---
   await goToPage('dashboard');
+
+  // Stat strip above the widgets — real counts, not zeros, now that a
+  // course/resources/deadlines exist from earlier in this run.
+  const statCourses = await window.textContent('#stat-courses');
+  const statResources = await window.textContent('#stat-resources');
+  console.log('dashboard stats — courses:', statCourses, 'resources:', statResources);
+  if (statCourses !== '1') throw new Error(`FAIL: expected 1 course in the stat strip, got "${statCourses}"`);
+  if (Number(statResources) < 1) throw new Error(`FAIL: expected at least 1 resource in the stat strip, got "${statResources}"`);
 
   const dashboardCourseTexts = await window.$$eval('#dashboard-course-list li', (els) =>
     els.map((e) => e.textContent)
@@ -985,7 +1019,7 @@ const fs = require('fs');
   await window.click('#dashboard-resources li');
   await window.waitForTimeout(400);
   const onResourcesPageFromDashboard = await window.getAttribute('#page-resources', 'hidden');
-  const previewVisibleFromDashboard = !(await window.isHidden('#resources-preview-pane'));
+  const previewVisibleFromDashboard = !(await window.isHidden('#preview-overlay'));
   console.log(
     'on Resources page from dashboard:',
     onResourcesPageFromDashboard === null,
@@ -1041,7 +1075,6 @@ const fs = require('fs');
   await window.waitForTimeout(300);
   await window.click('#course-list li.course-card');
   await window.waitForTimeout(200);
-  const watchCourseId = await window.$eval('#course-list li.course-card.selected', (el) => Number(el.dataset.courseId));
 
   const watchFolderDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-watch-'));
   const preExistingFile = path.join(watchFolderDir, 'pre-existing-syllabus.txt');
@@ -1164,7 +1197,8 @@ const fs = require('fs');
   // previously-inserted image 404'd on the very next launch once the port
   // changed. Fixed by pinning the server to a fixed port (localServer.ts).
   await goToPage('notes');
-  await window.selectOption('#new-note-course', String(watchCourseId));
+  // Only "Watch Test Course" exists at this point, so pickCourse() skips
+  // its menu automatically.
   await window.click('#new-note-button');
   await window.waitForTimeout(500);
   const imageNoteEditableSelector = '.milkdown [contenteditable="true"]';
@@ -1228,12 +1262,12 @@ const fs = require('fs');
     throw new Error(`FAIL: relative image link does not resolve to a real file: ${resolvedImagePath}`);
   }
 
-  // Leave the view mode on icons, then fully relaunch the app against the
+  // Leave the view mode on grid, then fully relaunch the app against the
   // same data dir — this is the actual scenario the user asked about
   // ("even after a fresh launch"), not just that the setting persists in
   // the DB.
   await goToPage('resources');
-  await window.click('#view-icons');
+  await window.click('#view-grid');
   await window.waitForTimeout(200);
   await app.close();
 
@@ -1246,11 +1280,11 @@ const fs = require('fs');
   await relaunchedWindow.waitForTimeout(500);
   await relaunchedWindow.click('.sidebar-nav-item[data-page="resources"]');
   await relaunchedWindow.waitForTimeout(300);
-  const viewIconsActiveOnRelaunch = await relaunchedWindow.evaluate(() =>
-    document.getElementById('view-icons').classList.contains('active')
+  const viewGridActiveOnRelaunch = await relaunchedWindow.evaluate(() =>
+    document.getElementById('view-grid').classList.contains('active')
   );
-  console.log('icon view still active after a fresh relaunch:', viewIconsActiveOnRelaunch);
-  if (!viewIconsActiveOnRelaunch) {
+  console.log('grid view still active after a fresh relaunch:', viewGridActiveOnRelaunch);
+  if (!viewGridActiveOnRelaunch) {
     throw new Error('FAIL: view mode did not survive a fresh app relaunch');
   }
 
@@ -1283,7 +1317,32 @@ const fs = require('fs');
     throw new Error('FAIL: note image is not reachable from the read-only browser view');
   }
 
+  // Window size/position persists across launches (main.ts save/
+  // loadWindowState via app_settings) — resize away from the default, close,
+  // relaunch, confirm the custom size comes back rather than resetting.
+  await relaunchedApp.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win.unmaximize();
+    win.setBounds({ width: 950, height: 700, x: 60, y: 60 });
+  });
+  await relaunchedWindow.waitForTimeout(700); // let the debounced save fire
   await relaunchedApp.close();
+
+  const thirdLaunchApp = await electron.launch({
+    args: [path.join(__dirname, '..')],
+    env: { ...process.env, ATLAS_DATA_DIR: testDataDir },
+  });
+  const thirdLaunchWindow = await thirdLaunchApp.firstWindow();
+  await thirdLaunchWindow.waitForLoadState('domcontentloaded');
+  await thirdLaunchWindow.waitForTimeout(500);
+  const restoredBounds = await thirdLaunchApp.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].getBounds()
+  );
+  console.log('window bounds restored after relaunch:', restoredBounds);
+  if (restoredBounds.width !== 950 || restoredBounds.height !== 700) {
+    throw new Error(`FAIL: window size did not persist across relaunch, got ${JSON.stringify(restoredBounds)}`);
+  }
+  await thirdLaunchApp.close();
 
   // Throwaway data dirs, safe to delete entirely.
   fs.rmSync(testDataDir, { recursive: true, force: true });

@@ -50,6 +50,40 @@ body {
   color: var(--color-text);
 }
 
+/* Minimal scrollbars everywhere — thin, no track background, rounded thumb.
+   `scrollbar-*` covers Firefox; the `::-webkit-scrollbar*` pseudo-elements
+   cover Chromium (Electron's actual renderer), which ignores the standard
+   properties entirely. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-dim);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 #app-shell {
   display: flex;
   min-height: 100vh;
@@ -64,6 +98,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+  transition: width 0.15s ease;
 }
 
 #sidebar-brand {
@@ -71,6 +106,8 @@ body {
   font-weight: 700;
   padding: 0 0.5rem;
   margin-bottom: 1rem;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .sidebar-nav-item {
@@ -95,6 +132,45 @@ body {
   background: var(--color-hover-bg);
   color: var(--color-accent);
   font-weight: 600;
+}
+
+.sidebar-nav-item .nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "Collapse sidebar" is the last nav item, pushed to the bottom of the
+   column via margin-top: auto rather than being a separate fixed-position
+   element — keeps it part of the same flex list, no extra layout to manage. */
+#sidebar-collapse-toggle {
+  margin-top: auto;
+}
+
+#sidebar-collapse-icon svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+
+/* Icon-only rail: labels hidden, nav items centered, brand text hidden
+   (just the icon column remains) — collapse icon itself flips to point the
+   other way so it still reads as "expand" rather than looking stuck. */
+#sidebar.collapsed {
+  width: 64px;
+}
+
+#sidebar.collapsed #sidebar-brand,
+#sidebar.collapsed .sidebar-nav-item .nav-label {
+  display: none;
+}
+
+#sidebar.collapsed .sidebar-nav-item {
+  justify-content: center;
+}
+
+#sidebar.collapsed #sidebar-collapse-icon svg {
+  transform: rotate(180deg);
 }
 
 #main-area {
@@ -220,12 +296,48 @@ ul#search-results li.search-empty:hover {
   margin: 0 0 1.5rem 0;
 }
 
-section#dashboard-section {
-  margin-bottom: 2rem;
+/* Stat strip: gives the top of the Dashboard real visual weight regardless
+   of how short any one list widget below happens to be — the four widgets
+   are all lists, which read as "empty" whenever a list is short, no matter
+   how much real data is actually behind the app. */
+#dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
 }
 
-section#dashboard-section > h2 {
-  margin: 0 0 0.75rem 0;
+.stat-tile {
+  background: var(--color-bg-elevated);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.stat-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+#dashboard-courses-widget {
+  margin-bottom: 1rem;
+}
+
+#dashboard-courses-widget .resources-header {
+  margin-bottom: 0.9rem;
+}
+
+#dashboard-courses-widget h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
 }
 
 #dashboard-widgets {
@@ -338,11 +450,37 @@ section#dashboard-section > h2 {
   font-size: 0.85rem;
 }
 
-#dashboard-course-list li {
+/* Chip cards in a wrapping row rather than a vertical list of text rows —
+   the colored avatars give this widget actual visual presence instead of
+   reading as another plain list, and it's the one widget most naturally
+   suited to a compact card per item (a course has an identity — name,
+   code, color — a resource/deadline/activity row doesn't). */
+ul#dashboard-course-list.dashboard-course-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  max-height: none;
+  overflow: visible;
+}
+
+#dashboard-course-list.dashboard-course-chips li {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 0.6rem;
+  border-top: none;
+  padding: 0.6rem 0.9rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  min-width: 180px;
+}
+
+#dashboard-course-list.dashboard-course-chips li.muted {
+  background: none;
+  border: none;
+  padding: 0.5rem 0;
+  min-width: 0;
 }
 
 #dashboard-course-list .dashboard-course-info {
@@ -368,9 +506,7 @@ section#dashboard-section > h2 {
 }
 
 button#manage-courses-button {
-  width: 100%;
-  margin-top: 0.6rem;
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 0.9rem;
   border-radius: 4px;
   border: 1px solid var(--color-border);
   background: var(--color-bg);
@@ -381,23 +517,6 @@ button#manage-courses-button {
 
 button#manage-courses-button:hover {
   background: var(--color-hover-bg);
-}
-
-section#settings-section {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--color-border);
-}
-
-.courses-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-
-.courses-header h2 {
-  margin: 0;
 }
 
 #semester-filter {
@@ -415,22 +534,6 @@ ul#course-list {
   margin: 0 0 1.5rem 0;
 }
 
-ul#course-list li {
-  padding: 0.6rem 0.8rem;
-  background: var(--color-bg-elevated);
-  border-radius: 6px;
-  margin-bottom: 0.4rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-ul#course-list li.selected {
-  outline: 2px solid var(--color-accent);
-}
-
-ul#course-list li .code,
 ul#all-resources-list li .code {
   color: var(--color-text-muted);
   font-size: 0.8rem;
@@ -510,7 +613,7 @@ li.course-card {
   overflow: hidden;
 }
 
-ul#course-list.view-grid li.course-card.selected {
+li.course-card.selected {
   outline: 2px solid var(--color-accent);
 }
 
@@ -592,14 +695,66 @@ ul#course-list.view-list li.course-card .course-card-counts {
   flex-shrink: 0;
 }
 
-#course-detail {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--color-border);
+/* Course detail: a genuinely separate view from the course grid (toggled by
+   showCourseListView()/showCourseDetailView() in renderer.ts), not an inline
+   drill-down appended below the still-visible grid — matches the user's
+   explicit ask that clicking a course navigate away, not just expand in
+   place. */
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 
-#course-detail-heading {
-  margin: 0 0 1rem 0;
+.back-link:hover {
+  color: var(--color-text);
+}
+
+.back-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+.course-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+.course-detail-header h2 {
+  margin: 0;
+}
+
+#course-detail-meta {
+  margin: 0.15rem 0 0 0;
+}
+
+.course-detail-links {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.course-detail-link {
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.course-detail-link:hover {
+  background: var(--color-hover-bg);
 }
 
 /* Kind-filter chip row (Resources page) */
@@ -626,21 +781,6 @@ ul#course-list.view-list li.course-card .course-card-counts {
   border-color: var(--color-accent);
 }
 
-.resources-upload-control {
-  display: flex;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.resources-upload-control select {
-  padding: 0.5rem 0.6rem;
-  border-radius: 4px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
-  font-size: 0.85rem;
-}
-
 /* Three-column split for Resources (rail | list | preview) and two-column
    for Notes (list | editor, no rail) — grid-template-columns differs per
    page but the pane/list building blocks are shared. */
@@ -651,8 +791,17 @@ ul#course-list.view-list li.course-card .course-card-counts {
   align-items: start;
 }
 
+/* Resources no longer has a third (preview) column — the preview reverted
+   to a full overlay modal (#preview-overlay below) rather than a docked pane,
+   since a docked pane left too little room for the list next to it. Notes
+   keeps its docked editor pane, now with a course rail added to match
+   Resources' course filter. */
+#resources-split {
+  grid-template-columns: 180px minmax(0, 1fr);
+}
+
 #notes-split {
-  grid-template-columns: minmax(280px, 1fr) minmax(0, 1.6fr);
+  grid-template-columns: 180px minmax(280px, 1fr) minmax(0, 1.6fr);
 }
 
 .split-rail h4 {
@@ -777,15 +926,97 @@ ul#course-list.view-list li.course-card .course-card-counts {
   height: 16px;
 }
 
-/* "Fullscreen" collapses the rail/list columns so the preview/editor pane
-   fills the page — there's no overlay to expand over the whole window
-   anymore, since both panes are docked inline. */
+/* "Fullscreen" collapses the rail/list columns so the docked note editor
+   pane fills the page (Resources' preview is a full overlay modal again, see
+   #preview-overlay, so it doesn't need this). Scoped to #notes-split
+   specifically, not just .pane-fullscreen — #notes-split's own
+   grid-template-columns rule above is an ID selector and would otherwise
+   outrank a plain .pane-fullscreen class rule regardless of which comes
+   later in the file, leaving an empty reserved column where the list used
+   to be instead of the editor actually filling the width. */
 .split-layout.pane-fullscreen > *:not(.split-preview) {
   display: none;
 }
 
-.split-layout.pane-fullscreen {
+#notes-split.pane-fullscreen {
   grid-template-columns: 1fr;
+}
+
+/* Resource preview: a full overlay modal (not a docked pane) — the docked
+   pane tried before this left too little width for the Resources list next
+   to it for what the content actually needed. Same overlay pattern as
+   #deadline-editor-overlay/#confirm-overlay below, including the same
+   [hidden]-vs-own-selector fix (CLAUDE.md) for the same reason. */
+#preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 10;
+}
+
+#preview-overlay:not([hidden]) {
+  display: flex;
+}
+
+#preview-panel {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 900px;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+#preview-overlay.fullscreen {
+  padding: 0;
+}
+
+#preview-overlay.fullscreen #preview-panel {
+  max-width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+/* Small floating menu used to choose a target course for an action that
+   isn't scoped to any one course on screen (uploading a resource, creating
+   a note) — anchored under whichever button opened it via JS-set
+   top/left, rather than a <select> sitting in the page header, which read
+   as another course filter next to the ones the page already has (the
+   Resources course rail, or once Notes got one too). */
+.course-picker-menu {
+  position: fixed;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.course-picker-menu:not([hidden]) {
+  display: block;
+}
+
+.course-picker-menu li {
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.course-picker-menu li:hover {
+  background: var(--color-border-soft);
 }
 
 #preview-body {
@@ -880,19 +1111,32 @@ ul.notes-group-list li.selected {
   margin: 0;
 }
 
+/* Icon-only (no text label) everywhere a view toggle appears — Courses,
+   Resources, and Deadlines all use the same Grid/List wording and the same
+   monochrome SVG icon pair, rather than each spelling it differently
+   ("Grid/List" vs "List/Icons"). */
 .view-toggle {
   display: flex;
   gap: 0.4rem;
 }
 
 .view-toggle button {
-  padding: 0.3rem 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border-radius: 4px;
   border: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 0.8rem;
+}
+
+.view-toggle button svg {
+  width: 16px;
+  height: 16px;
 }
 
 .view-toggle button.active {
@@ -924,7 +1168,7 @@ ul#all-resources-list.view-list li {
   text-decoration: underline;
 }
 
-ul#all-resources-list.view-icons {
+ul#all-resources-list.view-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 0.75rem;
@@ -1172,38 +1416,6 @@ form#course-form button {
   background: #8f3636;
 }
 
-section#notes-section {
-  margin-top: 2rem;
-}
-
-ul#note-list {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 1rem 0;
-}
-
-ul#note-list.view-list li {
-  padding: 0.6rem 0.8rem;
-  background: var(--color-bg-elevated);
-  border-radius: 6px;
-  margin-bottom: 0.4rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-}
-
-ul#note-list li .note-updated {
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
-}
-
-ul#note-list.view-icons {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 0.75rem;
-}
-
 button#new-note-button {
   padding: 0.5rem 1rem;
   border-radius: 4px;
@@ -1243,7 +1455,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-due {
   font-size: 0.8rem;
 }
 
-ul#deadline-list.view-icons {
+ul#deadline-list.view-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 0.75rem;

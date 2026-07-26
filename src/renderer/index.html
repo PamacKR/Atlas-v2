@@ -10,12 +10,16 @@
   <div id="app-shell">
     <nav id="sidebar">
       <div id="sidebar-brand">Atlas</div>
-      <button class="sidebar-nav-item active" type="button" data-page="dashboard">🏠 Dashboard</button>
-      <button class="sidebar-nav-item" type="button" data-page="courses">📚 Courses</button>
-      <button class="sidebar-nav-item" type="button" data-page="resources">🗂️ Resources</button>
-      <button class="sidebar-nav-item" type="button" data-page="notes">📝 Notes</button>
-      <button class="sidebar-nav-item" id="sidebar-search-button" type="button">🔍 Search</button>
-      <button class="sidebar-nav-item" type="button" data-page="settings">⚙️ Settings</button>
+      <button class="sidebar-nav-item active" type="button" data-page="dashboard"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
+      <button class="sidebar-nav-item" type="button" data-page="courses"><span class="nav-icon">📚</span><span class="nav-label">Courses</span></button>
+      <button class="sidebar-nav-item" type="button" data-page="resources"><span class="nav-icon">🗂️</span><span class="nav-label">Resources</span></button>
+      <button class="sidebar-nav-item" type="button" data-page="notes"><span class="nav-icon">📝</span><span class="nav-label">Notes</span></button>
+      <button id="sidebar-collapse-toggle" class="sidebar-nav-item" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">
+        <span class="nav-icon" id="sidebar-collapse-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </span>
+        <span class="nav-label">Collapse</span>
+      </button>
     </nav>
 
     <div id="main-area">
@@ -29,12 +33,35 @@
 
       <section id="page-dashboard" class="app-page">
         <h2>Dashboard</h2>
-        <div id="dashboard-widgets">
-          <div class="dashboard-widget">
+
+        <div id="dashboard-stats">
+          <div class="stat-tile">
+            <span class="stat-value" id="stat-courses">0</span>
+            <span class="stat-label">Courses</span>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-value" id="stat-resources">0</span>
+            <span class="stat-label">Resources</span>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-value" id="stat-notes">0</span>
+            <span class="stat-label">Notes</span>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-value" id="stat-deadlines">0</span>
+            <span class="stat-label">Upcoming deadlines</span>
+          </div>
+        </div>
+
+        <div class="dashboard-widget" id="dashboard-courses-widget">
+          <div class="resources-header">
             <h3>My courses</h3>
-            <ul id="dashboard-course-list"></ul>
             <button id="manage-courses-button" type="button">Manage courses</button>
           </div>
+          <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
+        </div>
+
+        <div id="dashboard-widgets">
           <div class="dashboard-widget">
             <h3>Upcoming deadlines</h3>
             <ul id="dashboard-deadlines"></ul>
@@ -51,58 +78,88 @@
       </section>
 
       <section id="page-courses" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Courses</h2>
-            <p class="muted">All your courses in one place.</p>
+        <div id="courses-list-view">
+          <div class="page-header">
+            <div>
+              <h2>Courses</h2>
+              <p class="muted">All your courses in one place.</p>
+            </div>
+            <button id="add-course-toggle" type="button">+ Add course</button>
           </div>
-          <button id="add-course-toggle" type="button">+ Add course</button>
-        </div>
 
-        <form id="course-form" hidden>
-          <input id="course-name" type="text" placeholder="Course name" required />
-          <input id="course-code" type="text" placeholder="Code (optional)" />
-          <select id="course-term">
-            <option value="">Semester</option>
-            <option value="Monsoon 26">Monsoon 26</option>
-            <option value="Spring 27">Spring 27</option>
-            <option value="Monsoon 27">Monsoon 27</option>
-            <option value="Spring 28">Spring 28</option>
-          </select>
-          <button type="submit">Add course</button>
-        </form>
-
-        <div class="courses-toolbar">
-          <select id="semester-filter">
-            <option value="">All semesters</option>
-            <option value="Monsoon 26">Monsoon 26</option>
-            <option value="Spring 27">Spring 27</option>
-            <option value="Monsoon 27">Monsoon 27</option>
-            <option value="Spring 28">Spring 28</option>
-          </select>
-          <div class="courses-toolbar-right">
-            <select id="course-sort">
-              <option value="name">Sort by: Name</option>
-              <option value="resources">Sort by: Resources</option>
+          <form id="course-form" hidden>
+            <input id="course-name" type="text" placeholder="Course name" required />
+            <input id="course-code" type="text" placeholder="Code (optional)" />
+            <select id="course-term">
+              <option value="">Semester</option>
+              <option value="Monsoon 26">Monsoon 26</option>
+              <option value="Spring 27">Spring 27</option>
+              <option value="Monsoon 27">Monsoon 27</option>
+              <option value="Spring 28">Spring 28</option>
             </select>
-            <div class="view-toggle">
-              <button id="course-view-grid" type="button" class="active">Grid</button>
-              <button id="course-view-list" type="button">List</button>
+            <button type="submit">Add course</button>
+          </form>
+
+          <div class="courses-toolbar">
+            <select id="semester-filter">
+              <option value="">All semesters</option>
+              <option value="Monsoon 26">Monsoon 26</option>
+              <option value="Spring 27">Spring 27</option>
+              <option value="Monsoon 27">Monsoon 27</option>
+              <option value="Spring 28">Spring 28</option>
+            </select>
+            <div class="courses-toolbar-right">
+              <select id="course-sort">
+                <option value="name">Sort by: Name</option>
+                <option value="resources">Sort by: Resources</option>
+              </select>
+              <div class="view-toggle">
+                <button id="course-view-grid" type="button" class="active" title="Grid view" aria-label="Grid view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                </button>
+                <button id="course-view-list" type="button" title="List view" aria-label="List view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+              </div>
             </div>
           </div>
+
+          <ul id="course-list" class="view-grid"></ul>
         </div>
 
-        <ul id="course-list" class="view-grid"></ul>
+        <div id="courses-detail-view" hidden>
+          <button id="course-detail-back" type="button" class="back-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Back to Courses
+          </button>
 
-        <div id="course-detail" hidden>
-          <h3 id="course-detail-heading"></h3>
+          <div class="course-detail-header">
+            <div id="course-detail-avatar-slot"></div>
+            <div>
+              <h2 id="course-detail-heading"></h2>
+              <p id="course-detail-meta" class="muted"></p>
+            </div>
+          </div>
+
+          <div class="course-detail-links">
+            <button id="course-detail-view-resources" type="button" class="course-detail-link">
+              📄 <span id="course-detail-resource-count">0</span> Resources
+            </button>
+            <button id="course-detail-view-notes" type="button" class="course-detail-link">
+              📝 <span id="course-detail-note-count">0</span> Notes
+            </button>
+          </div>
 
           <section id="deadlines-section">
             <div class="resources-header">
               <h4 id="deadlines-heading">Deadlines</h4>
               <div class="view-toggle">
-                <button id="deadline-view-list-toggle" type="button" class="active">List</button>
-                <button id="deadline-view-icons-toggle" type="button">Icons</button>
+                <button id="deadline-view-list-toggle" type="button" class="active" title="List view" aria-label="List view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+                <button id="deadline-view-grid-toggle" type="button" title="Grid view" aria-label="Grid view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                </button>
               </div>
             </div>
             <ul id="deadline-list" class="view-list"></ul>
@@ -124,10 +181,7 @@
             <h2>Resources</h2>
             <p class="muted">All your course materials in one place.</p>
           </div>
-          <div class="resources-upload-control">
-            <select id="resources-upload-course"></select>
-            <button id="upload-button" type="button">Upload file</button>
-          </div>
+          <button id="upload-button" type="button">Upload file</button>
         </div>
 
         <div class="chip-row" id="resources-kind-filter">
@@ -147,31 +201,14 @@
           </aside>
           <div class="split-list">
             <div class="view-toggle">
-              <button id="view-list" type="button" class="active">List</button>
-              <button id="view-icons" type="button">Icons</button>
+              <button id="view-list" type="button" class="active" title="List view" aria-label="List view">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              </button>
+              <button id="view-grid" type="button" title="Grid view" aria-label="Grid view">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              </button>
             </div>
             <ul id="all-resources-list" class="view-list"></ul>
-          </div>
-          <div class="split-preview" id="resources-preview-pane" hidden>
-            <div class="split-preview-header">
-              <span id="preview-title"></span>
-              <div class="split-preview-actions">
-                <button id="preview-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                </button>
-                <button id="preview-close" type="button" title="Close" aria-label="Close">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </div>
-            </div>
-            <p id="preview-note" class="muted" hidden></p>
-            <div id="zoom-controls" hidden>
-              <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
-              <span id="zoom-level">100%</span>
-              <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
-              <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
-            </div>
-            <div id="preview-body"></div>
           </div>
         </div>
       </section>
@@ -182,13 +219,14 @@
             <h2>Notes</h2>
             <p class="muted">All your notes in one place.</p>
           </div>
-          <div class="resources-upload-control">
-            <select id="new-note-course"></select>
-            <button id="new-note-button" type="button">+ New note</button>
-          </div>
+          <button id="new-note-button" type="button">+ New note</button>
         </div>
 
         <div class="split-layout" id="notes-split">
+          <aside class="split-rail">
+            <h4>Courses</h4>
+            <ul id="notes-course-rail"></ul>
+          </aside>
           <div class="split-list" id="notes-list-pane">
             <div id="all-notes-list"></div>
           </div>
@@ -210,10 +248,32 @@
         </div>
       </section>
 
-      <section id="page-settings" class="app-page" hidden>
-        <h2>Settings</h2>
-        <p id="data-dir" class="muted"></p>
-      </section>
+    </div>
+  </div>
+
+  <ul id="course-picker-menu" class="course-picker-menu" hidden></ul>
+
+  <div id="preview-overlay" hidden>
+    <div id="preview-panel">
+      <div class="split-preview-header">
+        <span id="preview-title"></span>
+        <div class="split-preview-actions">
+          <button id="preview-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          </button>
+          <button id="preview-close" type="button" title="Close" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <p id="preview-note" class="muted" hidden></p>
+      <div id="zoom-controls" hidden>
+        <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+        <span id="zoom-level">100%</span>
+        <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
+      </div>
+      <div id="preview-body"></div>
     </div>
   </div>
 

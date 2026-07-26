@@ -85,9 +85,17 @@ export interface DashboardActivityItem {
   course_name: string;
 }
 
+export interface DashboardStats {
+  courseCount: number;
+  resourceCount: number;
+  noteCount: number;
+  upcomingDeadlineCount: number;
+}
+
 export interface CourseSummary extends Course {
   resource_count: number;
   deadline_count: number;
+  note_count: number;
 }
 
 export interface ResourceWithCourse extends Resource {
@@ -102,7 +110,6 @@ contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
     ipcRenderer.invoke('courses:create', name, code, term),
-  getDataDir: (): Promise<string> => ipcRenderer.invoke('app:dataDir'),
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
   getResourceBrowserUrl: (resourceId: number): Promise<string> =>
@@ -178,6 +185,7 @@ contextBridge.exposeInMainWorld('atlas', {
   onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void): void => {
     ipcRenderer.on('deadlines:contextMenuDelete', (_event, deadlineId: number) => handler(deadlineId));
   },
+  getDashboardStats: (): Promise<DashboardStats> => ipcRenderer.invoke('dashboard:stats'),
   getUpcomingDeadlines: (): Promise<DashboardDeadline[]> => ipcRenderer.invoke('dashboard:upcomingDeadlines'),
   getRecentResources: (): Promise<DashboardResource[]> => ipcRenderer.invoke('dashboard:recentResources'),
   getRecentActivity: (): Promise<DashboardActivityItem[]> => ipcRenderer.invoke('dashboard:recentActivity'),
