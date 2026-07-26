@@ -413,6 +413,39 @@ ul#search-results li.search-empty:hover {
   white-space: nowrap;
 }
 
+/* Right-click menu on Dashboard deadline/resource/activity rows — a single
+   "Go to" action that jumps to where the item actually lives (course detail,
+   or the global Resources/Notes page filtered to its course), distinct from
+   the left-click handler which opens the item in place without navigating.
+   A custom in-renderer menu rather than a native one, since this is pure
+   navigation with nothing for the main process to do. */
+#dashboard-goto-menu {
+  position: fixed;
+  z-index: 50;
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  padding: 0.25rem;
+}
+
+#dashboard-goto-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.9rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+#dashboard-goto-menu button:hover {
+  background: var(--color-hover-bg);
+}
+
 .dashboard-item-course {
   flex: 1;
   min-width: 0;
@@ -809,12 +842,14 @@ ul#course-list.view-list li.course-card .course-card-counts {
   align-items: start;
 }
 
-/* Resources no longer has a third (preview) column — the preview reverted
-   to a full overlay modal (#preview-overlay below) rather than a docked pane,
-   since a docked pane left too little room for the list next to it. Notes
-   keeps its docked editor pane, now with a course rail added to match
-   Resources' course filter. */
-#resources-split {
+/* Neither Resources nor Notes has a third (preview/editor) column — both
+   open in a full overlay modal (#preview-overlay / #note-overlay below)
+   rather than a docked pane, since a docked pane left too little room for
+   the list next to it, and (for Notes specifically) opening a note from
+   outside the Notes page — Dashboard, a course detail view — would
+   otherwise have to navigate there first just to reveal the docked pane. */
+#resources-split,
+#notes-split {
   grid-template-columns: 180px minmax(0, 1fr);
   border-radius: 8px;
   transition: outline-color 0.1s ease;
@@ -826,10 +861,6 @@ ul#course-list.view-list li.course-card .course-card-counts {
    on #resources-split in renderer.ts. */
 #resources-split.drag-active {
   outline-color: var(--color-accent);
-}
-
-#notes-split {
-  grid-template-columns: 180px minmax(280px, 1fr) minmax(0, 1.6fr);
 }
 
 .split-rail h4 {
@@ -867,27 +898,6 @@ ul#course-list.view-list li.course-card .course-card-counts {
 
 .split-list {
   min-width: 0;
-}
-
-.split-preview {
-  background: var(--color-bg-elevated-2);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 1rem;
-  min-width: 0;
-  flex-direction: column;
-  min-height: 400px;
-}
-
-/* Same [hidden]-vs-own-selector trap documented elsewhere in this file —
-   see CLAUDE.md "A recurring CSS bug to check for explicitly". This time
-   it's a class selector rather than an ID, but the same fix applies: an
-   author-stylesheet rule beats the browser's default `[hidden] { display:
-   none }` regardless of specificity, since author origin outranks
-   user-agent origin in the cascade — so `display` must be conditioned on
-   :not([hidden]) rather than set unconditionally on .split-preview itself. */
-.split-preview:not([hidden]) {
-  display: flex;
 }
 
 .split-preview-header {
@@ -954,30 +964,48 @@ ul#course-list.view-list li.course-card .course-card-counts {
   height: 16px;
 }
 
-/* "Fullscreen" collapses the rail/list columns so the docked note editor
-   pane fills the page (Resources' preview is a full overlay modal again, see
-   #preview-overlay, so it doesn't need this). Scoped to #notes-split
-   specifically, not just .pane-fullscreen — #notes-split's own
-   grid-template-columns rule above is an ID selector and would otherwise
-   outrank a plain .pane-fullscreen class rule regardless of which comes
-   later in the file, leaving an empty reserved column where the list used
-   to be instead of the editor actually filling the width. */
-.split-layout.pane-fullscreen > *:not(.split-preview) {
-  display: none;
-}
-
-#notes-split.pane-fullscreen {
-  grid-template-columns: 1fr;
-}
-
-/* Genuine fullscreen (distinct from "expand width" above): pulled out of the
-   page grid entirely and pinned to the viewport, covering the sidebar/topbar
-   too — same mechanism as #preview-overlay.fullscreen, just applied directly
-   to the docked pane element instead of a separate overlay wrapper. */
-#notes-editor-pane.true-fullscreen {
+/* Note editor: a global overlay modal (not a docked pane) — same reasoning
+   as the Resources preview: opening a note from Dashboard or a course detail
+   view must not have to navigate to the Notes page first just to reveal a
+   docked pane there. "Expand width" (.wide) and true "Fullscreen"
+   (.fullscreen) are still two distinct levels, same as before. */
+#note-overlay {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 10;
+}
+
+#note-overlay:not([hidden]) {
+  display: flex;
+}
+
+#note-overlay-panel {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 900px;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+#note-overlay.wide #note-overlay-panel {
+  max-width: 1400px;
+}
+
+#note-overlay.fullscreen {
+  padding: 0;
+}
+
+#note-overlay.fullscreen #note-overlay-panel {
+  max-width: 100%;
+  height: 100%;
   border-radius: 0;
 }
 

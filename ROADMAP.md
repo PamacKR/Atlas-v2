@@ -20,7 +20,7 @@ Goal: Atlas is useful *before* any external sync exists.
 - [x] Local folder watching: explicit per-course folder mapping (`chokidar`), new files copied into the course's managed storage automatically, same as manual upload
 - [x] Notes: Markdown, flat per course (session-titled, e.g. "W1L1"), live-rendering WYSIWYG editor (`@milkdown/crepe` — supports live list/heading/divider shortcuts, math via KaTeX, toolbar active-state), autosaved — see `docs/open-questions.md` #1 and `ARCHITECTURE.md` §8
 - [x] Semester filter for the course list, persisted across launches
-- Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings
+- [x] Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings — the course detail page (`ARCHITECTURE.md` §12) already surfaces Overview/Resources/Notes/Deadlines/Files (watched folders); no separate Settings page (nothing to configure yet — removed once added, see `STATUS.md` session 34) and no Assignments/Announcements (deliberately deferred to Phase 3, needs Classroom sync data to be worth a real UI — see `docs/open-questions.md` #13)
 - [x] Unified Resource Library (single view regardless of source) — manual upload and local folder watching already land in the same per-course resource list/table regardless of source; Classroom/Gmail/Drive sources are Phase 3
 - [x] Dashboard v1: upcoming deadlines, recently added resources, "what changed today"
 - [x] Global search (SQLite FTS5) across courses, resources, notes

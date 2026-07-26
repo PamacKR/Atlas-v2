@@ -531,7 +531,7 @@ const fs = require('fs');
   // reopen to confirm persistence, then delete.
   await goToPage('notes');
   await createNoteViaModal('Verify Script Test Course');
-  const noteEditorVisible = !(await window.isHidden('#notes-editor-pane'));
+  const noteEditorVisible = !(await window.isHidden('#note-overlay'));
   console.log('notes editor pane visible:', noteEditorVisible);
   if (!noteEditorVisible) throw new Error('FAIL: note editor did not open on "New note"');
 
@@ -554,15 +554,15 @@ const fs = require('fs');
   console.log('typing "- " created a real bullet list item:', bulletCreated);
   if (!bulletCreated) throw new Error('FAIL: "- " did not convert to a real bullet list item');
 
-  // "F" toggles genuine fullscreen (pane pinned over the whole window, see
-  // .true-fullscreen in styles.css — distinct from the "expand width" button,
-  // which only collapses the list column), but only when not actually typing
-  // in the note — typing "f" into the editor itself must produce a literal
-  // "f", never hijacked into a fullscreen toggle.
+  // "F" toggles genuine fullscreen (overlay panel grows to cover the whole
+  // window, see .fullscreen in styles.css — distinct from the "expand width"
+  // button, which only widens the overlay panel), but only when not actually
+  // typing in the note — typing "f" into the editor itself must produce a
+  // literal "f", never hijacked into a fullscreen toggle.
   await window.keyboard.type('f');
   await window.waitForTimeout(200);
   let noteFullscreenWhileTyping = await window.evaluate(() =>
-    document.getElementById('notes-editor-pane').classList.contains('true-fullscreen')
+    document.getElementById('note-overlay').classList.contains('fullscreen')
   );
   console.log('note fullscreen after typing "f" inside the editor (should stay false):', noteFullscreenWhileTyping);
   if (noteFullscreenWhileTyping) {
@@ -582,26 +582,24 @@ const fs = require('fs');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   let noteFullscreen = await window.evaluate(() =>
-    document.getElementById('notes-editor-pane').classList.contains('true-fullscreen')
+    document.getElementById('note-overlay').classList.contains('fullscreen')
   );
   console.log('note fullscreen after pressing "f" outside a text field:', noteFullscreen);
   if (!noteFullscreen) throw new Error('FAIL: pressing "f" did not enter note fullscreen');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   noteFullscreen = await window.evaluate(() =>
-    document.getElementById('notes-editor-pane').classList.contains('true-fullscreen')
+    document.getElementById('note-overlay').classList.contains('fullscreen')
   );
   console.log('note fullscreen after pressing "f" again:', noteFullscreen);
   if (noteFullscreen) throw new Error('FAIL: pressing "f" again did not exit note fullscreen');
 
-  // The separate "expand width" button still does the old collapse-the-
-  // list-column behavior.
+  // The separate "expand width" button still does the old widen-the-panel
+  // behavior, now on the overlay itself rather than a docked pane's grid.
   await window.click('#note-widen');
   await window.waitForTimeout(200);
-  const noteWidened = await window.evaluate(() =>
-    document.getElementById('notes-split').classList.contains('pane-fullscreen')
-  );
-  console.log('notes-split widened after clicking "Expand width":', noteWidened);
+  const noteWidened = await window.evaluate(() => document.getElementById('note-overlay').classList.contains('wide'));
+  console.log('note-overlay widened after clicking "Expand width":', noteWidened);
   if (!noteWidened) throw new Error('FAIL: "Expand width" did not widen the editor pane');
   await window.click('#note-widen'); // revert
 
@@ -962,6 +960,24 @@ const fs = require('fs');
   if (detailResourcePreview.length === 0 || detailResourcePreview.length > 5) {
     throw new Error(`FAIL: course detail resources preview should show 1-5 items, got ${detailResourcePreview.length}`);
   }
+
+  // Clicking a course-detail preview item opens it in place too — the
+  // course detail view itself should stay visible, not navigate to Resources.
+  await window.click('#course-detail-resources-preview li');
+  await window.waitForTimeout(300);
+  const previewVisibleFromCourseDetail = !(await window.isHidden('#preview-overlay'));
+  const courseDetailStillVisible = await window.isHidden('#courses-detail-view');
+  console.log(
+    'resource preview opened from course detail without navigating away:',
+    previewVisibleFromCourseDetail,
+    !courseDetailStillVisible
+  );
+  if (!previewVisibleFromCourseDetail || courseDetailStillVisible) {
+    throw new Error('FAIL: clicking a course detail resource preview item did not open in place');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
   await window.click('#course-detail-view-resources');
   await window.waitForTimeout(300);
   if ((await window.getAttribute('#page-resources', 'hidden')) !== null) {
@@ -1110,34 +1126,61 @@ const fs = require('fs');
     throw new Error(`FAIL: dashboard "what changed today" missing today's resource: ${JSON.stringify(dashboardActivityTexts)}`);
   }
 
-  // Clicking a dashboard item should navigate to and open it directly —
-  // same navigation pattern as a global search result.
+  // Clicking a dashboard item opens it in place — no page navigation — per
+  // the user's explicit request that files not redirect to Resources/Notes
+  // when opened from Dashboard. Right-click's "Go to" (tested further below)
+  // is the only path that navigates.
   await window.click('#dashboard-deadlines li');
   await window.waitForTimeout(400);
   const deadlineViewerVisibleFromDashboard = !(await window.isHidden('#deadline-editor-overlay'));
-  console.log('deadline viewer opened from dashboard:', deadlineViewerVisibleFromDashboard);
-  if (!deadlineViewerVisibleFromDashboard) {
-    throw new Error('FAIL: clicking a dashboard deadline did not open the deadline viewer');
+  const stillOnDashboardAfterDeadline = (await window.getAttribute('#page-dashboard', 'hidden')) === null;
+  console.log(
+    'deadline viewer opened from dashboard without navigating away:',
+    deadlineViewerVisibleFromDashboard,
+    stillOnDashboardAfterDeadline
+  );
+  if (!deadlineViewerVisibleFromDashboard || !stillOnDashboardAfterDeadline) {
+    throw new Error('FAIL: clicking a dashboard deadline did not open in place on Dashboard');
   }
   await window.click('#deadline-view-close');
   await window.waitForTimeout(200);
-  await goToPage('dashboard');
 
   await window.click('#dashboard-resources li');
   await window.waitForTimeout(400);
-  const onResourcesPageFromDashboard = await window.getAttribute('#page-resources', 'hidden');
+  const stillOnDashboardAfterResource = (await window.getAttribute('#page-dashboard', 'hidden')) === null;
   const previewVisibleFromDashboard = !(await window.isHidden('#preview-overlay'));
   console.log(
-    'on Resources page from dashboard:',
-    onResourcesPageFromDashboard === null,
-    '— preview visible:',
-    previewVisibleFromDashboard
+    'resource preview opened from dashboard without navigating away:',
+    previewVisibleFromDashboard,
+    stillOnDashboardAfterResource
   );
-  if (onResourcesPageFromDashboard !== null || !previewVisibleFromDashboard) {
-    throw new Error('FAIL: clicking a dashboard resource did not navigate to Resources and open its preview');
+  if (!stillOnDashboardAfterResource || !previewVisibleFromDashboard) {
+    throw new Error('FAIL: clicking a dashboard resource did not open in place on Dashboard');
   }
   await window.click('#preview-close');
   await window.waitForTimeout(200);
+
+  // Right-click → "Go to" is the one path that does navigate: for a
+  // resource, to the Resources page filtered to that course.
+  await window.click('#dashboard-resources li', { button: 'right' });
+  await window.waitForTimeout(200);
+  await window.click('#dashboard-goto-menu button');
+  await window.waitForTimeout(300);
+  const onResourcesPageAfterGoTo = (await window.getAttribute('#page-resources', 'hidden')) === null;
+  console.log('on Resources page after "Go to" from a dashboard resource:', onResourcesPageAfterGoTo);
+  if (!onResourcesPageAfterGoTo) throw new Error('FAIL: "Go to" on a dashboard resource did not navigate to Resources');
+  await goToPage('dashboard');
+
+  // Same "Go to" check for a deadline — should land on the course detail
+  // view (Deadlines section), not just anywhere on the Courses page.
+  await window.click('#dashboard-deadlines li', { button: 'right' });
+  await window.waitForTimeout(200);
+  await window.click('#dashboard-goto-menu button');
+  await window.waitForTimeout(300);
+  const onCourseDetailAfterGoTo = await window.isHidden('#courses-detail-view');
+  console.log('course detail view visible after "Go to" from a dashboard deadline:', !onCourseDetailAfterGoTo);
+  if (onCourseDetailAfterGoTo) throw new Error('FAIL: "Go to" on a dashboard deadline did not open the course detail view');
+  await goToPage('dashboard');
 
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');

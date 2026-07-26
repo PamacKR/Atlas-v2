@@ -250,27 +250,30 @@
           <div class="split-list" id="notes-list-pane">
             <div id="all-notes-list"></div>
           </div>
-          <div class="split-preview" id="notes-editor-pane" hidden>
-            <div class="split-preview-header">
-              <input id="note-title-input" type="text" placeholder="Untitled" />
-              <div class="split-preview-actions">
-                <span id="note-save-status" class="muted"></span>
-                <button id="note-widen" type="button" title="Expand width" aria-label="Expand width">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="9 6 3 12 9 18"/><polyline points="15 6 21 12 15 18"/></svg>
-                </button>
-                <button id="note-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                </button>
-                <button id="note-close" type="button" title="Close" aria-label="Close">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </div>
-            </div>
-            <div id="note-editor-root"></div>
-          </div>
         </div>
       </section>
 
+    </div>
+  </div>
+
+  <div id="note-overlay" hidden>
+    <div id="note-overlay-panel">
+      <div class="split-preview-header">
+        <input id="note-title-input" type="text" placeholder="Untitled" />
+        <div class="split-preview-actions">
+          <span id="note-save-status" class="muted"></span>
+          <button id="note-widen" type="button" title="Expand width" aria-label="Expand width">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="9 6 3 12 9 18"/><polyline points="15 6 21 12 15 18"/></svg>
+          </button>
+          <button id="note-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          </button>
+          <button id="note-close" type="button" title="Close" aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="note-editor-root"></div>
     </div>
   </div>
 

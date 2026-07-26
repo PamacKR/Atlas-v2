@@ -1057,6 +1057,10 @@ async function renderDashboardDeadlines(): Promise<void> {
       )
     );
     li.addEventListener('click', () => openDashboardDeadline(deadline));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showGoToMenu(e.clientX, e.clientY, () => goToDashboardDeadline(deadline));
+    });
     list.appendChild(li);
   }
 }
@@ -1078,6 +1082,10 @@ async function renderDashboardResources(): Promise<void> {
     const li = document.createElement('li');
     li.appendChild(buildDashboardItemRows(KIND_ICON[resource.kind] ?? '📁', resource.title, resource.course_name));
     li.addEventListener('click', () => openDashboardResource(resource));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showGoToMenu(e.clientX, e.clientY, () => goToDashboardResource(resource));
+    });
     list.appendChild(li);
   }
 }
@@ -1106,12 +1114,21 @@ async function renderDashboardActivity(): Promise<void> {
       buildDashboardItemRows(item.entity_type === 'note' ? '📃' : '📁', item.title, item.course_name, timeText)
     );
     li.addEventListener('click', () => openDashboardActivityItem(item));
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showGoToMenu(e.clientX, e.clientY, () => goToDashboardActivityItem(item));
+    });
     list.appendChild(li);
   }
 }
 
+// The deadline viewer (#deadline-editor-overlay) is a global overlay, same
+// as the resource preview and note editor — so opening one never needs to
+// navigate pages away from Dashboard. selectCourse() is still called (in the
+// background, without a page switch) purely so its "Edit" button has the
+// right selectedCourse to work from — editing a deadline needs that course's
+// id for mention candidates.
 async function openDashboardDeadline(deadline: DashboardDeadline): Promise<void> {
-  showPage('courses');
   const courses = await atlasApi.listCourses();
   const course = courses.find((c) => c.id === deadline.course_id);
   if (course) await selectCourse(course);
@@ -1134,6 +1151,63 @@ async function openDashboardActivityItem(item: DashboardActivityItem): Promise<v
     const resources = await atlasApi.listAllResources();
     const resource = resources.find((r) => r.id === item.id);
     if (resource) await openPreview(resource);
+  }
+}
+
+// A small custom context menu, not a native one — unlike the native menus
+// used for resources/notes/courses (destructive/file actions that make
+// sense to hand off to the OS), "Go to" is pure in-renderer navigation, so
+// there's nothing for the main process to do.
+function showGoToMenu(x: number, y: number, onGoTo: () => void): void {
+  closeGoToMenu();
+  const menu = document.createElement('div');
+  menu.id = 'dashboard-goto-menu';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Go to';
+  button.addEventListener('click', () => {
+    closeGoToMenu();
+    void onGoTo();
+  });
+  menu.appendChild(button);
+  document.body.appendChild(menu);
+
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, window.innerWidth - rect.width - 8)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - rect.height - 8)}px`;
+
+  // Deferred so the contextmenu event that opened this menu doesn't
+  // immediately trigger its own dismissal via this same listener.
+  setTimeout(() => document.addEventListener('click', closeGoToMenu, { once: true }), 0);
+}
+
+function closeGoToMenu(): void {
+  document.getElementById('dashboard-goto-menu')?.remove();
+}
+
+// These jump to where an item lives (course detail's Deadlines section, or
+// the global Resources/Notes page filtered to its course) without opening
+// the item itself — distinct from the left-click open-in-place handlers
+// above, per the user's request that right-click be "go there," not "open."
+async function goToDashboardDeadline(deadline: DashboardDeadline): Promise<void> {
+  showPage('courses');
+  const courses = await atlasApi.listCourses();
+  const course = courses.find((c) => c.id === deadline.course_id);
+  if (course) await selectCourse(course);
+}
+
+function goToDashboardResource(resource: DashboardResource): void {
+  resourcesCourseFilterId = resource.course_id;
+  showPage('resources');
+}
+
+function goToDashboardActivityItem(item: DashboardActivityItem): void {
+  if (item.entity_type === 'note') {
+    notesCourseFilterId = item.course_id;
+    showPage('notes');
+  } else {
+    resourcesCourseFilterId = item.course_id;
+    showPage('resources');
   }
 }
 
@@ -1213,12 +1287,12 @@ async function flushPendingNoteSave(): Promise<void> {
   }
 }
 
-// Docked inline in the Notes page (`#notes-editor-pane`), not a modal —
-// same reasoning as openPreview(). Any caller from elsewhere (Dashboard,
-// Search, a deadline mention) switches to the Notes page first.
+// A global overlay (near the end of <body>), not scoped to the Notes page —
+// opening a note never navigates away from whatever page is currently
+// showing (Dashboard, a course detail view, the Notes page itself), same
+// reasoning as openPreview().
 async function openNoteEditor(note: Note): Promise<void> {
-  showPage('notes');
-  const pane = document.getElementById('notes-editor-pane')!;
+  const overlay = document.getElementById('note-overlay')!;
   const titleInput = document.getElementById('note-title-input') as HTMLInputElement;
   const statusEl = document.getElementById('note-save-status')!;
   const root = document.getElementById('note-editor-root')!;
@@ -1227,7 +1301,7 @@ async function openNoteEditor(note: Note): Promise<void> {
   titleInput.value = note.title;
   statusEl.textContent = '';
   root.innerHTML = '';
-  pane.hidden = false;
+  overlay.hidden = false;
 
   const saveImage = async (file: File): Promise<string> => {
     const buffer = await file.arrayBuffer();
@@ -1271,11 +1345,9 @@ async function openNoteEditor(note: Note): Promise<void> {
 async function closeNoteEditor(): Promise<void> {
   await flushPendingNoteSave();
 
-  const pane = document.getElementById('notes-editor-pane')!;
-  const split = document.getElementById('notes-split')!;
-  pane.hidden = true;
-  split.classList.remove('pane-fullscreen');
-  pane.classList.remove('true-fullscreen');
+  const overlay = document.getElementById('note-overlay')!;
+  overlay.hidden = true;
+  overlay.classList.remove('wide', 'fullscreen');
   resetNoteWidenButton();
   resetNoteFullscreenButton();
 
@@ -1285,7 +1357,12 @@ async function closeNoteEditor(): Promise<void> {
   }
   currentNoteId = null;
 
-  await renderNotesPage();
+  // Refresh whichever view could now be showing a stale title/timestamp for
+  // this note — same currentPage-gated refresh pattern already used for
+  // resources (see the resources:changed handler in init()).
+  if (currentPage === 'notes') await renderNotesPage();
+  else if (currentPage === 'dashboard') await renderDashboard();
+  else if (currentPage === 'courses' && selectedCourse) await renderCourseDetailPreviews(selectedCourse.id);
 }
 
 // Widen (expand width) uses a horizontal <-> style icon so it reads as
@@ -1315,27 +1392,25 @@ function resetNoteFullscreenButton(): void {
   button.setAttribute('aria-label', button.title);
 }
 
-// "Expand width" collapses the list column so the editor fills the page's
-// width — it does NOT cover the sidebar/topbar/search box, which is why the
-// user pointed out that what used to be the only "fullscreen" option wasn't
-// actually fullscreen. See toggleNoteTrueFullscreen() below for the genuine
-// one.
+// "Expand width" widens the overlay panel itself — it does NOT cover the
+// sidebar/topbar/search box, which is why the user pointed out that what
+// used to be the only "fullscreen" option wasn't actually fullscreen. See
+// toggleNoteTrueFullscreen() below for the genuine one.
 function toggleNoteWidth(): void {
-  const split = document.getElementById('notes-split')!;
-  const isWide = split.classList.toggle('pane-fullscreen');
+  const overlay = document.getElementById('note-overlay')!;
+  const isWide = overlay.classList.toggle('wide');
   const button = document.getElementById('note-widen') as HTMLButtonElement;
   button.innerHTML = isWide ? NOTE_WIDEN_COLLAPSE_ICON : NOTE_WIDEN_ICON;
   button.title = isWide ? 'Exit expanded width' : 'Expand width';
   button.setAttribute('aria-label', button.title);
 }
 
-// Genuine fullscreen: pulls the editor pane out of the page grid entirely
-// (position: fixed, inset: 0 — see .true-fullscreen in styles.css) so it
-// covers the whole window, sidebar and topbar included, the same way the
-// Resources preview modal does.
+// Genuine fullscreen: the overlay panel grows to cover the whole viewport,
+// sidebar and topbar included, same as the Resources preview modal
+// (#preview-overlay.fullscreen).
 function toggleNoteTrueFullscreen(): void {
-  const pane = document.getElementById('notes-editor-pane')!;
-  const isFullscreen = pane.classList.toggle('true-fullscreen');
+  const overlay = document.getElementById('note-overlay')!;
+  const isFullscreen = overlay.classList.toggle('fullscreen');
   const button = document.getElementById('note-fullscreen') as HTMLButtonElement;
   button.innerHTML = isFullscreen ? NOTE_EXIT_FULLSCREEN_ICON : NOTE_FULLSCREEN_ICON;
   button.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
@@ -1500,8 +1575,10 @@ function setImageZoom(zoom: number): void {
 // (Dashboard, Search, a deadline mention) switches to the Resources page
 // first, so the list underneath is already showing the right context once
 // the modal is closed.
+// A global overlay (near the end of <body>), not scoped to the Resources
+// page — opening one never navigates away from whatever page is currently
+// showing (Dashboard, a course detail view, etc.), it just layers on top.
 async function openPreview(resource: Resource): Promise<void> {
-  showPage('resources');
   const overlay = document.getElementById('preview-overlay')!;
   const title = document.getElementById('preview-title')!;
   const note = document.getElementById('preview-note') as HTMLParagraphElement;
@@ -2121,7 +2198,7 @@ async function init(): Promise<void> {
         toggleFullscreenPreview();
         return;
       }
-      if (currentPage === 'notes' && !(document.getElementById('notes-editor-pane') as HTMLElement).hidden) {
+      if (!(document.getElementById('note-overlay') as HTMLElement).hidden) {
         e.preventDefault();
         toggleNoteTrueFullscreen();
         return;
