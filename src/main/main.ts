@@ -30,7 +30,8 @@ import {
   ignorePendingClassroomCourse,
   removePendingClassroomCourse,
   linkClassroomCourseToExisting,
-  registerAttachmentSaver,
+  listAvailableClassroomCoursesForLinking,
+  ClassroomSyncError,
 } from './googleClassroom';
 import {
   getAshokaPlannerDbPath,
@@ -264,24 +265,6 @@ function importBufferIntoCourse(
   rebuildSearchIndex();
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 }
-
-// Copies a downloaded Classroom attachment into the mapped course's managed
-// storage, same on-disk layout/collision handling as importBufferIntoCourse.
-// Registered with googleClassroom.ts rather than imported there directly, to
-// avoid a circular dependency (googleClassroom.ts has no reason to know
-// about main.ts's file-path helpers otherwise).
-registerAttachmentSaver(async (courseId, filename, buffer) => {
-  const db = getDb();
-  const course = db.prepare('SELECT folder_name FROM courses WHERE id = ?').get(courseId) as
-    | { folder_name: string }
-    | undefined;
-  if (!course) throw new Error(`Course ${courseId} not found`);
-  const courseFilesDir = path.join(getFilesDir(), course.folder_name);
-  fs.mkdirSync(courseFilesDir, { recursive: true });
-  const destPath = uniqueDestPath(courseFilesDir, filename);
-  fs.writeFileSync(destPath, buffer);
-  return destPath;
-});
 
 // One chokidar watcher per watched folder, keyed by watched_folders.id, so a
 // single folder can be stopped/started independently of the others.
@@ -885,29 +868,43 @@ ipcMain.handle('classroom:disconnect', () => {
   disconnectGoogleClassroom();
 });
 
-// Runs a full scan (new/unmapped courses, plus coursework/announcements for
-// already-mapped courses) and tells the renderer if anything changed — same
-// push-event pattern as scanDriveAndNotify. Called once at launch and from
-// an explicit "Sync now" button; deliberately no setInterval (see
-// ARCHITECTURE.md §4b for why Classroom doesn't poll like Drive does).
-async function scanClassroomAndNotify(): Promise<boolean> {
+// Runs a full scan (new/unmapped courses, plus coursework/announcements/
+// classwork for already-mapped courses) and tells the renderer if anything
+// changed — same push-event pattern as scanDriveAndNotify. Called once at
+// launch and from an explicit "Sync now" button; deliberately no
+// setInterval (see ARCHITECTURE.md §4b for why Classroom doesn't poll like
+// Drive does). Per-course sync errors (see syncClassroomCourseworkForMappedCourses)
+// are returned rather than only console.error'd, so a real failure is
+// visible in the UI instead of looking identical to "nothing new."
+async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: ClassroomSyncError[] }> {
   try {
-    const changed = await scanClassroom();
+    const { changed, errors } = await scanClassroom();
     if (changed && mainWindow) mainWindow.webContents.send('classroom:changed');
-    return changed;
+    if (errors.length > 0) console.error('Google Classroom sync errors:', errors);
+    return { changed, errors };
   } catch (err) {
     console.error('Google Classroom scan failed:', err);
-    return false;
+    return { changed: false, errors: [{ courseId: -1, courseName: '', message: err instanceof Error ? err.message : String(err) }] };
   }
 }
 
 ipcMain.handle('classroom:syncNow', async () => {
   try {
-    const changed = await scanClassroomAndNotify();
-    return { ok: true as const, changed };
+    const { changed, errors } = await scanClassroomAndNotify();
+    return { ok: true as const, changed, errors };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
   }
+});
+
+ipcMain.handle('classroom:listAvailableCoursesForLinking', () => listAvailableClassroomCoursesForLinking());
+
+// Only used to open a 'link'-kind resource's external URL (Drive file/link/
+// YouTube/Form attachment, see preview.ts's 'link' Preview type) — never
+// passed a renderer-supplied arbitrary string beyond what's already stored
+// in that resource's own file_path.
+ipcMain.handle('app:openExternalUrl', (_event, url: string) => {
+  void shell.openExternal(url);
 });
 
 ipcMain.handle('classroom:listPendingCourses', () => listPendingClassroomCourses());
@@ -925,7 +922,8 @@ ipcMain.handle(
   'classroom:mapCourseToExisting',
   async (_event, classroomCourseId: string, atlasCourseId: number) => {
     linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
-    void scanClassroomAndNotify();
+    const { errors } = await scanClassroomAndNotify();
+    return { errors };
   }
 );
 
@@ -935,7 +933,7 @@ ipcMain.handle(
 // googleClassroom.ts, which has no reason to know about on-disk file layout.
 ipcMain.handle(
   'classroom:mapCourseToNew',
-  (_event, classroomCourseId: string, name: string, code: string | null, term: string | null) => {
+  async (_event, classroomCourseId: string, name: string, code: string | null, term: string | null) => {
     const db = getDb();
     const insertResult = db
       .prepare('INSERT INTO courses (name, code, term, folder_name, source, classroom_course_id) VALUES (?, ?, ?, ?, ?, ?)')
@@ -947,10 +945,65 @@ ipcMain.handle(
     startWatchingCourseStorage(Number(courseId), folderName);
 
     removePendingClassroomCourse(classroomCourseId);
-    void scanClassroomAndNotify();
-    return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+    const { errors } = await scanClassroomAndNotify();
+    return { course: db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId), errors };
   }
 );
+
+// Links a course the user is already viewing (course detail page) directly
+// to a Classroom course, via the per-course "Connect to Classroom" picker —
+// distinct from the pending-courses review panel, which is for discovering
+// new Classroom courses rather than acting on one already on screen.
+ipcMain.handle(
+  'classroom:connectCourseToClassroom',
+  async (_event, atlasCourseId: number, classroomCourseId: string) => {
+    linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
+    const { errors } = await scanClassroomAndNotify();
+    return { errors };
+  }
+);
+
+ipcMain.handle('classroom:disconnectCourse', (_event, atlasCourseId: number) => {
+  const db = getDb();
+  db.prepare('UPDATE courses SET classroom_course_id = NULL WHERE id = ?').run(atlasCourseId);
+});
+
+// Backs the course-detail Announcements/Assignments/Classwork sections —
+// only rendered when the course is actually connected to Classroom (see
+// renderer.ts). Classwork's link resources are looked up by
+// classwork_material_id; assignment link resources by matching
+// classroom_attachment_id's "<courseworkId>:<url>" prefix (see
+// googleClassroom.ts's saveLinkResources).
+ipcMain.handle('classroom:getCourseContent', (_event, courseId: number) => {
+  const db = getDb();
+  const announcements = db
+    .prepare('SELECT * FROM announcements WHERE course_id = ? ORDER BY posted_at DESC')
+    .all(courseId);
+  const assignments = db
+    .prepare('SELECT * FROM assignments WHERE course_id = ? ORDER BY due_at IS NULL, due_at ASC')
+    .all(courseId) as { id: number; classroom_coursework_id: string | null }[];
+  const classworkMaterials = db
+    .prepare('SELECT * FROM classwork_materials WHERE course_id = ? ORDER BY posted_at DESC')
+    .all(courseId) as { id: number }[];
+
+  const linkResourcesForClasswork = db.prepare(
+    'SELECT id, title, file_path FROM resources WHERE classwork_material_id = ?'
+  );
+  const classwork = classworkMaterials.map((item) => ({
+    ...item,
+    links: linkResourcesForClasswork.all(item.id),
+  }));
+
+  const linkResourcesForAssignment = db.prepare(
+    "SELECT id, title, file_path FROM resources WHERE classwork_material_id IS NULL AND classroom_attachment_id LIKE ? || ':%'"
+  );
+  const assignmentsWithLinks = assignments.map((a) => ({
+    ...a,
+    links: a.classroom_coursework_id ? linkResourcesForAssignment.all(a.classroom_coursework_id) : [],
+  }));
+
+  return { announcements, assignments: assignmentsWithLinks, classwork };
+});
 
 // --- Ashoka Planner course import (docs/open-questions.md #15) ---
 // A one-shot, user-invoked import (never automatic, never polled) that reads
@@ -1099,12 +1152,20 @@ ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) =
 ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
   const db = getDb();
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
-    | { file_path: string; title: string }
+    | { file_path: string; title: string; kind: string }
     | undefined;
   if (!resource) return;
 
+  // A 'link' resource (Classroom Drive-file/link/YouTube/Form attachment,
+  // see googleClassroom.ts) has no local file — file_path is the external
+  // URL itself, so "open" always means opening that URL directly rather
+  // than routing through the local preview server.
+  const isLink = resource.kind === 'link';
   const menu = Menu.buildFromTemplate([
-    { label: 'Open in browser', click: () => shell.openExternal(getResourceBrowserUrl(resourceId)) },
+    {
+      label: isLink ? 'Open link' : 'Open in browser',
+      click: () => shell.openExternal(isLink ? resource.file_path : getResourceBrowserUrl(resourceId)),
+    },
     { type: 'separator' },
     {
       label: 'Delete',
@@ -1622,6 +1683,21 @@ ipcMain.handle('notes:runOcr', async (event, noteId: number) => {
 // submission status) in Phase 3 — building a second, overlapping manual-entry
 // UI for it now would just be busywork today with no sync to populate the
 // status field it exists for. Deferred; see docs/open-questions.md #13.
+
+// Backs the Calendar page — unlike dashboard:upcomingDeadlines (future-only,
+// limited to 8 for the dashboard widget), the Calendar needs every deadline
+// with a due date, past or future, to fill in a full month grid.
+ipcMain.handle('deadlines:listAllWithCourse', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT deadlines.*, courses.name AS course_name
+       FROM deadlines
+       JOIN courses ON courses.id = deadlines.course_id
+       WHERE deadlines.due_at IS NOT NULL`
+    )
+    .all();
+});
 
 ipcMain.handle('deadlines:listByCourse', (_event, courseId: number) => {
   const db = getDb();

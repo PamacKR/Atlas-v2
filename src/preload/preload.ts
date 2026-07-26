@@ -142,6 +142,43 @@ export interface ClassroomPendingCourse {
   detected_at: string;
 }
 
+export interface ClassroomSyncError {
+  courseId: number;
+  courseName: string;
+  message: string;
+}
+
+export interface ClassroomLinkableCourse {
+  classroom_course_id: string;
+  name: string;
+  section: string | null;
+}
+
+export interface ClassroomContentLink {
+  id: number;
+  title: string;
+  file_path: string;
+}
+
+export interface ClassroomCourseContent {
+  announcements: { id: number; title: string; body: string | null; posted_at: string }[];
+  assignments: {
+    id: number;
+    title: string;
+    description: string | null;
+    due_at: string | null;
+    status: string;
+    links: ClassroomContentLink[];
+  }[];
+  classwork: {
+    id: number;
+    title: string;
+    description: string | null;
+    posted_at: string | null;
+    links: ClassroomContentLink[];
+  }[];
+}
+
 export interface AshokaCourseCandidate {
   code: string;
   title: string;
@@ -180,23 +217,39 @@ contextBridge.exposeInMainWorld('atlas', {
   connectClassroom: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('classroom:connect'),
   disconnectClassroom: (): Promise<void> => ipcRenderer.invoke('classroom:disconnect'),
-  syncClassroomNow: (): Promise<{ ok: boolean; changed?: boolean; error?: string }> =>
+  syncClassroomNow: (): Promise<{ ok: boolean; changed?: boolean; errors?: ClassroomSyncError[]; error?: string }> =>
     ipcRenderer.invoke('classroom:syncNow'),
   listPendingClassroomCourses: (): Promise<ClassroomPendingCourse[]> =>
     ipcRenderer.invoke('classroom:listPendingCourses'),
   ignorePendingClassroomCourse: (classroomCourseId: string): Promise<void> =>
     ipcRenderer.invoke('classroom:ignorePendingCourse', classroomCourseId),
-  mapClassroomCourseToExisting: (classroomCourseId: string, atlasCourseId: number): Promise<void> =>
+  mapClassroomCourseToExisting: (
+    classroomCourseId: string,
+    atlasCourseId: number
+  ): Promise<{ errors: ClassroomSyncError[] }> =>
     ipcRenderer.invoke('classroom:mapCourseToExisting', classroomCourseId, atlasCourseId),
   mapClassroomCourseToNew: (
     classroomCourseId: string,
     name: string,
     code: string | null,
     term: string | null
-  ): Promise<Course> => ipcRenderer.invoke('classroom:mapCourseToNew', classroomCourseId, name, code, term),
+  ): Promise<{ course: Course; errors: ClassroomSyncError[] }> =>
+    ipcRenderer.invoke('classroom:mapCourseToNew', classroomCourseId, name, code, term),
   onClassroomChanged: (handler: () => void): void => {
     ipcRenderer.on('classroom:changed', () => handler());
   },
+  listAvailableClassroomCoursesForLinking: (): Promise<ClassroomLinkableCourse[]> =>
+    ipcRenderer.invoke('classroom:listAvailableCoursesForLinking'),
+  connectCourseToClassroom: (
+    atlasCourseId: number,
+    classroomCourseId: string
+  ): Promise<{ errors: ClassroomSyncError[] }> =>
+    ipcRenderer.invoke('classroom:connectCourseToClassroom', atlasCourseId, classroomCourseId),
+  disconnectCourseFromClassroom: (atlasCourseId: number): Promise<void> =>
+    ipcRenderer.invoke('classroom:disconnectCourse', atlasCourseId),
+  openExternalUrl: (url: string): Promise<void> => ipcRenderer.invoke('app:openExternalUrl', url),
+  getClassroomCourseContent: (courseId: number): Promise<ClassroomCourseContent> =>
+    ipcRenderer.invoke('classroom:getCourseContent', courseId),
   getAshokaDbPath: (): Promise<string | null> => ipcRenderer.invoke('ashoka:getDbPath'),
   pickAshokaDbPath: (): Promise<{ ok: true } | { ok: false; error: string | null }> =>
     ipcRenderer.invoke('ashoka:pickDbPath'),
@@ -300,6 +353,8 @@ contextBridge.exposeInMainWorld('atlas', {
   },
   getDashboardStats: (): Promise<DashboardStats> => ipcRenderer.invoke('dashboard:stats'),
   getUpcomingDeadlines: (): Promise<DashboardDeadline[]> => ipcRenderer.invoke('dashboard:upcomingDeadlines'),
+  listAllDeadlinesWithCourse: (): Promise<DashboardDeadline[]> =>
+    ipcRenderer.invoke('deadlines:listAllWithCourse'),
   getRecentResources: (): Promise<DashboardResource[]> => ipcRenderer.invoke('dashboard:recentResources'),
   getRecentActivity: (): Promise<DashboardActivityItem[]> => ipcRenderer.invoke('dashboard:recentActivity'),
   getCourseSummaries: (): Promise<CourseSummary[]> => ipcRenderer.invoke('dashboard:courseSummaries'),

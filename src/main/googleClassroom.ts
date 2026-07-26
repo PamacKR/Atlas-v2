@@ -1,6 +1,17 @@
 import { google, classroom_v1 } from 'googleapis';
 import { getDb } from './db/database';
-import { getClassroomClient, getDriveClient } from './googleAuth';
+import { getClassroomClient } from './googleAuth';
+
+export interface ClassroomSyncError {
+  courseId: number;
+  courseName: string;
+  message: string;
+}
+
+export interface ClassroomSyncResult {
+  changed: boolean;
+  errors: ClassroomSyncError[];
+}
 
 export interface ClassroomPendingCourse {
   id: number;
@@ -96,25 +107,57 @@ function formatDueAt(
   return `${date}T${hours}:${minutes}`;
 }
 
-// Pulls courseWork (assignments) and announcements for every already-mapped
-// course, upserting by their Classroom external IDs. Unlike Drive's
-// per-file review panel, new assignments/announcements within an already
-// user-confirmed course import directly with no separate per-item gate —
-// the ambiguity a review step exists to resolve (which course, which type)
-// doesn't apply here since Classroom's API already returns typed,
-// course-scoped data. Only which Atlas course a Classroom course maps to is
-// gated (see scanClassroomCourses). Returns whether anything changed.
-export async function syncClassroomCourseworkForMappedCourses(): Promise<boolean> {
+// A courseWork/courseWorkMaterial item's attachment materials as Drive
+// links only — no download, so a link/YouTube/Forms material (which has no
+// downloadable file at all) is just as representable as a Drive file one.
+// Returns one { title, url } per material that actually has a link to show.
+function extractMaterialLinks(
+  materials: classroom_v1.Schema$Material[] | undefined
+): { title: string; url: string }[] {
+  const links: { title: string; url: string }[] = [];
+  for (const material of materials ?? []) {
+    const driveFile = material.driveFile?.driveFile;
+    if (driveFile?.alternateLink && driveFile.title) {
+      links.push({ title: driveFile.title, url: driveFile.alternateLink });
+    } else if (material.link?.url) {
+      links.push({ title: material.link.title || material.link.url, url: material.link.url });
+    } else if (material.youtubeVideo?.alternateLink) {
+      links.push({ title: material.youtubeVideo.title || 'YouTube video', url: material.youtubeVideo.alternateLink });
+    } else if (material.form?.formUrl) {
+      links.push({ title: material.form.title || 'Form', url: material.form.formUrl });
+    }
+  }
+  return links;
+}
+
+// Pulls courseWork (assignments), announcements and courseWorkMaterials
+// (the ungraded "Classwork" tab) for every already-mapped course, upserting
+// by their Classroom external IDs. Unlike Drive's per-file review panel, new
+// items within an already user-confirmed course import directly with no
+// separate per-item gate — the ambiguity a review step exists to resolve
+// (which course, which type) doesn't apply here since Classroom's API
+// already returns typed, course-scoped data. Only which Atlas course a
+// Classroom course maps to is gated (see scanClassroomCourses).
+//
+// Each mapped course is wrapped in its own try/catch: one course's API call
+// throwing (expired token, transient error, etc.) must not abort every
+// other mapped course's sync — this was the confirmed root cause of a real
+// bug report ("none of the content from each class carried over") where a
+// single unguarded loop meant one failure silently zeroed out the whole
+// sync. Collected errors are returned so the caller can surface them
+// instead of only console.error-ing them into invisibility.
+export async function syncClassroomCourseworkForMappedCourses(): Promise<ClassroomSyncResult> {
   const client = getClassroomClient();
-  if (!client) return false;
+  if (!client) return { changed: false, errors: [] };
 
   const classroom = classroomApi();
   const db = getDb();
   const mappedCourses = db
-    .prepare('SELECT id, classroom_course_id FROM courses WHERE classroom_course_id IS NOT NULL')
-    .all() as { id: number; classroom_course_id: string }[];
+    .prepare('SELECT id, classroom_course_id, name FROM courses WHERE classroom_course_id IS NOT NULL')
+    .all() as { id: number; classroom_course_id: string; name: string }[];
 
   let changed = false;
+  const errors: ClassroomSyncError[] = [];
 
   const upsertAssignment = db.prepare(`
     INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, updated_at)
@@ -138,108 +181,108 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<boolean
       title = excluded.title, body = excluded.body
     WHERE classroom_announcement_id IS NOT NULL
   `);
-  const upsertAttachment = db.prepare(`
-    INSERT OR IGNORE INTO resources (course_id, title, kind, source, file_path, original_filename, classroom_attachment_id)
-    VALUES (?, ?, ?, 'classroom', ?, ?, ?)
+  const upsertClasswork = db.prepare(`
+    INSERT INTO classwork_materials (course_id, title, description, posted_at, classroom_coursework_material_id)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (classroom_coursework_material_id) DO UPDATE SET
+      title = excluded.title, description = excluded.description
+  `);
+  const insertLinkResource = db.prepare(`
+    INSERT OR IGNORE INTO resources (course_id, title, kind, source, file_path, original_filename, classroom_attachment_id, classwork_material_id)
+    VALUES (?, ?, 'link', 'classroom', ?, ?, ?, ?)
   `);
 
-  for (const course of mappedCourses) {
-    const courseWorkRes = await classroom.courses.courseWork.list({ courseId: course.classroom_course_id, pageSize: 200 });
-    for (const work of courseWorkRes.data.courseWork ?? []) {
-      if (!work.id || !work.title) continue;
-      const dueAt = formatDueAt(work.dueDate ?? undefined, work.dueTime ?? undefined);
-      const insertResult = upsertAssignment.run(
-        course.id,
-        work.title,
-        work.description ?? null,
-        dueAt,
-        work.id,
-        work.updateTime ?? null
-      );
-      if (insertResult.changes > 0) changed = true;
-      const deadlineResult = upsertDeadline.run(course.id, work.title, dueAt, work.id);
-      if (deadlineResult.changes > 0) changed = true;
+  const saveLinkResources = (
+    courseId: number,
+    ownerId: string,
+    links: { title: string; url: string }[],
+    classworkMaterialRowId: number | null
+  ): boolean => {
+    let any = false;
+    for (const link of links) {
+      const attachmentKey = `${ownerId}:${link.url}`;
+      const result = insertLinkResource.run(courseId, link.title, link.url, link.title, attachmentKey, classworkMaterialRowId);
+      if (result.changes > 0) any = true;
+    }
+    return any;
+  };
 
-      // Attachments: only Drive-file materials are imported, and only when
-      // Drive is connected and can actually fetch content — a courseWork
-      // item's link/YouTube/Forms materials have nothing downloadable to
-      // store as a `resources` row (file_path is required), so they're
-      // skipped this phase rather than half-imported (see docs/open-questions.md).
-      for (const material of work.materials ?? []) {
-        const driveFile = material.driveFile?.driveFile;
-        if (!driveFile?.id || !driveFile.title) continue;
-        const attachmentKey = `${work.id}:${driveFile.id}`;
-        const alreadyImported = db
-          .prepare('SELECT 1 FROM resources WHERE classroom_attachment_id = ?')
-          .get(attachmentKey);
-        if (alreadyImported) continue;
-        const driveClient = getDriveClient();
-        if (!driveClient) continue; // retried on a future sync once Drive is connected
-        try {
-          const drive = google.drive({ version: 'v3', auth: driveClient });
-          const contentRes = await drive.files.get(
-            { fileId: driveFile.id, alt: 'media' },
-            { responseType: 'arraybuffer' }
-          );
-          const buffer = Buffer.from(contentRes.data as ArrayBuffer);
-          const filePath = await saveClassroomAttachment(course.id, driveFile.title, buffer);
-          const attachResult = upsertAttachment.run(
-            course.id,
-            driveFile.title,
-            resourceKindFromFilename(driveFile.title),
-            filePath,
-            driveFile.title,
-            attachmentKey
-          );
-          if (attachResult.changes > 0) changed = true;
-        } catch (err) {
-          console.error(`Failed to import Classroom attachment "${driveFile.title}":`, err);
+  for (const course of mappedCourses) {
+    try {
+      const courseWorkRes = await classroom.courses.courseWork.list({
+        courseId: course.classroom_course_id,
+        pageSize: 200,
+      });
+      for (const work of courseWorkRes.data.courseWork ?? []) {
+        if (!work.id || !work.title) continue;
+        const dueAt = formatDueAt(work.dueDate ?? undefined, work.dueTime ?? undefined);
+        const insertResult = upsertAssignment.run(
+          course.id,
+          work.title,
+          work.description ?? null,
+          dueAt,
+          work.id,
+          work.updateTime ?? null
+        );
+        if (insertResult.changes > 0) changed = true;
+        const deadlineResult = upsertDeadline.run(course.id, work.title, dueAt, work.id);
+        if (deadlineResult.changes > 0) changed = true;
+
+        if (saveLinkResources(course.id, work.id, extractMaterialLinks(work.materials), null)) changed = true;
+      }
+
+      const announcementsRes = await classroom.courses.announcements.list({
+        courseId: course.classroom_course_id,
+        pageSize: 200,
+      });
+      for (const announcement of announcementsRes.data.announcements ?? []) {
+        if (!announcement.id) continue;
+        const result = upsertAnnouncement.run(
+          course.id,
+          announcement.text?.slice(0, 80) || 'Announcement',
+          announcement.text ?? null,
+          announcement.creationTime ?? new Date().toISOString(),
+          announcement.id
+        );
+        if (result.changes > 0) changed = true;
+
+        if (saveLinkResources(course.id, announcement.id, extractMaterialLinks(announcement.materials), null)) {
+          changed = true;
         }
       }
-    }
 
-    const announcementsRes = await classroom.courses.announcements.list({
-      courseId: course.classroom_course_id,
-      pageSize: 200,
-    });
-    for (const announcement of announcementsRes.data.announcements ?? []) {
-      if (!announcement.id) continue;
-      const result = upsertAnnouncement.run(
-        course.id,
-        announcement.text?.slice(0, 80) || 'Announcement',
-        announcement.text ?? null,
-        announcement.creationTime ?? new Date().toISOString(),
-        announcement.id
-      );
-      if (result.changes > 0) changed = true;
+      const materialsRes = await classroom.courses.courseWorkMaterials.list({
+        courseId: course.classroom_course_id,
+        pageSize: 200,
+      });
+      for (const item of materialsRes.data.courseWorkMaterial ?? []) {
+        if (!item.id || !item.title) continue;
+        const result = upsertClasswork.run(
+          course.id,
+          item.title,
+          item.description ?? null,
+          item.creationTime ?? null,
+          item.id
+        );
+        if (result.changes > 0) changed = true;
+
+        const classworkRow = db
+          .prepare('SELECT id FROM classwork_materials WHERE classroom_coursework_material_id = ?')
+          .get(item.id) as { id: number } | undefined;
+        if (classworkRow && saveLinkResources(course.id, item.id, extractMaterialLinks(item.materials), classworkRow.id)) {
+          changed = true;
+        }
+      }
+    } catch (err) {
+      errors.push({
+        courseId: course.id,
+        courseName: course.name,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
-  return changed;
-}
-
-// Set by main.ts at startup — copies a downloaded attachment buffer into the
-// mapped course's managed storage folder and returns the path, reusing the
-// same on-disk layout as manual uploads. Injected rather than imported
-// directly to avoid a circular dependency with main.ts's file-path helpers.
-let saveAttachmentFn: ((courseId: number, filename: string, buffer: Buffer) => Promise<string>) | null = null;
-export function registerAttachmentSaver(fn: (courseId: number, filename: string, buffer: Buffer) => Promise<string>): void {
-  saveAttachmentFn = fn;
-}
-async function saveClassroomAttachment(courseId: number, filename: string, buffer: Buffer): Promise<string> {
-  if (!saveAttachmentFn) throw new Error('Classroom attachment saver not registered');
-  return saveAttachmentFn(courseId, filename, buffer);
-}
-
-function resourceKindFromFilename(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  if (ext === 'pdf') return 'pdf';
-  if (ext === 'pptx' || ext === 'ppt') return 'pptx';
-  if (ext === 'docx' || ext === 'doc') return 'docx';
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return 'image';
-  if (ext === 'md') return 'markdown';
-  if (ext === 'txt') return 'text';
-  return 'other';
+  return { changed, errors };
 }
 
 // Orchestrator called by main.ts on launch and from the "Sync now" button —
@@ -247,10 +290,10 @@ function resourceKindFromFilename(filename: string): string {
 // §4b: Classroom content changes far less often than a Drive inbox, and this
 // avoids unnecessary API load against the college account while
 // docs/open-questions.md #2's general sync-frequency policy stays open.
-export async function scanClassroom(): Promise<boolean> {
+export async function scanClassroom(): Promise<ClassroomSyncResult> {
   const coursesChanged = await scanClassroomCourses();
-  const courseworkChanged = await syncClassroomCourseworkForMappedCourses();
-  return coursesChanged || courseworkChanged;
+  const courseworkResult = await syncClassroomCourseworkForMappedCourses();
+  return { changed: coursesChanged || courseworkResult.changed, errors: courseworkResult.errors };
 }
 
 export function listPendingClassroomCourses(): ClassroomPendingCourse[] {
@@ -282,4 +325,37 @@ export function linkClassroomCourseToExisting(classroomCourseId: string, atlasCo
   const db = getDb();
   db.prepare('UPDATE courses SET classroom_course_id = ? WHERE id = ?').run(classroomCourseId, atlasCourseId);
   removePendingClassroomCourse(classroomCourseId);
+}
+
+export interface ClassroomLinkableCourse {
+  classroom_course_id: string;
+  name: string;
+  section: string | null;
+}
+
+// Live Classroom courses not yet mapped to any Atlas course — backs the
+// per-course "Connect to Classroom" picker (course detail page), which is a
+// direct map-to-this-course action rather than going through the pending-
+// courses review panel (that panel is for *discovering* new Classroom
+// courses; this is for a course the user is already looking at).
+export async function listAvailableClassroomCoursesForLinking(): Promise<ClassroomLinkableCourse[]> {
+  const client = getClassroomClient();
+  if (!client) return [];
+
+  const classroom = classroomApi();
+  const res = await classroom.courses.list({ courseStates: ['ACTIVE'], pageSize: 200 });
+  const courses = res.data.courses ?? [];
+
+  const db = getDb();
+  const mappedIds = new Set(
+    (db.prepare('SELECT classroom_course_id FROM courses WHERE classroom_course_id IS NOT NULL').all() as {
+      classroom_course_id: string;
+    }[]).map((r) => r.classroom_course_id)
+  );
+
+  return courses
+    .filter((c): c is classroom_v1.Schema$Course & { id: string; name: string } =>
+      Boolean(c.id && c.name && !mappedIds.has(c.id))
+    )
+    .map((c) => ({ classroom_course_id: c.id, name: c.name, section: c.section ?? null }));
 }

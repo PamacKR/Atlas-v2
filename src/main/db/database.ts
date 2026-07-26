@@ -61,6 +61,9 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('classroom_attachment_id')) {
     db.exec('ALTER TABLE resources ADD COLUMN classroom_attachment_id TEXT');
   }
+  if (!resourceColumns.includes('classwork_material_id')) {
+    db.exec('ALTER TABLE resources ADD COLUMN classwork_material_id INTEGER REFERENCES classwork_materials(id) ON DELETE CASCADE');
+  }
 
   const noteColumns = (db.prepare('PRAGMA table_info(notes)').all() as { name: string }[]).map(
     (c) => c.name

@@ -56,7 +56,12 @@ CREATE TABLE IF NOT EXISTS resources (
   -- imported from — used to detect "already imported" across Classroom
   -- syncs, same role as drive_file_id. NULL for anything not sourced from
   -- Classroom.
-  classroom_attachment_id TEXT
+  classroom_attachment_id TEXT,
+  -- Set when this resource is a Classwork-post attachment (see
+  -- classwork_materials below) rather than a courseWork/announcement one —
+  -- lets the Classwork course-detail section group "post + its links"
+  -- the way Classroom's own Classwork tab does. NULL otherwise.
+  classwork_material_id INTEGER REFERENCES classwork_materials(id) ON DELETE CASCADE
 );
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to
@@ -191,6 +196,23 @@ CREATE TABLE IF NOT EXISTS classroom_pending_courses (
   -- (so the UNIQUE constraint keeps it from reappearing as "new"), just
   -- excluded from the pending list/count. Nothing is created or linked.
   ignored INTEGER NOT NULL DEFAULT 0
+);
+
+-- Classroom's ungraded "Classwork" posts (courses.courseWorkMaterials.list) —
+-- distinct from graded courseWork (assignments table). Kept as its own table
+-- rather than folded into assignments since these have no due date/grade,
+-- matching what Classroom's own Classwork tab shows (a union of these plus
+-- assignments). Any attachments land as `resources` rows with kind='link'
+-- and classwork_material_id set back to this row (see resources above).
+CREATE TABLE IF NOT EXISTS classwork_materials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  posted_at TEXT,
+  -- External Classroom courseWorkMaterial ID, used to detect "already
+  -- imported" and to find the existing row to update on re-sync.
+  classroom_coursework_material_id TEXT NOT NULL UNIQUE
 );
 
 -- App-wide preferences that aren't tied to any one course/resource, e.g. the

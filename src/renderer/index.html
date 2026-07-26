@@ -14,6 +14,7 @@
       <button class="sidebar-nav-item" type="button" data-page="courses"><span class="nav-icon">📚</span><span class="nav-label">Courses</span></button>
       <button class="sidebar-nav-item" type="button" data-page="resources"><span class="nav-icon">🗂️</span><span class="nav-label">Resources</span></button>
       <button class="sidebar-nav-item" type="button" data-page="notes"><span class="nav-icon">📝</span><span class="nav-label">Notes</span></button>
+      <button class="sidebar-nav-item" type="button" data-page="calendar"><span class="nav-icon">📅</span><span class="nav-label">Calendar</span></button>
       <button id="sidebar-collapse-toggle" class="sidebar-nav-item" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">
         <span class="nav-icon" id="sidebar-collapse-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -92,8 +93,18 @@
         </div>
 
         <div id="dashboard-widgets">
-          <div class="dashboard-widget">
-            <h3>Upcoming deadlines</h3>
+          <div class="dashboard-widget" id="dashboard-upcoming-widget">
+            <div class="resources-header">
+              <h3>Upcoming</h3>
+              <button id="dashboard-view-calendar" type="button" class="link-button">View full calendar →</button>
+            </div>
+            <div class="chip-row" id="dashboard-upcoming-tabs">
+              <button class="chip active" type="button" data-upcoming-filter="">All</button>
+              <button class="chip" type="button" data-upcoming-filter="assignment">Assignments</button>
+              <button class="chip" type="button" data-upcoming-filter="exam">Exams</button>
+              <button class="chip" type="button" data-upcoming-filter="reading">Readings</button>
+              <button class="chip" type="button" data-upcoming-filter="other">Other</button>
+            </div>
             <ul id="dashboard-deadlines"></ul>
           </div>
           <div class="dashboard-widget">
@@ -209,6 +220,30 @@
             <button id="new-deadline-button" type="button">Add deadline</button>
           </section>
 
+          <section id="course-classroom-section">
+            <h4>Classroom</h4>
+            <div id="course-classroom-connected" hidden>
+              <p class="muted">Connected to <span id="course-classroom-name"></span></p>
+              <button id="course-classroom-disconnect" type="button" class="link-button">Disconnect</button>
+            </div>
+            <button id="course-classroom-connect" type="button">Connect to Classroom…</button>
+          </section>
+
+          <section id="course-announcements-section" hidden>
+            <h4>Announcements</h4>
+            <ul id="course-announcements-list"></ul>
+          </section>
+
+          <section id="course-assignments-section" hidden>
+            <h4>Assignments</h4>
+            <ul id="course-assignments-list"></ul>
+          </section>
+
+          <section id="course-classwork-section" hidden>
+            <h4>Classwork</h4>
+            <ul id="course-classwork-list"></ul>
+          </section>
+
           <section id="watched-folders-section">
             <h4>Watched folders</h4>
             <p class="muted">Files added to a watched folder are copied in automatically.</p>
@@ -286,6 +321,39 @@
           <div class="split-list" id="notes-list-pane">
             <div id="all-notes-list"></div>
           </div>
+        </div>
+      </section>
+
+      <section id="page-calendar" class="app-page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>Calendar</h2>
+            <p class="muted">Every deadline and assignment in one view.</p>
+          </div>
+          <div id="calendar-month-nav">
+            <button id="calendar-prev-month" type="button" title="Previous month" aria-label="Previous month">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span id="calendar-month-label"></span>
+            <button id="calendar-next-month" type="button" title="Next month" aria-label="Next month">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <button id="calendar-today" type="button" class="link-button">Today</button>
+          </div>
+        </div>
+
+        <div id="calendar-layout">
+          <div id="calendar-grid-wrap">
+            <div id="calendar-weekday-row">
+              <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+            </div>
+            <div id="calendar-grid"></div>
+          </div>
+          <aside id="calendar-sidebar">
+            <div id="calendar-legend"></div>
+            <h4>Upcoming</h4>
+            <div id="calendar-upcoming-list"></div>
+          </aside>
         </div>
       </section>
 
@@ -478,6 +546,21 @@
         <button id="classroom-review-bulk-ignore" type="button">Ignore</button>
       </div>
       <ul id="classroom-review-list"></ul>
+    </div>
+  </div>
+
+  <div id="classroom-connect-overlay" hidden>
+    <div id="classroom-connect-panel">
+      <div class="modal-header">
+        <h3>Connect to Classroom</h3>
+        <button id="classroom-connect-close" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="muted">Pick which live Classroom class this course's content should sync from.</p>
+      <select id="classroom-connect-select"></select>
+      <p id="classroom-connect-empty" class="muted" hidden>No unconnected Classroom classes found. Try Sync now on the dashboard first.</p>
+      <button id="classroom-connect-confirm" type="button">Connect</button>
     </div>
   </div>
 

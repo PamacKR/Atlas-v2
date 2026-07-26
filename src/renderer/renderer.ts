@@ -6,6 +6,7 @@ interface Course {
   folder_name: string;
   archived: number;
   created_at: string;
+  classroom_course_id: string | null;
 }
 
 interface Resource {
@@ -95,6 +96,43 @@ interface ClassroomPendingCourse {
   detected_at: string;
 }
 
+interface ClassroomSyncError {
+  courseId: number;
+  courseName: string;
+  message: string;
+}
+
+interface ClassroomLinkableCourse {
+  classroom_course_id: string;
+  name: string;
+  section: string | null;
+}
+
+interface ClassroomContentLink {
+  id: number;
+  title: string;
+  file_path: string;
+}
+
+interface ClassroomCourseContent {
+  announcements: { id: number; title: string; body: string | null; posted_at: string }[];
+  assignments: {
+    id: number;
+    title: string;
+    description: string | null;
+    due_at: string | null;
+    status: string;
+    links: ClassroomContentLink[];
+  }[];
+  classwork: {
+    id: number;
+    title: string;
+    description: string | null;
+    posted_at: string | null;
+    links: ClassroomContentLink[];
+  }[];
+}
+
 interface AshokaCourseCandidate {
   code: string;
   title: string;
@@ -156,6 +194,7 @@ type Preview =
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
+  | { type: 'link'; url: string }
   | { type: 'unsupported'; reason?: string };
 
 interface AtlasApi {
@@ -181,17 +220,28 @@ interface AtlasApi {
   isClassroomConnected: () => Promise<boolean>;
   connectClassroom: () => Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectClassroom: () => Promise<void>;
-  syncClassroomNow: () => Promise<{ ok: boolean; changed?: boolean; error?: string }>;
+  syncClassroomNow: () => Promise<{ ok: boolean; changed?: boolean; errors?: ClassroomSyncError[]; error?: string }>;
   listPendingClassroomCourses: () => Promise<ClassroomPendingCourse[]>;
   ignorePendingClassroomCourse: (classroomCourseId: string) => Promise<void>;
-  mapClassroomCourseToExisting: (classroomCourseId: string, atlasCourseId: number) => Promise<void>;
+  mapClassroomCourseToExisting: (
+    classroomCourseId: string,
+    atlasCourseId: number
+  ) => Promise<{ errors: ClassroomSyncError[] }>;
   mapClassroomCourseToNew: (
     classroomCourseId: string,
     name: string,
     code: string | null,
     term: string | null
-  ) => Promise<Course>;
+  ) => Promise<{ course: Course; errors: ClassroomSyncError[] }>;
   onClassroomChanged: (handler: () => void) => void;
+  listAvailableClassroomCoursesForLinking: () => Promise<ClassroomLinkableCourse[]>;
+  connectCourseToClassroom: (
+    atlasCourseId: number,
+    classroomCourseId: string
+  ) => Promise<{ errors: ClassroomSyncError[] }>;
+  disconnectCourseFromClassroom: (atlasCourseId: number) => Promise<void>;
+  openExternalUrl: (url: string) => Promise<void>;
+  getClassroomCourseContent: (courseId: number) => Promise<ClassroomCourseContent>;
   getAshokaDbPath: () => Promise<string | null>;
   pickAshokaDbPath: () => Promise<{ ok: true } | { ok: false; error: string | null }>;
   listSecuredAshokaCourses: () => Promise<AshokaCourseCandidate[]>;
@@ -256,6 +306,7 @@ interface AtlasApi {
   onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void) => void;
   getDashboardStats: () => Promise<DashboardStats>;
   getUpcomingDeadlines: () => Promise<DashboardDeadline[]>;
+  listAllDeadlinesWithCourse: () => Promise<DashboardDeadline[]>;
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
   getCourseSummaries: () => Promise<CourseSummary[]>;
@@ -301,6 +352,7 @@ const KIND_ICON: Record<string, string> = {
   text: '📃',
   markdown: '📃',
   zip: '🗜️',
+  link: '🔗',
   other: '📁',
 };
 
@@ -352,7 +404,7 @@ let ashokaReviewCandidates: AshokaCourseCandidate[] = [];
 // Search stays a floating dropdown over whichever page is active (see
 // focusSearch(), triggered from the top-bar search box directly), so it
 // isn't one of these and has no sidebar entry of its own.
-type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes';
+type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'calendar';
 let currentPage: AppPage = 'dashboard';
 
 function showPage(page: AppPage): void {
@@ -376,6 +428,7 @@ function showPage(page: AppPage): void {
     void renderCourses();
   } else if (page === 'resources') void renderResourcesPage();
   else if (page === 'notes') void renderNotesPage();
+  else if (page === 'calendar') void renderCalendarPage();
 }
 
 let confirmResolve: ((result: boolean) => void) | null = null;
@@ -1341,10 +1394,16 @@ async function syncClassroomNowClicked(): Promise<void> {
   const button = document.getElementById('classroom-sync-button') as HTMLButtonElement;
   button.disabled = true;
   button.textContent = 'Syncing…';
-  await atlasApi.syncClassroomNow();
+  const result = await atlasApi.syncClassroomNow();
   button.disabled = false;
   button.textContent = 'Sync now';
   await renderClassroomPendingStatus();
+  if (result.errors && result.errors.length > 0) {
+    alert(
+      `Synced, but ${result.errors.length} course(s) failed:\n` +
+        result.errors.map((e) => `${e.courseName || 'Unknown course'}: ${e.message}`).join('\n')
+    );
+  }
 }
 
 // One row per pending Classroom course — a course picker (existing courses,
@@ -1423,13 +1482,17 @@ async function confirmOneClassroomCourse(row: HTMLElement): Promise<void> {
 
   button.disabled = true;
   button.textContent = 'Confirming…';
-  if (select.value === '__new__') {
-    await atlasApi.mapClassroomCourseToNew(classroomCourseId, name, null, null);
-  } else {
-    await atlasApi.mapClassroomCourseToExisting(classroomCourseId, Number(select.value));
-  }
+  const result =
+    select.value === '__new__'
+      ? await atlasApi.mapClassroomCourseToNew(classroomCourseId, name, null, null)
+      : await atlasApi.mapClassroomCourseToExisting(classroomCourseId, Number(select.value));
   row.remove();
   await afterClassroomRowResolved();
+  if (result.errors.length > 0) {
+    alert(
+      `Course linked, but the initial sync failed:\n` + result.errors.map((e) => e.message).join('\n')
+    );
+  }
 }
 
 // The opposite of confirm — nothing is created or linked, the course just
@@ -1669,9 +1732,221 @@ function buildDashboardItemRows(icon: string, title: string, courseName: string,
   return fragment;
 }
 
+// Groups every deadline kind other than assignment/exam/reading under the
+// "Other" tab (quiz/lab/project/manual) — mirrors DEADLINE_KIND_LABEL's own
+// "manual" -> "Other" mapping rather than adding a fifth distinct tab for
+// each remaining kind.
+function matchesUpcomingFilter(kind: string, filter: string): boolean {
+  if (filter === '') return true;
+  if (filter === 'other') return !['assignment', 'exam', 'reading'].includes(kind);
+  return kind === filter;
+}
+
+let dashboardUpcomingFilter = '';
+let dashboardDeadlinesCache: DashboardDeadline[] = [];
+
+function setDashboardUpcomingFilter(filter: string): void {
+  dashboardUpcomingFilter = filter;
+  document.querySelectorAll<HTMLElement>('#dashboard-upcoming-tabs .chip').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.upcomingFilter === filter);
+  });
+  renderDashboardDeadlineRows();
+}
+
+// A relative "Due in N days"/Today/Tomorrow/Overdue label — distinct from
+// formatDueDate's absolute-date label, since the screenshot design calls for
+// the relative framing specifically for this widget's row layout.
+function formatDueInLabel(dueAt: string | null): string {
+  if (!dueAt) return '';
+  const { year, month, day } = splitDueAt(dueAt);
+  const date = new Date(year, month - 1, day);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return 'Overdue';
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  return `Due in ${diffDays} days`;
+}
+
+// --- Calendar page (v1 — month grid + Upcoming sidebar only) ---
+// Day/Week view toggle, a mini date-picker, and per-kind/course filter
+// checkboxes (all present in the shared screenshot's "Filters" panel) are
+// deliberate fast-follows, not silently cut — see docs/open-questions.md.
+let calendarViewDate = new Date();
+
+async function renderCalendarPage(): Promise<void> {
+  const deadlines = await atlasApi.listAllDeadlinesWithCourse();
+  renderCalendarMonthLabel();
+  renderCalendarGrid(deadlines);
+  renderCalendarUpcomingList(deadlines);
+  renderCalendarLegend(deadlines);
+}
+
+function renderCalendarMonthLabel(): void {
+  document.getElementById('calendar-month-label')!.textContent = calendarViewDate.toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function changeCalendarMonth(delta: number): void {
+  calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + delta, 1);
+  void renderCalendarPage();
+}
+
+function goToCalendarToday(): void {
+  calendarViewDate = new Date();
+  void renderCalendarPage();
+}
+
+// Deadlines grouped by their calendar date (YYYY-MM-DD, local) — both the
+// month grid's day cells and the Upcoming sidebar list key off this.
+function groupDeadlinesByDate(deadlines: DashboardDeadline[]): Map<string, DashboardDeadline[]> {
+  const byDate = new Map<string, DashboardDeadline[]>();
+  for (const deadline of deadlines) {
+    if (!deadline.due_at) continue;
+    const { year, month, day } = splitDueAt(deadline.due_at);
+    const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const list = byDate.get(key) ?? [];
+    list.push(deadline);
+    byDate.set(key, list);
+  }
+  return byDate;
+}
+
+const CALENDAR_MAX_CHIPS_PER_DAY = 3;
+
+function renderCalendarGrid(deadlines: DashboardDeadline[]): void {
+  const grid = document.getElementById('calendar-grid')!;
+  grid.innerHTML = '';
+  const byDate = groupDeadlinesByDate(deadlines);
+
+  const year = calendarViewDate.getFullYear();
+  const month = calendarViewDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const startOffset = firstOfMonth.getDay(); // 0 = Sunday, matches the weekday row
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+  for (let i = 0; i < totalCells; i++) {
+    const dayNum = i - startOffset + 1;
+    const cell = document.createElement('div');
+    cell.className = 'calendar-day-cell';
+
+    if (dayNum < 1 || dayNum > daysInMonth) {
+      cell.classList.add('outside-month');
+      grid.appendChild(cell);
+      continue;
+    }
+
+    const cellDate = new Date(year, month, dayNum);
+    if (cellDate.getTime() === today.getTime()) cell.classList.add('today');
+
+    const dayLabel = document.createElement('span');
+    dayLabel.className = 'calendar-day-number';
+    dayLabel.textContent = String(dayNum);
+    cell.appendChild(dayLabel);
+
+    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    const dayDeadlines = byDate.get(key) ?? [];
+    for (const deadline of dayDeadlines.slice(0, CALENDAR_MAX_CHIPS_PER_DAY)) {
+      const chip = document.createElement('div');
+      chip.className = 'calendar-deadline-chip';
+      chip.style.borderLeftColor = courseAvatarColor(deadline.course_id);
+      chip.textContent = deadline.title;
+      chip.title = `${deadline.course_name}: ${deadline.title}`;
+      chip.addEventListener('click', () => void openDashboardDeadline(deadline));
+      cell.appendChild(chip);
+    }
+    if (dayDeadlines.length > CALENDAR_MAX_CHIPS_PER_DAY) {
+      const more = document.createElement('div');
+      more.className = 'calendar-more-chip';
+      more.textContent = `+${dayDeadlines.length - CALENDAR_MAX_CHIPS_PER_DAY} more`;
+      cell.appendChild(more);
+    }
+
+    grid.appendChild(cell);
+  }
+}
+
+function renderCalendarUpcomingList(deadlines: DashboardDeadline[]): void {
+  const container = document.getElementById('calendar-upcoming-list')!;
+  container.innerHTML = '';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcoming = deadlines
+    .filter((d) => {
+      if (!d.due_at) return false;
+      const { year, month, day } = splitDueAt(d.due_at);
+      return new Date(year, month - 1, day).getTime() >= today.getTime();
+    })
+    .sort((a, b) => (a.due_at! < b.due_at! ? -1 : a.due_at! > b.due_at! ? 1 : 0));
+
+  const byDate = groupDeadlinesByDate(upcoming);
+  if (byDate.size === 0) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'Nothing upcoming.';
+    container.appendChild(p);
+    return;
+  }
+
+  for (const [dateKey, items] of byDate) {
+    const heading = document.createElement('div');
+    heading.className = 'calendar-upcoming-date';
+    const [y, m, d] = dateKey.split('-').map(Number);
+    heading.textContent = new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+    container.appendChild(heading);
+
+    for (const deadline of items) {
+      const row = document.createElement('div');
+      row.className = 'calendar-upcoming-row';
+      row.style.borderLeftColor = courseAvatarColor(deadline.course_id);
+      row.innerHTML = `
+        <span class="calendar-upcoming-title">${escapeHtml(deadline.title)}</span>
+        <span class="calendar-upcoming-course">${escapeHtml(deadline.course_name)}</span>
+      `;
+      row.addEventListener('click', () => void openDashboardDeadline(deadline));
+      container.appendChild(row);
+    }
+  }
+}
+
+function renderCalendarLegend(deadlines: DashboardDeadline[]): void {
+  const legend = document.getElementById('calendar-legend')!;
+  legend.innerHTML = '';
+  const seen = new Map<number, string>();
+  for (const deadline of deadlines) {
+    if (!seen.has(deadline.course_id)) seen.set(deadline.course_id, deadline.course_name);
+  }
+  for (const [courseId, courseName] of seen) {
+    const item = document.createElement('span');
+    item.className = 'calendar-legend-item';
+    const swatch = document.createElement('span');
+    swatch.className = 'calendar-legend-swatch';
+    swatch.style.background = courseAvatarColor(courseId);
+    item.append(swatch, document.createTextNode(courseName));
+    legend.appendChild(item);
+  }
+}
+
 async function renderDashboardDeadlines(): Promise<void> {
+  dashboardDeadlinesCache = await atlasApi.getUpcomingDeadlines();
+  renderDashboardDeadlineRows();
+}
+
+function renderDashboardDeadlineRows(): void {
   const list = document.getElementById('dashboard-deadlines')!;
-  const deadlines = await atlasApi.getUpcomingDeadlines();
+  const deadlines = dashboardDeadlinesCache.filter((d) => matchesUpcomingFilter(d.kind, dashboardUpcomingFilter));
   list.innerHTML = '';
 
   if (deadlines.length === 0) {
@@ -1684,14 +1959,49 @@ async function renderDashboardDeadlines(): Promise<void> {
 
   for (const deadline of deadlines) {
     const li = document.createElement('li');
-    li.appendChild(
-      buildDashboardItemRows(
-        DEADLINE_KIND_ICON[deadline.kind] ?? '📌',
-        deadline.title,
-        deadline.course_name,
-        formatDueDate(deadline.due_at)
-      )
-    );
+    li.className = 'upcoming-row';
+    li.style.borderLeftColor = courseAvatarColor(deadline.course_id);
+
+    const dateBlock = document.createElement('div');
+    dateBlock.className = 'upcoming-date-block';
+    if (deadline.due_at) {
+      const { year, month, day } = splitDueAt(deadline.due_at);
+      const date = new Date(year, month - 1, day);
+      const dayEl = document.createElement('span');
+      dayEl.className = 'upcoming-date-day';
+      dayEl.textContent = String(date.getDate());
+      const monthEl = document.createElement('span');
+      monthEl.className = 'upcoming-date-month';
+      monthEl.textContent = date.toLocaleDateString(undefined, { month: 'short' });
+      dateBlock.append(monthEl, dayEl);
+    }
+    li.appendChild(dateBlock);
+
+    const content = document.createElement('div');
+    content.className = 'upcoming-content';
+    const titleRow = document.createElement('div');
+    titleRow.className = 'upcoming-title-row';
+    const titleEl = document.createElement('span');
+    titleEl.className = 'upcoming-title';
+    titleEl.textContent = deadline.title;
+    const badge = document.createElement('span');
+    badge.className = 'upcoming-kind-badge';
+    badge.textContent = DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
+    titleRow.append(titleEl, badge);
+
+    const metaRow = document.createElement('div');
+    metaRow.className = 'upcoming-meta-row';
+    const courseEl = document.createElement('span');
+    courseEl.className = 'upcoming-course';
+    courseEl.textContent = deadline.course_name;
+    const dueEl = document.createElement('span');
+    dueEl.className = 'upcoming-due';
+    dueEl.textContent = formatDueInLabel(deadline.due_at);
+    metaRow.append(courseEl, dueEl);
+
+    content.append(titleRow, metaRow);
+    li.appendChild(content);
+
     li.addEventListener('click', () => openDashboardDeadline(deadline));
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -2235,6 +2545,154 @@ async function selectCourse(course: Course): Promise<void> {
   await renderCourseDetailPreviews(course.id);
   await renderDeadlines();
   await renderWatchedFolders();
+  await renderCourseClassroomSection(course);
+}
+
+// Shows either "Connect to Classroom…" or "Connected to <name>" + Disconnect,
+// and shows/populates the three content sections only when actually linked —
+// an unlinked course has nothing to show there, so the sections stay hidden
+// rather than showing empty placeholders (matches deadlines/resources'
+// existing "no items yet" pattern only where there's a real list to browse).
+async function renderCourseClassroomSection(course: Course): Promise<void> {
+  const connectedBox = document.getElementById('course-classroom-connected')!;
+  const connectButton = document.getElementById('course-classroom-connect') as HTMLButtonElement;
+  const announcementsSection = document.getElementById('course-announcements-section')!;
+  const assignmentsSection = document.getElementById('course-assignments-section')!;
+  const classworkSection = document.getElementById('course-classwork-section')!;
+
+  if (!course.classroom_course_id) {
+    connectedBox.hidden = true;
+    connectButton.hidden = false;
+    announcementsSection.hidden = true;
+    assignmentsSection.hidden = true;
+    classworkSection.hidden = true;
+    return;
+  }
+
+  connectedBox.hidden = false;
+  connectButton.hidden = true;
+  document.getElementById('course-classroom-name')!.textContent = course.name;
+
+  const content = await atlasApi.getClassroomCourseContent(course.id);
+  renderClassroomLinkList(announcementsSection, 'course-announcements-list', content.announcements, (a) => ({
+    title: a.title,
+    meta: formatIsoTimestamp(a.posted_at),
+    body: a.body,
+    links: [],
+  }));
+  renderClassroomLinkList(assignmentsSection, 'course-assignments-list', content.assignments, (a) => ({
+    title: a.title,
+    meta: a.due_at ? `Due ${formatDueDate(a.due_at)}` : 'No due date',
+    body: a.description,
+    links: a.links,
+  }));
+  renderClassroomLinkList(classworkSection, 'course-classwork-list', content.classwork, (c) => ({
+    title: c.title,
+    meta: c.posted_at ? formatIsoTimestamp(c.posted_at) : '',
+    body: c.description,
+    links: c.links,
+  }));
+}
+
+// Announcements/classwork posted_at is a raw ISO timestamp straight from the
+// Classroom API (creationTime) — a different shape from deadlines.due_at's
+// 'YYYY-MM-DD'/'YYYY-MM-DDTHH:MM' convention, so this doesn't reuse
+// formatDueDate/splitDueAt, which parse that convention specifically.
+function formatIsoTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
+function renderClassroomLinkList<T>(
+  section: HTMLElement,
+  listId: string,
+  items: T[],
+  toRow: (item: T) => { title: string; meta: string; body: string | null; links: ClassroomContentLink[] }
+): void {
+  section.hidden = items.length === 0;
+  const list = document.getElementById(listId)!;
+  list.innerHTML = '';
+  for (const item of items) {
+    const row = toRow(item);
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span class="classroom-item-title">${escapeHtml(row.title)}</span>
+      <span class="classroom-item-meta">${escapeHtml(row.meta)}</span>
+      ${row.body ? `<span class="classroom-item-body">${escapeHtml(row.body)}</span>` : ''}
+    `;
+    if (row.links.length > 0) {
+      const linksDiv = document.createElement('div');
+      linksDiv.className = 'classroom-item-links';
+      for (const link of row.links) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'link-button';
+        button.textContent = `🔗 ${link.title}`;
+        button.addEventListener('click', () => void atlasApi.openExternalUrl(link.file_path));
+        linksDiv.appendChild(button);
+      }
+      li.appendChild(linksDiv);
+    }
+    list.appendChild(li);
+  }
+}
+
+async function openClassroomConnectPicker(): Promise<void> {
+  if (!selectedCourse) return;
+  const overlay = document.getElementById('classroom-connect-overlay')!;
+  const select = document.getElementById('classroom-connect-select') as HTMLSelectElement;
+  const empty = document.getElementById('classroom-connect-empty')!;
+
+  const options = await atlasApi.listAvailableClassroomCoursesForLinking();
+  select.innerHTML = options
+    .map(
+      (o) =>
+        `<option value="${escapeHtml(o.classroom_course_id)}">${escapeHtml(o.name)}${o.section ? ` — ${escapeHtml(o.section)}` : ''}</option>`
+    )
+    .join('');
+  select.hidden = options.length === 0;
+  empty.hidden = options.length > 0;
+  overlay.hidden = false;
+}
+
+function closeClassroomConnectPicker(): void {
+  document.getElementById('classroom-connect-overlay')!.hidden = true;
+}
+
+async function confirmClassroomConnect(): Promise<void> {
+  if (!selectedCourse) return;
+  const select = document.getElementById('classroom-connect-select') as HTMLSelectElement;
+  if (!select.value) return;
+
+  const button = document.getElementById('classroom-connect-confirm') as HTMLButtonElement;
+  button.disabled = true;
+  button.textContent = 'Connecting…';
+  const { errors } = await atlasApi.connectCourseToClassroom(selectedCourse.id, select.value);
+  button.disabled = false;
+  button.textContent = 'Connect';
+  closeClassroomConnectPicker();
+
+  const updatedCourses = await atlasApi.listCourses();
+  const updated = updatedCourses.find((c) => c.id === selectedCourse!.id);
+  if (updated) {
+    selectedCourse = updated;
+    await renderCourseClassroomSection(updated);
+  }
+  if (errors.length > 0) {
+    alert(`Connected, but the initial sync failed:\n` + errors.map((e) => e.message).join('\n'));
+  }
+}
+
+async function disconnectCourseClassroomClicked(): Promise<void> {
+  if (!selectedCourse) return;
+  await atlasApi.disconnectCourseFromClassroom(selectedCourse.id);
+  const updatedCourses = await atlasApi.listCourses();
+  const updated = updatedCourses.find((c) => c.id === selectedCourse!.id);
+  if (updated) {
+    selectedCourse = updated;
+    await renderCourseClassroomSection(updated);
+  }
 }
 
 // Short inline previews of this course's own Resources/Notes (a handful of
@@ -2403,6 +2861,23 @@ async function openPreview(resource: Resource): Promise<void> {
     const pre = document.createElement('pre');
     pre.textContent = preview.text;
     body.appendChild(pre);
+  } else if (preview.type === 'link') {
+    // No in-app rendering for an external link/Drive-file attachment —
+    // opening it means handing off to the real browser/Drive, not showing
+    // it inside Atlas's preview modal.
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'This is a link to an external file.';
+    body.appendChild(p);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'link-button';
+    button.textContent = 'Open link';
+    button.addEventListener('click', () => {
+      void atlasApi.openExternalUrl(preview.url);
+    });
+    body.appendChild(button);
+    body.classList.add('centered');
   } else if (preview.type === 'unsupported') {
     const p = document.createElement('p');
     p.className = 'muted';
@@ -2897,6 +3372,11 @@ async function init(): Promise<void> {
 
   document.getElementById('upload-button')!.addEventListener('click', () => openCoursePicker('upload'));
 
+  document.getElementById('course-classroom-connect')!.addEventListener('click', () => void openClassroomConnectPicker());
+  document.getElementById('course-classroom-disconnect')!.addEventListener('click', () => void disconnectCourseClassroomClicked());
+  document.getElementById('classroom-connect-close')!.addEventListener('click', closeClassroomConnectPicker);
+  document.getElementById('classroom-connect-confirm')!.addEventListener('click', () => void confirmClassroomConnect());
+
   const addWatchFolderButton = document.getElementById('add-watch-folder') as HTMLButtonElement;
   addWatchFolderButton.addEventListener('click', async () => {
     if (!selectedCourse) return;
@@ -2925,6 +3405,15 @@ async function init(): Promise<void> {
     resourcesSort = (e.target as HTMLSelectElement).value as ResourcesSort;
     void renderResourcesPage();
   });
+
+  document.querySelectorAll<HTMLButtonElement>('#dashboard-upcoming-tabs .chip').forEach((chip) => {
+    chip.addEventListener('click', () => setDashboardUpcomingFilter(chip.dataset.upcomingFilter ?? ''));
+  });
+  document.getElementById('dashboard-view-calendar')!.addEventListener('click', () => showPage('calendar'));
+
+  document.getElementById('calendar-prev-month')!.addEventListener('click', () => changeCalendarMonth(-1));
+  document.getElementById('calendar-next-month')!.addEventListener('click', () => changeCalendarMonth(1));
+  document.getElementById('calendar-today')!.addEventListener('click', goToCalendarToday);
 
   document.getElementById('theme-toggle')!.addEventListener('click', () => {
     const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';

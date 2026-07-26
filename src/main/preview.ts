@@ -10,6 +10,7 @@ export type Preview =
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
+  | { type: 'link'; url: string }
   | { type: 'unsupported'; reason?: string };
 
 function escapeHtml(value: string): string {
@@ -81,6 +82,12 @@ export async function getPreview(
 
     case 'image':
       return { type: 'image', url: pathToFileURL(filePath).href, zoomLevel };
+
+    // A 'link' resource has no local file at all — file_path holds the
+    // external Drive/link/YouTube/Form URL directly (see googleClassroom.ts).
+    // The renderer opens this externally rather than rendering it in-app.
+    case 'link':
+      return { type: 'link', url: filePath };
 
     case 'text':
       return { type: 'text', text: fs.readFileSync(filePath, 'utf-8') };

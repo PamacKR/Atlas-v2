@@ -466,6 +466,84 @@ ul#search-results li.search-empty:hover {
   color: var(--color-text-dim);
 }
 
+/* Dashboard "Upcoming" widget rows — date block + course-colored left
+   border + title/badge + course/due-in rows (screenshot-driven design,
+   see docs/open-questions.md and STATUS.md). Distinct from
+   .dashboard-item-row (used elsewhere on the dashboard) since this widget's
+   row layout is denser and carries a course-color accent. */
+#dashboard-deadlines li.upcoming-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-left: 4px solid transparent;
+  padding: 0.5rem 0.6rem 0.5rem 0.75rem;
+}
+
+.upcoming-date-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 2.4rem;
+}
+
+.upcoming-date-month {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.upcoming-date-day {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.upcoming-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.upcoming-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.upcoming-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upcoming-kind-badge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+}
+
+.upcoming-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 0.15rem;
+}
+
+.upcoming-course {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upcoming-due {
+  flex-shrink: 0;
+}
+
 /* Colored initial-letter avatar, reused for a course wherever it's listed
    (dashboard "My Courses" card, course list) — a deterministic color per
    course (see courseColor() in renderer.ts) rather than a subject-specific
@@ -2678,4 +2756,303 @@ ul#deadline-mention-suggestions li.active {
   --crepe-color-inline-area: #cacaca;
   --crepe-shadow-1: 0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
   --crepe-shadow-2: 0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.3);
+}
+
+/* --- Course-detail Classroom connect + content sections --- */
+
+section#course-classroom-section {
+  margin-top: 2rem;
+}
+
+#course-classroom-section h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.95rem;
+}
+
+#course-classroom-connected {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+#course-classroom-connected .muted {
+  margin: 0;
+}
+
+button#course-classroom-connect {
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+section#course-announcements-section,
+section#course-assignments-section,
+section#course-classwork-section {
+  margin-top: 1.5rem;
+}
+
+#course-announcements-section h4,
+#course-assignments-section h4,
+#course-classwork-section h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.95rem;
+}
+
+#course-announcements-list,
+#course-assignments-list,
+#course-classwork-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#course-announcements-list li,
+#course-assignments-list li,
+#course-classwork-list li {
+  padding: 0.6rem 0.7rem;
+  background: var(--color-bg-elevated);
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.classroom-item-title {
+  font-weight: 500;
+}
+
+.classroom-item-meta {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  margin-top: 0.2rem;
+}
+
+.classroom-item-body {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+.classroom-item-links {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+#classroom-connect-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 10;
+}
+
+#classroom-connect-overlay:not([hidden]) {
+  display: flex;
+}
+
+#classroom-connect-panel {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 420px;
+  padding: 1.25rem;
+}
+
+#classroom-connect-select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  margin: 0.75rem 0;
+}
+
+button#classroom-connect-confirm {
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+/* --- Calendar page (v1: month grid + Upcoming sidebar) --- */
+
+#calendar-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#calendar-month-nav button:not(.link-button) {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+#calendar-month-nav button:not(.link-button) svg {
+  width: 16px;
+  height: 16px;
+}
+
+#calendar-month-label {
+  font-weight: 600;
+  min-width: 10rem;
+  text-align: center;
+}
+
+#calendar-layout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+#calendar-weekday-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+#calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: minmax(90px, auto);
+  gap: 1px;
+  background: var(--color-border-soft);
+  border: 1px solid var(--color-border-soft);
+}
+
+.calendar-day-cell {
+  background: var(--color-bg-elevated);
+  padding: 0.35rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.calendar-day-cell.outside-month {
+  background: var(--color-bg);
+  opacity: 0.4;
+}
+
+.calendar-day-cell.today .calendar-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.calendar-day-number {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.calendar-deadline-chip {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.3rem;
+  border-left: 3px solid transparent;
+  background: var(--color-bg-elevated-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.calendar-more-chip {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  padding: 0 0.3rem;
+}
+
+#calendar-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+#calendar-sidebar h4 {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.9rem;
+}
+
+#calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.calendar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.calendar-legend-swatch {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+#calendar-upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow-y: auto;
+}
+
+.calendar-upcoming-date {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-top: 0.5rem;
+}
+
+.calendar-upcoming-row {
+  border-left: 3px solid transparent;
+  padding: 0.35rem 0.5rem;
+  background: var(--color-bg-elevated);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.calendar-upcoming-course {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
 }
