@@ -1162,24 +1162,48 @@ const fs = require('fs');
 
   // Right-click → "Go to" is the one path that does navigate: for a
   // resource, to the Resources page filtered to that course.
+  // "Go to" navigates AND opens/previews the item there — the original
+  // dashboard-click behavior, now specifically on right-click since
+  // left-click became "open in place, don't navigate."
   await window.click('#dashboard-resources li', { button: 'right' });
   await window.waitForTimeout(200);
   await window.click('#dashboard-goto-menu button');
-  await window.waitForTimeout(300);
+  await window.waitForTimeout(400);
   const onResourcesPageAfterGoTo = (await window.getAttribute('#page-resources', 'hidden')) === null;
-  console.log('on Resources page after "Go to" from a dashboard resource:', onResourcesPageAfterGoTo);
-  if (!onResourcesPageAfterGoTo) throw new Error('FAIL: "Go to" on a dashboard resource did not navigate to Resources');
+  const previewVisibleAfterGoTo = !(await window.isHidden('#preview-overlay'));
+  console.log(
+    'on Resources page after "Go to" from a dashboard resource:',
+    onResourcesPageAfterGoTo,
+    '— preview visible:',
+    previewVisibleAfterGoTo
+  );
+  if (!onResourcesPageAfterGoTo || !previewVisibleAfterGoTo) {
+    throw new Error('FAIL: "Go to" on a dashboard resource did not navigate to Resources and open its preview');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
   await goToPage('dashboard');
 
   // Same "Go to" check for a deadline — should land on the course detail
-  // view (Deadlines section), not just anywhere on the Courses page.
+  // view (Deadlines section) with the deadline viewer open, not just
+  // navigate to the Courses page without opening anything.
   await window.click('#dashboard-deadlines li', { button: 'right' });
   await window.waitForTimeout(200);
   await window.click('#dashboard-goto-menu button');
-  await window.waitForTimeout(300);
+  await window.waitForTimeout(400);
   const onCourseDetailAfterGoTo = await window.isHidden('#courses-detail-view');
-  console.log('course detail view visible after "Go to" from a dashboard deadline:', !onCourseDetailAfterGoTo);
-  if (onCourseDetailAfterGoTo) throw new Error('FAIL: "Go to" on a dashboard deadline did not open the course detail view');
+  const deadlineViewerVisibleAfterGoTo = !(await window.isHidden('#deadline-editor-overlay'));
+  console.log(
+    'course detail view visible after "Go to" from a dashboard deadline:',
+    !onCourseDetailAfterGoTo,
+    '— deadline viewer visible:',
+    deadlineViewerVisibleAfterGoTo
+  );
+  if (onCourseDetailAfterGoTo || !deadlineViewerVisibleAfterGoTo) {
+    throw new Error('FAIL: "Go to" on a dashboard deadline did not open the course detail view and deadline viewer');
+  }
+  await window.click('#deadline-view-close');
+  await window.waitForTimeout(200);
   await goToPage('dashboard');
 
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });

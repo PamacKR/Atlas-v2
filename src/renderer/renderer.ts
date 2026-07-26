@@ -1186,28 +1186,37 @@ function closeGoToMenu(): void {
 }
 
 // These jump to where an item lives (course detail's Deadlines section, or
-// the global Resources/Notes page filtered to its course) without opening
-// the item itself — distinct from the left-click open-in-place handlers
-// above, per the user's request that right-click be "go there," not "open."
+// the global Resources/Notes page filtered to its course) AND open/preview
+// the item itself there — the original dashboard-click behavior, now moved
+// to right-click's "Go to" specifically, since left-click became "open in
+// place, don't navigate" per the user's earlier request.
 async function goToDashboardDeadline(deadline: DashboardDeadline): Promise<void> {
   showPage('courses');
   const courses = await atlasApi.listCourses();
   const course = courses.find((c) => c.id === deadline.course_id);
   if (course) await selectCourse(course);
+  await openDeadlineViewer(deadline);
 }
 
-function goToDashboardResource(resource: DashboardResource): void {
+async function goToDashboardResource(resource: DashboardResource): Promise<void> {
   resourcesCourseFilterId = resource.course_id;
   showPage('resources');
+  await openPreview(resource);
 }
 
-function goToDashboardActivityItem(item: DashboardActivityItem): void {
+async function goToDashboardActivityItem(item: DashboardActivityItem): Promise<void> {
   if (item.entity_type === 'note') {
     notesCourseFilterId = item.course_id;
     showPage('notes');
+    const notes = await atlasApi.listAllNotes();
+    const note = notes.find((n) => n.id === item.id);
+    if (note) await openNoteEditor(note);
   } else {
     resourcesCourseFilterId = item.course_id;
     showPage('resources');
+    const resources = await atlasApi.listAllResources();
+    const resource = resources.find((r) => r.id === item.id);
+    if (resource) await openPreview(resource);
   }
 }
 
