@@ -72,6 +72,20 @@ interface ResourceOcrProgress {
   totalPages: number;
 }
 
+interface DriveFolder {
+  id: string;
+  name: string;
+}
+
+interface DrivePendingFile {
+  id: number;
+  drive_file_id: string;
+  name: string;
+  mime_type: string;
+  modified_time: string | null;
+  detected_at: string;
+}
+
 interface SearchResult {
   entityType: 'note' | 'resource' | 'announcement' | 'assignment';
   entityId: number;
@@ -132,6 +146,20 @@ interface AtlasApi {
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
+  isDriveConnected: () => Promise<boolean>;
+  connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  disconnectDrive: () => Promise<void>;
+  getDriveFolder: () => Promise<DriveFolder | null>;
+  setDriveFolder: (link: string) => Promise<{ ok: true; name: string } | { ok: false; error: string }>;
+  listPendingDriveFiles: () => Promise<DrivePendingFile[]>;
+  importDriveFile: (
+    driveFileId: string,
+    name: string,
+    courseId: number,
+    importAs: 'resource' | 'note'
+  ) => Promise<unknown>;
+  ignoreDriveFile: (driveFileId: string) => Promise<void>;
+  onDriveChanged: (handler: () => void) => void;
   listResources: (courseId: number) => Promise<Resource[]>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
@@ -1009,7 +1037,207 @@ async function renderDashboard(): Promise<void> {
     renderDashboardDeadlines(),
     renderDashboardResources(),
     renderDashboardActivity(),
+    renderDriveStatus(),
   ]);
+}
+
+// Google Drive: connect/disconnect, pick the one "inbox" folder to scan, and
+// review new files it finds (Phase 3, docs/open-questions.md #19). Files
+// aren't imported automatically — the user assigns a course and a
+// Resource/Note type per file (or in bulk) before anything gets copied into
+// local managed storage; "Atlas owns the data" (CLAUDE.md) still holds once
+// something's tagged, Drive is just the inbox.
+async function renderDriveStatus(): Promise<void> {
+  const connected = await atlasApi.isDriveConnected();
+  document.getElementById('drive-status')!.textContent = connected ? 'Connected.' : 'Not connected.';
+  (document.getElementById('drive-connect-button') as HTMLButtonElement).hidden = connected;
+  (document.getElementById('drive-disconnect-button') as HTMLButtonElement).hidden = !connected;
+  (document.getElementById('drive-folder-form') as HTMLElement).hidden = !connected;
+
+  if (connected) {
+    const folder = await atlasApi.getDriveFolder();
+    const input = document.getElementById('drive-folder-input') as HTMLInputElement;
+    if (folder) input.value = folder.name;
+  }
+
+  await renderDrivePendingStatus();
+}
+
+async function renderDrivePendingStatus(): Promise<void> {
+  const connected = await atlasApi.isDriveConnected();
+  const folder = connected ? await atlasApi.getDriveFolder() : null;
+  const pendingStatus = document.getElementById('drive-pending-status') as HTMLElement;
+  const reviewButton = document.getElementById('drive-review-button') as HTMLButtonElement;
+
+  if (!connected || !folder) {
+    pendingStatus.hidden = true;
+    reviewButton.hidden = true;
+    return;
+  }
+
+  const pending = await atlasApi.listPendingDriveFiles();
+  pendingStatus.hidden = false;
+  pendingStatus.textContent =
+    pending.length === 0
+      ? `Watching "${folder.name}" — no new files.`
+      : `${pending.length} new file${pending.length === 1 ? '' : 's'} found in "${folder.name}".`;
+  reviewButton.hidden = pending.length === 0;
+}
+
+async function connectDrive(): Promise<void> {
+  const button = document.getElementById('drive-connect-button') as HTMLButtonElement;
+  const status = document.getElementById('drive-status')!;
+  button.disabled = true;
+  status.textContent = 'Opening your browser to sign in…';
+  const result = await atlasApi.connectDrive();
+  button.disabled = false;
+  if (!result.ok) {
+    status.textContent = `Connection failed: ${result.error}`;
+    return;
+  }
+  await renderDriveStatus();
+}
+
+async function disconnectDrive(): Promise<void> {
+  await atlasApi.disconnectDrive();
+  await renderDriveStatus();
+}
+
+async function saveDriveFolder(): Promise<void> {
+  const input = document.getElementById('drive-folder-input') as HTMLInputElement;
+  const status = document.getElementById('drive-status')!;
+  const link = input.value.trim();
+  if (!link) return;
+  const result = await atlasApi.setDriveFolder(link);
+  if (!result.ok) {
+    status.textContent = `Couldn't use that folder: ${result.error}`;
+    return;
+  }
+  input.value = result.name;
+  status.textContent = 'Connected.';
+  await renderDrivePendingStatus();
+}
+
+// --- Google Drive review panel ---
+// One row per pending file — course + Resource/Note assignable individually
+// or, via the bulk controls, to every checked row at once. "Later" (the
+// close button) just hides the panel; nothing is dismissed or lost, the
+// pending list is exactly what a fresh scan would find again.
+async function openDriveReviewPanel(): Promise<void> {
+  const overlay = document.getElementById('drive-review-overlay')!;
+  const bulkCourseSelect = document.getElementById('drive-review-bulk-course') as HTMLSelectElement;
+
+  const courses = await atlasApi.listCourses();
+  const courseOptionsHtml = courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  bulkCourseSelect.innerHTML = courseOptionsHtml;
+
+  overlay.hidden = false;
+  await renderDriveReviewList(courseOptionsHtml);
+}
+
+function closeDriveReviewPanel(): void {
+  document.getElementById('drive-review-overlay')!.hidden = true;
+}
+
+async function renderDriveReviewList(courseOptionsHtml: string): Promise<void> {
+  const list = document.getElementById('drive-review-list')!;
+  const pending = await atlasApi.listPendingDriveFiles();
+  list.innerHTML = '';
+
+  for (const file of pending) {
+    const li = document.createElement('li');
+    li.className = 'drive-review-row';
+    li.dataset.driveFileId = file.drive_file_id;
+    li.dataset.fileName = file.name;
+    li.innerHTML = `
+      <input type="checkbox" class="drive-review-row-check" />
+      <span class="drive-review-row-name">${escapeHtml(file.name)}</span>
+      <select class="drive-review-row-course">${courseOptionsHtml}</select>
+      <select class="drive-review-row-type">
+        <option value="resource">Resource</option>
+        <option value="note">Note</option>
+      </select>
+      <button type="button" class="drive-review-row-import">Import</button>
+      <button type="button" class="drive-review-row-ignore">Ignore</button>
+    `;
+    li.querySelector('.drive-review-row-import')!.addEventListener('click', () => importOneDriveFile(li));
+    li.querySelector('.drive-review-row-ignore')!.addEventListener('click', () => ignoreOneDriveFile(li));
+    list.appendChild(li);
+  }
+
+  if (pending.length === 0) {
+    list.innerHTML = '<li class="muted">No new files.</li>';
+  }
+}
+
+// Shared cleanup after a row is resolved (imported or ignored) — refresh
+// whatever page could now be showing stale counts/lists, and restore the
+// "No new files." placeholder once the list is actually empty.
+async function afterDriveRowResolved(): Promise<void> {
+  await renderDrivePendingStatus();
+  if (currentPage === 'resources') await renderResourcesPage();
+  else if (currentPage === 'notes') await renderNotesPage();
+  else if (currentPage === 'dashboard') await renderDashboard();
+
+  if (!document.getElementById('drive-review-list')!.hasChildNodes()) {
+    document.getElementById('drive-review-list')!.innerHTML = '<li class="muted">No new files.</li>';
+  }
+}
+
+async function importOneDriveFile(row: HTMLElement): Promise<void> {
+  const driveFileId = row.dataset.driveFileId!;
+  const name = row.dataset.fileName!;
+  const courseId = Number((row.querySelector('.drive-review-row-course') as HTMLSelectElement).value);
+  const importAs = (row.querySelector('.drive-review-row-type') as HTMLSelectElement).value as 'resource' | 'note';
+  const button = row.querySelector('.drive-review-row-import') as HTMLButtonElement;
+
+  button.disabled = true;
+  button.textContent = 'Importing…';
+  await atlasApi.importDriveFile(driveFileId, name, courseId, importAs);
+  row.remove();
+  await afterDriveRowResolved();
+}
+
+// The opposite of import — nothing is downloaded, the file just stops
+// counting as "new" (see ignoreDrivePendingFile in main.ts for why the
+// record stays instead of being deleted outright).
+async function ignoreOneDriveFile(row: HTMLElement): Promise<void> {
+  const driveFileId = row.dataset.driveFileId!;
+  const button = row.querySelector('.drive-review-row-ignore') as HTMLButtonElement;
+  button.disabled = true;
+  await atlasApi.ignoreDriveFile(driveFileId);
+  row.remove();
+  await afterDriveRowResolved();
+}
+
+async function importSelectedDriveFiles(): Promise<void> {
+  const bulkCourseSelect = document.getElementById('drive-review-bulk-course') as HTMLSelectElement;
+  const bulkTypeSelect = document.getElementById('drive-review-bulk-type') as HTMLSelectElement;
+  const rows = Array.from(document.querySelectorAll('.drive-review-row')) as HTMLElement[];
+
+  for (const row of rows) {
+    const checkbox = row.querySelector('.drive-review-row-check') as HTMLInputElement;
+    if (!checkbox.checked) continue;
+    (row.querySelector('.drive-review-row-course') as HTMLSelectElement).value = bulkCourseSelect.value;
+    (row.querySelector('.drive-review-row-type') as HTMLSelectElement).value = bulkTypeSelect.value;
+    await importOneDriveFile(row);
+  }
+}
+
+async function ignoreSelectedDriveFiles(): Promise<void> {
+  const rows = Array.from(document.querySelectorAll('.drive-review-row')) as HTMLElement[];
+  for (const row of rows) {
+    const checkbox = row.querySelector('.drive-review-row-check') as HTMLInputElement;
+    if (!checkbox.checked) continue;
+    await ignoreOneDriveFile(row);
+  }
+}
+
+function toggleDriveReviewSelectAll(): void {
+  const selectAll = document.getElementById('drive-review-select-all') as HTMLInputElement;
+  document.querySelectorAll('.drive-review-row-check').forEach((el) => {
+    (el as HTMLInputElement).checked = selectAll.checked;
+  });
 }
 
 async function renderDashboardStats(): Promise<void> {
@@ -2369,6 +2597,15 @@ async function init(): Promise<void> {
     button.addEventListener('click', () => showPage(button.dataset.page as AppPage));
   });
   document.getElementById('manage-courses-button')!.addEventListener('click', () => showPage('courses'));
+  document.getElementById('drive-connect-button')!.addEventListener('click', connectDrive);
+  document.getElementById('drive-disconnect-button')!.addEventListener('click', disconnectDrive);
+  document.getElementById('drive-folder-save')!.addEventListener('click', saveDriveFolder);
+  document.getElementById('drive-review-button')!.addEventListener('click', openDriveReviewPanel);
+  document.getElementById('drive-review-close')!.addEventListener('click', closeDriveReviewPanel);
+  document.getElementById('drive-review-select-all')!.addEventListener('click', toggleDriveReviewSelectAll);
+  document.getElementById('drive-review-bulk-import')!.addEventListener('click', importSelectedDriveFiles);
+  document.getElementById('drive-review-bulk-ignore')!.addEventListener('click', ignoreSelectedDriveFiles);
+  atlasApi.onDriveChanged(() => void renderDrivePendingStatus());
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
     const isCollapsed = document.getElementById('sidebar')!.classList.contains('collapsed');
     setSidebarCollapsed(!isCollapsed);

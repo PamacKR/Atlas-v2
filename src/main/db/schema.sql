@@ -37,7 +37,11 @@ CREATE TABLE IF NOT EXISTS resources (
   -- until the user runs OCR and explicitly saves the result; only then does
   -- it get indexed into search_index, same "never silently trusted" rule as
   -- handwritten notes (docs/open-questions.md #18).
-  ocr_text TEXT
+  ocr_text TEXT,
+  -- Drive file ID this resource was imported from (see drive_pending_files
+  -- below) — used to detect "already imported" across scans. NULL for
+  -- anything not sourced from Drive.
+  drive_file_id TEXT
 );
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to
@@ -70,7 +74,10 @@ CREATE TABLE IF NOT EXISTS notes (
   -- database stays authoritative for editing — this is a one-way,
   -- Atlas-owned mirror purely so the note is usable outside Atlas. Tracked
   -- so a title change can find and rename/remove the previous export.
-  exported_path TEXT
+  exported_path TEXT,
+  -- Drive file ID this note was imported from — mirrors
+  -- resources.drive_file_id. NULL for anything not sourced from Drive.
+  drive_file_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS deadlines (
@@ -108,6 +115,29 @@ CREATE TABLE IF NOT EXISTS assignments (
   due_at TEXT,
   source TEXT NOT NULL DEFAULT 'manual',
   status TEXT NOT NULL DEFAULT 'open' -- open, submitted, graded
+);
+
+-- Files seen in the user's designated Google Drive "inbox" folder
+-- (docs/open-questions.md #19) that haven't been assigned a course/type yet.
+-- A file lives here from the moment a scan first detects it until the user
+-- tags it (course + Resource/handwritten-Note/typed-Note) via the review
+-- panel — at which point it's downloaded into local managed storage as a
+-- real resource/note (drive_file_id set there too) and this row is deleted.
+-- Deliberately not auto-resolved: which course/type a file belongs to is a
+-- user decision, same reasoning as watched_folders (docs/open-questions.md
+-- #11) and "Atlas owns the data" (CLAUDE.md).
+CREATE TABLE IF NOT EXISTS drive_pending_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  drive_file_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  modified_time TEXT,
+  detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Set when the user explicitly says "ignore this" in the review panel —
+  -- the row stays (so a future scan's UNIQUE constraint keeps it from
+  -- reappearing as "new"), it's just excluded from the pending count/review
+  -- list. Not the same as importing: nothing is copied into local storage.
+  ignored INTEGER NOT NULL DEFAULT 0
 );
 
 -- App-wide preferences that aren't tied to any one course/resource, e.g. the

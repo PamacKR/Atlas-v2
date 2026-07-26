@@ -46,6 +46,9 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('ocr_text')) {
     db.exec('ALTER TABLE resources ADD COLUMN ocr_text TEXT');
   }
+  if (!resourceColumns.includes('drive_file_id')) {
+    db.exec('ALTER TABLE resources ADD COLUMN drive_file_id TEXT');
+  }
 
   const noteColumns = (db.prepare('PRAGMA table_info(notes)').all() as { name: string }[]).map(
     (c) => c.name
@@ -56,12 +59,22 @@ function migrate(db: Database.Database): void {
   if (!noteColumns.includes('exported_path')) {
     db.exec('ALTER TABLE notes ADD COLUMN exported_path TEXT');
   }
+  if (!noteColumns.includes('drive_file_id')) {
+    db.exec('ALTER TABLE notes ADD COLUMN drive_file_id TEXT');
+  }
 
   const deadlineColumns = (
     db.prepare('PRAGMA table_info(deadlines)').all() as { name: string }[]
   ).map((c) => c.name);
   if (!deadlineColumns.includes('description')) {
     db.exec('ALTER TABLE deadlines ADD COLUMN description TEXT');
+  }
+
+  const drivePendingColumns = (
+    db.prepare('PRAGMA table_info(drive_pending_files)').all() as { name: string }[]
+  ).map((c) => c.name);
+  if (!drivePendingColumns.includes('ignored')) {
+    db.exec('ALTER TABLE drive_pending_files ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0');
   }
 }
 

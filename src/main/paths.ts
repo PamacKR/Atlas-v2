@@ -24,6 +24,19 @@ export function getFilesDir(): string {
   return path.join(getDataDir(), 'files');
 }
 
+// App config that isn't per-course data — currently just the user's own
+// bring-your-own Google OAuth client credentials (docs/open-questions.md
+// #7). Lives alongside the DB/files per the data-directory decision
+// (docs/open-questions.md #6), never in the git repo — this is the user's
+// own credential, tied to their own Google Cloud project.
+export function getConfigDir(): string {
+  return path.join(getDataDir(), 'config');
+}
+
+export function getGoogleCredentialsPath(): string {
+  return path.join(getConfigDir(), 'google-oauth-client.json');
+}
+
 // Images pasted/dropped into a note's editor — stored inside that course's
 // own notes/ folder (files/<course>/notes/note-images/), right alongside the
 // exported .md that references them, rather than a global flat store. Keeps

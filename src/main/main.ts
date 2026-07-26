@@ -7,6 +7,16 @@ import { getDb, closeDb } from './db/database';
 import { getFilesDir, getNoteImagesDir, getScanImagesDir } from './paths';
 import { getPreview } from './preview';
 import { extractTextFromScan, endOcrBatch } from './ocr';
+import { isGoogleDriveConnected, authorizeGoogleDrive, disconnectGoogleDrive } from './googleAuth';
+import {
+  getDriveFolder,
+  setDriveFolder,
+  listPendingDriveFiles,
+  scanDriveFolder,
+  downloadDriveFileContent,
+  removePendingDriveFile,
+  ignoreDrivePendingFile,
+} from './googleDrive';
 import {
   startLocalServer,
   stopLocalServer,
@@ -196,7 +206,12 @@ function importFileIntoCourse(
 // the buffer directly instead of going through importFileIntoCourse's
 // copy-from-a-source-path flow. Otherwise identical (same filename
 // collision handling via uniqueDestPath, same resources row shape).
-function importBufferIntoCourse(courseId: number, originalFilename: string, buffer: Buffer): unknown {
+function importBufferIntoCourse(
+  courseId: number,
+  originalFilename: string,
+  buffer: Buffer,
+  driveFileId: string | null = null
+): unknown {
   const db = getDb();
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
     | { folder_name: string }
@@ -211,10 +226,18 @@ function importBufferIntoCourse(courseId: number, originalFilename: string, buff
 
   const insertResult = db
     .prepare(
-      `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename)
-       VALUES (?, ?, ?, 'manual', ?, ?)`
+      `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename, drive_file_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(courseId, originalFilename, kindFromExtension(originalFilename), destPath, originalFilename);
+    .run(
+      courseId,
+      originalFilename,
+      kindFromExtension(originalFilename),
+      driveFileId ? 'drive' : 'manual',
+      destPath,
+      originalFilename,
+      driveFileId
+    );
 
   rebuildSearchIndex();
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
@@ -504,6 +527,14 @@ app.whenReady().then(async () => {
   // enough at this app's scale to just do unconditionally on every launch.
   rebuildSearchIndex();
 
+  // Google Drive "inbox folder" scan (Phase 3, docs/open-questions.md #19):
+  // once on launch, then every ~20s while the app stays open. True push
+  // (Drive's changes.watch webhook) needs a public HTTPS endpoint, which
+  // doesn't fit a local desktop app — polling is the accepted near-real-time
+  // tradeoff. No-ops quietly if Drive isn't connected or no folder is set yet.
+  void scanDriveAndNotify();
+  setInterval(() => void scanDriveAndNotify(), 20_000);
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -711,6 +742,80 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
   startWatchingCourseStorage(Number(courseId), folderName);
 
   return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+});
+
+// --- Google Drive connection (Phase 3, docs/open-questions.md #19) ---
+// This is deliberately just the connect/disconnect handshake for now — the
+// folder-scanning/review-panel work is a separate, not-yet-built step.
+ipcMain.handle('google:isDriveConnected', () => isGoogleDriveConnected());
+
+ipcMain.handle('google:connectDrive', async () => {
+  try {
+    await authorizeGoogleDrive();
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('google:disconnectDrive', () => {
+  disconnectGoogleDrive();
+});
+
+// Scans the configured Drive folder and, if anything new turned up, tells
+// the renderer to refresh its pending-files count/badge — same push-event
+// pattern as resources:changed/notes:changed. Called once at launch, then on
+// a ~20s interval while the app stays open (see app.whenReady() below), and
+// once immediately after the user sets/changes the folder so the pending
+// list doesn't wait for the next interval tick.
+async function scanDriveAndNotify(): Promise<void> {
+  try {
+    const foundNew = await scanDriveFolder();
+    if (foundNew && mainWindow) mainWindow.webContents.send('google:driveChanged');
+  } catch (err) {
+    console.error('Google Drive scan failed:', err);
+  }
+}
+
+ipcMain.handle('google:getDriveFolder', () => getDriveFolder());
+
+ipcMain.handle('google:setDriveFolder', async (_event, link: string) => {
+  const result = await setDriveFolder(link);
+  if (result.ok) void scanDriveAndNotify();
+  return result;
+});
+
+ipcMain.handle('google:listPendingDriveFiles', () => listPendingDriveFiles());
+
+// Downloads a pending file's content and imports it via the same
+// buffer-based paths manual upload/drag-and-drop already use, branching on
+// the type the user assigns in the review panel — a scan/image becomes a
+// handwritten note, a plain text/markdown file tagged "Note" becomes a typed
+// note, anything tagged "Resource" lands exactly like a manual upload.
+ipcMain.handle(
+  'google:importDriveFile',
+  async (_event, driveFileId: string, name: string, courseId: number, importAs: 'resource' | 'note') => {
+    const buffer = await downloadDriveFileContent(driveFileId);
+
+    let result: unknown;
+    if (importAs === 'resource') {
+      result = importBufferIntoCourse(courseId, name, buffer, driveFileId);
+    } else if (isScanFile(name)) {
+      result = importScanBufferIntoNote(courseId, name, buffer, driveFileId);
+    } else {
+      result = importTypedNoteFromBuffer(courseId, buffer, driveFileId);
+    }
+
+    removePendingDriveFile(driveFileId);
+    return result;
+  }
+);
+
+// The opposite of import — nothing is downloaded, the file just stops
+// showing up as "new" (see ignoreDrivePendingFile for why the row stays
+// rather than being deleted outright).
+ipcMain.handle('google:ignoreDriveFile', (_event, driveFileId: string) => {
+  ignoreDrivePendingFile(driveFileId);
 });
 
 ipcMain.handle('app:getSetting', (_event, key: string) => {
@@ -1186,14 +1291,19 @@ function isScanFile(filePath: string): boolean {
 // blank note pointing at it, titled from the original filename (a real title
 // isn't derivable yet with no OCR text — renaming, or later accepting an OCR
 // result, both naturally replace it).
-function finishScanImport(courseId: number, destPath: string, titleGuess: string): unknown {
+function finishScanImport(
+  courseId: number,
+  destPath: string,
+  titleGuess: string,
+  driveFileId: string | null = null
+): unknown {
   const db = getDb();
   const insertResult = db
     .prepare(
-      `INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path)
-       VALUES (?, ?, '', 1, ?)`
+      `INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path, drive_file_id)
+       VALUES (?, ?, '', 1, ?, ?)`
     )
-    .run(courseId, titleGuess || 'Untitled scan', destPath);
+    .run(courseId, titleGuess || 'Untitled scan', destPath, driveFileId);
   const noteId = Number(insertResult.lastInsertRowid);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
@@ -1218,8 +1328,15 @@ function importScanFileIntoNote(courseId: number, sourcePath: string): unknown {
 
 // Drag-and-drop variant — same reasoning as importBufferIntoCourse for
 // resources: the renderer only has the dropped File's contents, not a real
-// filesystem path, under contextIsolation.
-function importScanBufferIntoNote(courseId: number, originalFilename: string, buffer: Buffer): unknown {
+// filesystem path, under contextIsolation. Also reused by the Google Drive
+// import path (google:importDriveFile below) once a pending file is tagged
+// "handwritten note" — a downloaded Drive file is just a buffer too.
+function importScanBufferIntoNote(
+  courseId: number,
+  originalFilename: string,
+  buffer: Buffer,
+  driveFileId: string | null = null
+): unknown {
   const db = getDb();
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
     | { folder_name: string }
@@ -1231,7 +1348,28 @@ function importScanBufferIntoNote(courseId: number, originalFilename: string, bu
   const destPath = uniqueDestPath(scansDir, originalFilename);
   fs.writeFileSync(destPath, buffer);
 
-  return finishScanImport(courseId, destPath, path.basename(originalFilename, path.extname(originalFilename)));
+  return finishScanImport(
+    courseId,
+    destPath,
+    path.basename(originalFilename, path.extname(originalFilename)),
+    driveFileId
+  );
+}
+
+// A file tagged "typed note" from the Google Drive review panel — the file's
+// own text content becomes the note's content_markdown directly, title
+// derived the same way a normal edit would (deriveTitleFromMarkdown below).
+function importTypedNoteFromBuffer(courseId: number, buffer: Buffer, driveFileId: string): unknown {
+  const db = getDb();
+  const content = buffer.toString('utf-8');
+  const title = deriveTitleFromMarkdown(content);
+  const insertResult = db
+    .prepare('INSERT INTO notes (course_id, title, content_markdown, drive_file_id) VALUES (?, ?, ?, ?)')
+    .run(courseId, title, content, driveFileId);
+  const noteId = Number(insertResult.lastInsertRowid);
+  exportNoteToFile(noteId);
+  rebuildSearchIndex();
+  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
 }
 
 ipcMain.handle('notes:importScan', async (_event, courseId: number) => {

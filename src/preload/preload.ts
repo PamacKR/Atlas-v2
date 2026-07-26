@@ -119,12 +119,45 @@ export interface NoteWithCourse extends Note {
   course_name: string;
 }
 
+export interface DriveFolder {
+  id: string;
+  name: string;
+}
+
+export interface DrivePendingFile {
+  id: number;
+  drive_file_id: string;
+  name: string;
+  mime_type: string;
+  modified_time: string | null;
+  detected_at: string;
+}
+
 contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
     ipcRenderer.invoke('courses:create', name, code, term),
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
+  isDriveConnected: (): Promise<boolean> => ipcRenderer.invoke('google:isDriveConnected'),
+  connectDrive: (): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('google:connectDrive'),
+  disconnectDrive: (): Promise<void> => ipcRenderer.invoke('google:disconnectDrive'),
+  getDriveFolder: (): Promise<DriveFolder | null> => ipcRenderer.invoke('google:getDriveFolder'),
+  setDriveFolder: (link: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('google:setDriveFolder', link),
+  listPendingDriveFiles: (): Promise<DrivePendingFile[]> =>
+    ipcRenderer.invoke('google:listPendingDriveFiles'),
+  importDriveFile: (
+    driveFileId: string,
+    name: string,
+    courseId: number,
+    importAs: 'resource' | 'note'
+  ): Promise<unknown> => ipcRenderer.invoke('google:importDriveFile', driveFileId, name, courseId, importAs),
+  ignoreDriveFile: (driveFileId: string): Promise<void> => ipcRenderer.invoke('google:ignoreDriveFile', driveFileId),
+  onDriveChanged: (handler: () => void): void => {
+    ipcRenderer.on('google:driveChanged', () => handler());
+  },
   getResourceBrowserUrl: (resourceId: number): Promise<string> =>
     ipcRenderer.invoke('resources:browserUrl', resourceId),
   listResources: (courseId: number): Promise<Resource[]> =>
