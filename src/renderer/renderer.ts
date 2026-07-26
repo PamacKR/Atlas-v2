@@ -1424,8 +1424,7 @@ async function closeNoteEditor(): Promise<void> {
 
   const overlay = document.getElementById('note-overlay')!;
   overlay.hidden = true;
-  overlay.classList.remove('wide', 'fullscreen');
-  resetNoteWidenButton();
+  overlay.classList.remove('fullscreen');
   resetNoteFullscreenButton();
   document.getElementById('note-scan-panel')!.hidden = true;
 
@@ -1443,43 +1442,15 @@ async function closeNoteEditor(): Promise<void> {
   else if (currentPage === 'courses' && selectedCourse) await renderCourseDetailPreviews(selectedCourse.id);
 }
 
-// Widen (expand width) uses a horizontal <-> style icon so it reads as
-// "stretch sideways" — distinct from the fullscreen button's icon, which
-// matches the corner-expand glyph used by the Resources preview's fullscreen
-// button (#preview-fullscreen) so the same action looks the same everywhere.
-const NOTE_WIDEN_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="9 6 3 12 9 18"/><polyline points="15 6 21 12 15 18"/></svg>';
-const NOTE_WIDEN_COLLAPSE_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="3 6 9 12 3 18"/><polyline points="21 6 15 12 21 18"/></svg>';
 const NOTE_FULLSCREEN_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
 const NOTE_EXIT_FULLSCREEN_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
 
-function resetNoteWidenButton(): void {
-  const button = document.getElementById('note-widen') as HTMLButtonElement;
-  button.innerHTML = NOTE_WIDEN_ICON;
-  button.title = 'Expand width';
-  button.setAttribute('aria-label', button.title);
-}
-
 function resetNoteFullscreenButton(): void {
   const button = document.getElementById('note-fullscreen') as HTMLButtonElement;
   button.innerHTML = NOTE_FULLSCREEN_ICON;
   button.title = 'Fullscreen';
-  button.setAttribute('aria-label', button.title);
-}
-
-// "Expand width" widens the overlay panel itself — it does NOT cover the
-// sidebar/topbar/search box, which is why the user pointed out that what
-// used to be the only "fullscreen" option wasn't actually fullscreen. See
-// toggleNoteTrueFullscreen() below for the genuine one.
-function toggleNoteWidth(): void {
-  const overlay = document.getElementById('note-overlay')!;
-  const isWide = overlay.classList.toggle('wide');
-  const button = document.getElementById('note-widen') as HTMLButtonElement;
-  button.innerHTML = isWide ? NOTE_WIDEN_COLLAPSE_ICON : NOTE_WIDEN_ICON;
-  button.title = isWide ? 'Exit expanded width' : 'Expand width';
   button.setAttribute('aria-label', button.title);
 }
 
@@ -2274,7 +2245,6 @@ async function init(): Promise<void> {
   });
 
   document.getElementById('note-close')!.addEventListener('click', closeNoteEditor);
-  document.getElementById('note-widen')!.addEventListener('click', toggleNoteWidth);
   document.getElementById('note-fullscreen')!.addEventListener('click', toggleNoteTrueFullscreen);
   document.getElementById('note-view-scan')!.addEventListener('click', toggleNoteScanPanel);
 

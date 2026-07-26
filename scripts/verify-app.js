@@ -546,6 +546,14 @@ const fs = require('fs');
   console.log('notes editor pane visible:', noteEditorVisible);
   if (!noteEditorVisible) throw new Error('FAIL: note editor did not open on "New note"');
 
+  // "View original scan" must stay hidden for a typed note — only notes
+  // created via "+ Import scan" (is_handwritten) should ever show it.
+  const scanToggleHiddenForTypedNote = await window.isHidden('#note-view-scan');
+  console.log('"View original scan" hidden for a typed note:', scanToggleHiddenForTypedNote);
+  if (!scanToggleHiddenForTypedNote) {
+    throw new Error('FAIL: "View original scan" should be hidden for a typed (non-handwritten) note');
+  }
+
   await window.fill('#note-title-input', 'W1L1');
   const noteEditableSelector = '.milkdown [contenteditable="true"]';
   await window.click(noteEditableSelector, { force: true });
@@ -604,15 +612,6 @@ const fs = require('fs');
   );
   console.log('note fullscreen after pressing "f" again:', noteFullscreen);
   if (noteFullscreen) throw new Error('FAIL: pressing "f" again did not exit note fullscreen');
-
-  // The separate "expand width" button still does the old widen-the-panel
-  // behavior, now on the overlay itself rather than a docked pane's grid.
-  await window.click('#note-widen');
-  await window.waitForTimeout(200);
-  const noteWidened = await window.evaluate(() => document.getElementById('note-overlay').classList.contains('wide'));
-  console.log('note-overlay widened after clicking "Expand width":', noteWidened);
-  if (!noteWidened) throw new Error('FAIL: "Expand width" did not widen the editor pane');
-  await window.click('#note-widen'); // revert
 
   await window.click('#note-close');
   await window.waitForTimeout(300);

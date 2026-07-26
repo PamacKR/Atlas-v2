@@ -941,7 +941,13 @@ ul#course-list.view-list li.course-card .course-card-counts {
   flex-shrink: 0;
 }
 
-.split-preview-actions button {
+/* Same [hidden]-vs-own-selector trap documented in CLAUDE.md — this rule
+   used to be safe (every button in .split-preview-actions was always
+   visible), until #note-view-scan became the first one conditionally
+   hidden via the `hidden` attribute. An unconditional `display: flex` here
+   outranks the browser's default `[hidden] { display: none }` regardless of
+   specificity, so it must be scoped to :not([hidden]). */
+.split-preview-actions button:not([hidden]) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -967,8 +973,9 @@ ul#course-list.view-list li.course-card .course-card-counts {
 /* Note editor: a global overlay modal (not a docked pane) — same reasoning
    as the Resources preview: opening a note from Dashboard or a course detail
    view must not have to navigate to the Notes page first just to reveal a
-   docked pane there. "Expand width" (.wide) and true "Fullscreen"
-   (.fullscreen) are still two distinct levels, same as before. */
+   docked pane there. The overlay panel is a fixed, already-comfortable size,
+   so unlike the old docked-pane version there's no separate "expand width"
+   level — just the panel and true "Fullscreen" (.fullscreen). */
 #note-overlay {
   position: fixed;
   inset: 0;
@@ -993,10 +1000,6 @@ ul#course-list.view-list li.course-card .course-card-counts {
   display: flex;
   flex-direction: column;
   padding: 1.25rem;
-}
-
-#note-overlay.wide #note-overlay-panel {
-  max-width: 1400px;
 }
 
 #note-overlay.fullscreen {
