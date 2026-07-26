@@ -36,6 +36,7 @@ import {
   getAshokaPlannerDbPath,
   setAshokaPlannerDbPath,
   listSecuredAshokaCourses,
+  getAshokaSemesterHint,
   AshokaCourseCandidate,
 } from './ashokaPlanner';
 import {
@@ -970,17 +971,30 @@ ipcMain.handle('ashoka:pickDbPath', async () => {
 
 ipcMain.handle('ashoka:listSecuredCourses', () => listSecuredAshokaCourses());
 
+ipcMain.handle('ashoka:getSemesterHint', () => getAshokaSemesterHint());
+
 // Creates a real Atlas course per selected candidate, same folder-creation
 // steps as courses:create — reused directly since this is exactly a course
-// creation, just with the name/code/term/description already known instead
-// of typed in by hand.
-ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidate[]) => {
+// creation, just with the name/code/description already known instead of
+// typed in by hand. `term` is whatever the user confirmed in the review
+// panel (planner.db has no reliable calendar-year term to derive one from
+// automatically — see ashokaPlanner.ts). Dedup happens here, not at list
+// time, since it depends on that confirmed term: a candidate matching an
+// existing course by code + term is skipped rather than duplicated.
+ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidate[], term: string) => {
   const db = getDb();
   const created: unknown[] = [];
+  let skipped = 0;
   for (const candidate of candidates) {
+    const exists = db.prepare('SELECT 1 FROM courses WHERE code = ? AND term = ?').get(candidate.code, term);
+    if (exists) {
+      skipped++;
+      continue;
+    }
+
     const insertResult = db
       .prepare('INSERT INTO courses (name, code, term, folder_name, description) VALUES (?, ?, ?, ?, ?)')
-      .run(candidate.title, candidate.code, candidate.semester, '', candidate.description);
+      .run(candidate.title, candidate.code, term, '', candidate.description);
     const courseId = insertResult.lastInsertRowid;
 
     const folderName = uniqueCourseFolderName(sanitizeFolderName(candidate.title), getFilesDir());
@@ -989,7 +1003,7 @@ ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidat
 
     created.push(db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId));
   }
-  return created;
+  return { created, skipped };
 });
 
 ipcMain.handle('app:getSetting', (_event, key: string) => {

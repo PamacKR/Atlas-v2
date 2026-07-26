@@ -102,8 +102,6 @@ interface AshokaCourseCandidate {
   faculty: string | null;
   credits: number | null;
   description: string | null;
-  semester: string | null;
-  alreadyImported: boolean;
 }
 
 interface SearchResult {
@@ -197,7 +195,11 @@ interface AtlasApi {
   getAshokaDbPath: () => Promise<string | null>;
   pickAshokaDbPath: () => Promise<{ ok: true } | { ok: false; error: string | null }>;
   listSecuredAshokaCourses: () => Promise<AshokaCourseCandidate[]>;
-  importAshokaCourses: (candidates: AshokaCourseCandidate[]) => Promise<Course[]>;
+  getAshokaSemesterHint: () => Promise<string | null>;
+  importAshokaCourses: (
+    candidates: AshokaCourseCandidate[],
+    term: string
+  ) => Promise<{ created: Course[]; skipped: number }>;
   listResources: (courseId: number) => Promise<Resource[]>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
@@ -1473,9 +1475,13 @@ function toggleClassroomReviewSelectAll(): void {
 // Ashoka Planner course import (docs/open-questions.md #15) — a one-shot,
 // user-invoked action (a button, never automatic/polled): reads the user's
 // separate ashoka-planner app's own database for currently-secured courses
-// and lets them pick which to create as real Atlas courses. Courses already
-// imported on a prior run (matched by code + term) show up disabled so
-// re-running the import doesn't create duplicates.
+// and lets them pick which to create as real Atlas courses. planner.db has
+// no reliable calendar-year term string (only a bare season name and an
+// ordinal program-year) — so the term is something the user confirms in a
+// text input here, pre-filled with that raw season as a hint, rather than
+// something Atlas silently guesses. Dedup (skip a candidate already
+// imported under that exact term) happens at import time in main.ts, since
+// it depends on the term the user actually confirms.
 async function openAshokaImportPanel(): Promise<void> {
   const button = document.getElementById('ashoka-import-button') as HTMLButtonElement;
   let dbPath = await atlasApi.getAshokaDbPath();
@@ -1491,7 +1497,11 @@ async function openAshokaImportPanel(): Promise<void> {
   }
   if (!dbPath) return;
 
-  const candidates = await atlasApi.listSecuredAshokaCourses();
+  const [candidates, semesterHint] = await Promise.all([
+    atlasApi.listSecuredAshokaCourses(),
+    atlasApi.getAshokaSemesterHint(),
+  ]);
+  (document.getElementById('ashoka-review-term') as HTMLInputElement).value = semesterHint ?? '';
   renderAshokaReviewList(candidates);
   document.getElementById('ashoka-review-overlay')!.hidden = false;
 }
@@ -1506,15 +1516,15 @@ function renderAshokaReviewList(candidates: AshokaCourseCandidate[]): void {
 
   for (const candidate of candidates) {
     const li = document.createElement('li');
-    li.className = candidate.alreadyImported ? 'ashoka-review-row ashoka-review-row-imported' : 'ashoka-review-row';
+    li.className = 'ashoka-review-row';
     li.dataset.code = candidate.code;
     const metaParts = [candidate.category, candidate.credits ? `${candidate.credits} credits` : null, candidate.faculty].filter(
       Boolean
     );
     li.innerHTML = `
-      <input type="checkbox" class="ashoka-review-row-check" ${candidate.alreadyImported ? 'disabled' : 'checked'} />
+      <input type="checkbox" class="ashoka-review-row-check" checked />
       <div class="ashoka-review-row-info">
-        <div class="ashoka-review-row-title">${escapeHtml(candidate.code)} — ${escapeHtml(candidate.title)}${candidate.alreadyImported ? ' (already imported)' : ''}</div>
+        <div class="ashoka-review-row-title">${escapeHtml(candidate.code)} — ${escapeHtml(candidate.title)}</div>
         <div class="ashoka-review-row-meta">${escapeHtml(metaParts.join(' · '))}</div>
       </div>
     `;
@@ -1529,6 +1539,12 @@ function renderAshokaReviewList(candidates: AshokaCourseCandidate[]): void {
 }
 
 async function importSelectedAshokaCourses(): Promise<void> {
+  const term = (document.getElementById('ashoka-review-term') as HTMLInputElement).value.trim();
+  if (!term) {
+    alert('Enter the term/semester these courses belong to before importing.');
+    return;
+  }
+
   const candidates = ashokaReviewCandidates;
   const rows = Array.from(document.querySelectorAll('.ashoka-review-row')) as HTMLElement[];
   const selected: AshokaCourseCandidate[] = [];
@@ -1546,11 +1562,14 @@ async function importSelectedAshokaCourses(): Promise<void> {
   const button = document.getElementById('ashoka-review-import') as HTMLButtonElement;
   button.disabled = true;
   button.textContent = 'Importing…';
-  await atlasApi.importAshokaCourses(selected);
+  const result = await atlasApi.importAshokaCourses(selected, term);
   button.disabled = false;
   button.textContent = 'Import selected';
 
   closeAshokaImportPanel();
+  if (result.skipped > 0) {
+    alert(`Imported ${result.created.length} course${result.created.length === 1 ? '' : 's'}. ${result.skipped} already existed for "${term}" and were skipped.`);
+  }
   if (currentPage === 'courses') await renderCourses();
   else if (currentPage === 'dashboard') await renderDashboard();
 }

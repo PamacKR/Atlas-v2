@@ -149,8 +149,6 @@ export interface AshokaCourseCandidate {
   faculty: string | null;
   credits: number | null;
   description: string | null;
-  semester: string | null;
-  alreadyImported: boolean;
 }
 
 contextBridge.exposeInMainWorld('atlas', {
@@ -204,8 +202,11 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('ashoka:pickDbPath'),
   listSecuredAshokaCourses: (): Promise<AshokaCourseCandidate[]> =>
     ipcRenderer.invoke('ashoka:listSecuredCourses'),
-  importAshokaCourses: (candidates: AshokaCourseCandidate[]): Promise<Course[]> =>
-    ipcRenderer.invoke('ashoka:importCourses', candidates),
+  getAshokaSemesterHint: (): Promise<string | null> => ipcRenderer.invoke('ashoka:getSemesterHint'),
+  importAshokaCourses: (
+    candidates: AshokaCourseCandidate[],
+    term: string
+  ): Promise<{ created: Course[]; skipped: number }> => ipcRenderer.invoke('ashoka:importCourses', candidates, term),
   getResourceBrowserUrl: (resourceId: number): Promise<string> =>
     ipcRenderer.invoke('resources:browserUrl', resourceId),
   listResources: (courseId: number): Promise<Resource[]> =>

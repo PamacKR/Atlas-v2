@@ -11,8 +11,6 @@ export interface AshokaCourseCandidate {
   faculty: string | null;
   credits: number | null;
   description: string | null;
-  semester: string | null;
-  alreadyImported: boolean;
 }
 
 function getSetting(key: string): string | null {
@@ -72,44 +70,43 @@ interface CourseSnapshot {
   credits?: number;
 }
 
-// Normalizes ashoka-planner's "Spring 2026"/"Monsoon 2025" semester format to
-// Atlas's own short form ("Spring 26"/"Monsoon 25") so an imported course's
-// `term` lines up with the existing semester-filter dropdown's values.
-function normalizeSemester(raw: string | null): string | null {
-  if (!raw) return null;
-  const match = raw.trim().match(/^(\w+)\s+(\d{4})$/);
-  if (!match) return raw;
-  return `${match[1]} ${match[2].slice(2)}`;
+// planner.db's student_profile only stores the bare season name
+// ("Monsoon"/"Spring", confirmed against real data) plus current_year as an
+// ordinal program-year (e.g. 3), not a calendar year — there's no reliable
+// way to derive a concrete term string like Atlas's own "Monsoon 26" from
+// this alone. Returned as a raw hint to pre-fill the term the user confirms
+// in the review panel before import, never used to silently guess one.
+export function getAshokaSemesterHint(): string | null {
+  const dbPath = getAshokaPlannerDbPath();
+  if (!dbPath) return null;
+  const plannerDb = new Database(dbPath, { readonly: true, fileMustExist: true });
+  try {
+    const row = plannerDb.prepare('SELECT current_semester FROM student_profile WHERE id = 1').get() as
+      | { current_semester: string | null }
+      | undefined;
+    return row?.current_semester ?? null;
+  } finally {
+    plannerDb.close();
+  }
 }
 
 // Reads every currently-secured course (status === 'secured') from the
 // user's ashoka-planner database — the "finalized courses" concept
 // docs/open-questions.md #15 identified — joined against that course's
-// description (by section code) and the student's current semester.
-// Read-only, one-shot: called only when the user explicitly presses the
-// import button, never automatically. alreadyImported (matched by code +
-// term against Atlas's own courses table) lets the review UI skip courses
-// that were already imported on a prior run rather than duplicating them.
+// description (by section code). Read-only, one-shot: called only when the
+// user explicitly presses the import button, never automatically. Which
+// term these land under isn't decided here — see getAshokaSemesterHint and
+// ashoka:importCourses, which does the actual code+term dedup once the user
+// has confirmed a real term.
 export function listSecuredAshokaCourses(): AshokaCourseCandidate[] {
   const dbPath = getAshokaPlannerDbPath();
   if (!dbPath) return [];
 
   const plannerDb = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
-    const semesterRow = plannerDb.prepare('SELECT current_semester FROM student_profile WHERE id = 1').get() as
-      | { current_semester: string | null }
-      | undefined;
-    const semester = normalizeSemester(semesterRow?.current_semester ?? null);
-
     const securedSlots = plannerDb
       .prepare("SELECT current_code, current_course_snapshot_json FROM slot WHERE status = 'secured'")
       .all() as { current_code: string | null; current_course_snapshot_json: string | null }[];
-
-    const atlasDb = getDb();
-    const alreadyImported = (code: string): boolean =>
-      Boolean(
-        atlasDb.prepare('SELECT 1 FROM courses WHERE code = ? AND term = ?').get(code, semester)
-      );
 
     const candidates: AshokaCourseCandidate[] = [];
     for (const slot of securedSlots) {
@@ -129,8 +126,6 @@ export function listSecuredAshokaCourses(): AshokaCourseCandidate[] {
         faculty: snapshot.faculty ?? null,
         credits: snapshot.credits ?? null,
         description: descriptionRow?.overview ?? null,
-        semester,
-        alreadyImported: alreadyImported(code),
       });
     }
     return candidates;

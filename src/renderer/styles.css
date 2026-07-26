@@ -2283,8 +2283,30 @@ form#course-form button {
   white-space: nowrap;
 }
 
-.ashoka-review-row.ashoka-review-row-imported {
+#ashoka-review-term-row {
+  margin-bottom: 0.85rem;
+}
+
+#ashoka-review-term-row label {
+  display: block;
+  font-size: 0.78rem;
   color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+#ashoka-review-term {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+#ashoka-review-term:focus {
+  outline: 2px solid var(--color-accent);
 }
 
 #ashoka-review-footer {
