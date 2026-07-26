@@ -4,6 +4,14 @@ Living snapshot of where the project actually is. This is the first thing to rea
 
 **Last updated:** 2026-07-27 (session 46)
 
+## Session 46 (continued again) — real Dashboard layout bug, not a design choice
+
+The user pointed out the Dashboard's "Upcoming" widget looked badly broken (rows stacked vertically and centered, huge dead vertical space) and that "Recently added"/"What changed today" had large empty space below their content. Both were real CSS bugs from the widget-reformat work earlier this session, not intentional:
+
+- **The actual bug**: `#dashboard-deadlines li.upcoming-row` set `display: flex` but never set `flex-direction`, so the generic `.dashboard-widget ul li { flex-direction: column }` rule won the cascade for that one property (CSS resolves conflicting declarations per-property, not per-rule) — every row rendered as a centered column instead of a horizontal row. Fixed by adding `flex-direction: row` explicitly, the same fix already correctly applied to the course-chips widget elsewhere in the file (a pattern that should have been copied, not re-derived).
+- **The empty-space bug was a side effect of the first one**: `#dashboard-widgets` was a CSS Grid, which stretches every column to match the tallest one by default (`align-items: stretch`) — the "Upcoming" widget's bug made it artificially tall, so its shorter siblings stretched to match and showed dead space below their real content. Fixing the row bug shrank "Upcoming" back down, and adding `align-items: start` to the grid stops this from ever recurring for a genuinely different-height column.
+- **Also acted on**: "follow this kind of layout for the dashboard" (a third shared screenshot) — restructured the Dashboard into the same three-column arrangement (My Courses | Upcoming | Recently added + What changed stacked) instead of My Courses full-width above a separate row of three widgets. New `#dashboard-main-grid`/`#dashboard-right-column` in place of the old `#dashboard-widgets`.
+
 ## Session 46 (continued) — UI polish batch: tabs, Settings page, Escape-to-close, clickable Classroom content
 
 A follow-up batch of 8 user-requested items after the Classroom bug-fixing above, done in one pass, verified with `npm run build` after each chunk and a single full `npm run verify` at the end (per the user's instruction not to re-run the whole suite after every edit).

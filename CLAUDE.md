@@ -67,6 +67,14 @@ This exact bug has been hit **three separate times** (`#preview-overlay`, `#conf
 
 Fix: never set `display` unconditionally on an element's own ID selector if that same element is ever toggled via the `hidden` attribute — scope it with `#id:not([hidden]) { display: ...; }` instead. **Whenever adding a new `hidden`-toggled element, check this pattern immediately** rather than waiting for the user to report "it's still showing up" — that's what happened all three times.
 
+### A second recurring CSS bug: partial property overrides
+
+Hit once so far (`#dashboard-deadlines li.upcoming-row`, session 46) — flagging it early this time rather than waiting for a third occurrence:
+
+> A more-specific selector that sets `display: flex` but not `flex-direction` does **not** "win" that property from a less-specific rule that does set `flex-direction`. CSS resolves cascade conflicts **per property**, not per rule — a rule can lose on `flex-direction` while winning on `display`. This bit a new dashboard row layout built directly on an `<li>` that already had a generic `.dashboard-widget ul li { flex-direction: column }` rule; the new rule's `display: flex` applied, but rows still stacked as a column and centered, because nothing in the new rule ever declared `flex-direction: row`.
+
+Fix: when writing a more-specific override for an element that already has generic styling from a broader selector, **explicitly restate every layout property the override actually depends on** (`flex-direction`, `align-items`, etc.) — don't assume higher specificity on one property carries the others. The project already had the correct pattern elsewhere (`#dashboard-course-list.dashboard-course-chips li` sets `flex-direction: row` explicitly) — check for an existing analogous widget before writing a new one from scratch, since the fix was already sitting right there in the same file.
+
 ## Git workflow
 
 Commit and push to `github.com/PamacKR/Atlas` continuously as work happens — **don't wait for approval before committing/pushing** in this repo. The user explicitly opted into this (2026-07-23) on the reasoning that git history makes any bad change trivially reversible. Still use judgment on commit granularity (a coherent chunk of work, not every keystroke) and write real commit messages — the autonomy is about not blocking on a confirmation round-trip, not about being careless.

@@ -55,15 +55,18 @@
           </div>
         </div>
 
-        <div class="dashboard-widget" id="dashboard-courses-widget">
-          <div class="resources-header">
-            <h3>My courses</h3>
-            <button id="manage-courses-button" type="button">Manage courses</button>
+        <!-- Three-column layout (My Courses | Upcoming | Recent activity),
+             per the shared screenshot — replaces the earlier stacked-full-
+             width-widgets arrangement. -->
+        <div id="dashboard-main-grid">
+          <div class="dashboard-widget" id="dashboard-courses-widget">
+            <div class="resources-header">
+              <h3>My courses</h3>
+              <button id="manage-courses-button" type="button">Manage courses</button>
+            </div>
+            <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
           </div>
-          <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
-        </div>
 
-        <div id="dashboard-widgets">
           <div class="dashboard-widget" id="dashboard-upcoming-widget">
             <div class="resources-header">
               <h3>Upcoming</h3>
@@ -78,13 +81,16 @@
             </div>
             <ul id="dashboard-deadlines"></ul>
           </div>
-          <div class="dashboard-widget">
-            <h3>Recently added resources</h3>
-            <ul id="dashboard-resources"></ul>
-          </div>
-          <div class="dashboard-widget">
-            <h3>What changed today</h3>
-            <ul id="dashboard-activity"></ul>
+
+          <div id="dashboard-right-column">
+            <div class="dashboard-widget">
+              <h3>Recently added resources</h3>
+              <ul id="dashboard-resources"></ul>
+            </div>
+            <div class="dashboard-widget">
+              <h3>What changed today</h3>
+              <ul id="dashboard-activity"></ul>
+            </div>
           </div>
         </div>
       </section>

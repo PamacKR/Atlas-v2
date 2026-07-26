@@ -326,10 +326,6 @@ ul#search-results li.search-empty:hover {
   font-size: 0.8rem;
 }
 
-#dashboard-courses-widget {
-  margin-bottom: 1rem;
-}
-
 #dashboard-courses-widget .resources-header {
   margin-bottom: 0.9rem;
 }
@@ -340,9 +336,21 @@ ul#search-results li.search-empty:hover {
   color: var(--color-text-secondary);
 }
 
-#dashboard-widgets {
+/* Three columns (My Courses | Upcoming | Recent activity), per the shared
+   screenshot. `align-items: start` is the important part — without it, CSS
+   Grid stretches every column to match the tallest one by default, which is
+   exactly what made the shorter "Recently added"/"What changed" cards show
+   a huge slab of empty space whenever "Upcoming" happened to be taller. */
+#dashboard-main-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.3fr) minmax(240px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+#dashboard-right-column {
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
 }
 
@@ -473,6 +481,7 @@ ul#search-results li.search-empty:hover {
    row layout is denser and carries a course-color accent. */
 #dashboard-deadlines li.upcoming-row {
   display: flex;
+  flex-direction: row; /* overrides .dashboard-widget ul li's flex-direction: column — without this, the row's own `display:flex` wins the cascade but flex-direction still falls through to that column value, which is what made every row stack and center vertically instead of laying out as a row */
   align-items: center;
   gap: 0.75rem;
   border-left: 4px solid transparent;
