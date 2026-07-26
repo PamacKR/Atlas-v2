@@ -435,7 +435,7 @@ function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTML
     course.textContent = resource.course_name;
     li.appendChild(course);
     const kind = document.createElement('span');
-    kind.className = 'code';
+    kind.className = 'code resource-kind';
     kind.textContent = resource.kind;
     li.appendChild(kind);
   }
@@ -1288,18 +1288,22 @@ async function closeNoteEditor(): Promise<void> {
   await renderNotesPage();
 }
 
-const NOTE_MAXIMIZE_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
-const NOTE_MINIMIZE_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
+// Widen (expand width) uses a horizontal <-> style icon so it reads as
+// "stretch sideways" — distinct from the fullscreen button's icon, which
+// matches the corner-expand glyph used by the Resources preview's fullscreen
+// button (#preview-fullscreen) so the same action looks the same everywhere.
+const NOTE_WIDEN_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="9 6 3 12 9 18"/><polyline points="15 6 21 12 15 18"/></svg>';
+const NOTE_WIDEN_COLLAPSE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="3 6 9 12 3 18"/><polyline points="21 6 15 12 21 18"/></svg>';
 const NOTE_FULLSCREEN_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg>';
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
 const NOTE_EXIT_FULLSCREEN_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
 
 function resetNoteWidenButton(): void {
   const button = document.getElementById('note-widen') as HTMLButtonElement;
-  button.innerHTML = NOTE_MAXIMIZE_ICON;
+  button.innerHTML = NOTE_WIDEN_ICON;
   button.title = 'Expand width';
   button.setAttribute('aria-label', button.title);
 }
@@ -1320,7 +1324,7 @@ function toggleNoteWidth(): void {
   const split = document.getElementById('notes-split')!;
   const isWide = split.classList.toggle('pane-fullscreen');
   const button = document.getElementById('note-widen') as HTMLButtonElement;
-  button.innerHTML = isWide ? NOTE_MINIMIZE_ICON : NOTE_MAXIMIZE_ICON;
+  button.innerHTML = isWide ? NOTE_WIDEN_COLLAPSE_ICON : NOTE_WIDEN_ICON;
   button.title = isWide ? 'Exit expanded width' : 'Expand width';
   button.setAttribute('aria-label', button.title);
 }
@@ -1410,6 +1414,10 @@ async function renderCourseDetailPreviews(courseId: number): Promise<void> {
       const li = document.createElement('li');
       li.textContent = resource.title;
       li.addEventListener('click', () => openPreview(resource));
+      li.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        atlasApi.showResourceContextMenu(resource.id);
+      });
       resourceList.appendChild(li);
     }
   }

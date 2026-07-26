@@ -261,6 +261,15 @@ The two "N Resources" / "N Notes" buttons on the course detail page (session 34)
 
 Electron auto-generates a File/Edit/View/Window/Help menu (Reload, Toggle DevTools, generic Undo/Cut/Copy/Paste, etc.) whenever `Menu.setApplicationMenu()` is never called — this is what the auto-hidden menu bar (Alt to reveal, session 31) was actually showing, and none of it corresponds to a real Atlas feature. Removed entirely via `Menu.setApplicationMenu(null)` in `main.ts`; standard text-field editing (Ctrl+C/X/V/A/Z) is unaffected since Chromium binds those directly to inputs/contenteditable regardless of whether an application menu exists — confirmed via a Playwright check (`Menu.getApplicationMenu()` returns `null`, and Ctrl+A + typing still replaces an input's contents correctly) rather than assumed.
 
+### Session 36: smaller polish items
+
+A third, smaller feedback round (5 items) refined details from the previous two rather than adding new structure:
+
+- **Resources list-view row layout**: the kind tag (`.resource-kind` on the third `<span>` in `resourceListItem()`) is pushed to the row's right edge via `margin-left: auto`, instead of sitting immediately after the course name — the row reads name → course (grouped, left) → kind (right).
+- **Clickable text now looks like a button.** `.back-link` ("← Back to Courses") and `.link-button` ("View all →") were both bare colored text with an underline-on-hover — restyled to the same bordered/background secondary-button look used elsewhere in the app. Standing convention going forward, logged in Claude's memory: anything clickable in Atlas's UI should default to looking like a button, not plain text.
+- **Notes editor icon/meaning mismatch fixed.** "Expand width" (`#note-widen`) and "Fullscreen" (`#note-fullscreen`) had their icons backwards since session 35 — widen was showing the corner-expand glyph that means "fullscreen" everywhere else (`#preview-fullscreen`), and fullscreen was showing an unrelated monitor icon. Swapped: widen now uses a `↔`-style horizontal double-arrow (`NOTE_WIDEN_ICON`/`NOTE_WIDEN_COLLAPSE_ICON`), fullscreen uses the shared corner-expand icon (`NOTE_FULLSCREEN_ICON`/`NOTE_EXIT_FULLSCREEN_ICON`) — the same visual language for "fullscreen" now means the same icon in both Notes and the Resources preview.
+- **Course-detail resource previews gained the same right-click "Open in browser" the main Resources list already had** — `#course-detail-resources-preview` items only had a click handler before; added the same `contextmenu` → `atlasApi.showResourceContextMenu()` wiring, no new IPC surface needed since `resources:contextMenu` already existed in `main.ts`.
+
 ## Layer summary
 
 ```
