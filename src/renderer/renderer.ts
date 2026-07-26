@@ -2835,7 +2835,16 @@ async function init(): Promise<void> {
   document
     .getElementById('classroom-review-bulk-ignore')!
     .addEventListener('click', ignoreSelectedClassroomCourses);
-  atlasApi.onClassroomChanged(() => void renderClassroomPendingStatus());
+  atlasApi.onClassroomChanged(() => {
+    void renderClassroomPendingStatus();
+    // A course's coursework can land moments after the user confirms its
+    // mapping (see classroom:mapCourseToExisting/mapCourseToNew's immediate
+    // re-sync) — refresh whatever's currently visible so it doesn't look
+    // like the sync silently did nothing if they're already looking at it.
+    if (currentPage === 'dashboard') void renderDashboard();
+    else if (currentPage === 'courses' && selectedCourse) void renderCourseDetailPreviews(selectedCourse.id);
+    else if (currentPage === 'courses') void renderCourses();
+  });
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
     const isCollapsed = document.getElementById('sidebar')!.classList.contains('collapsed');
     setSidebarCollapsed(!isCollapsed);

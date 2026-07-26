@@ -909,10 +909,16 @@ ipcMain.handle('classroom:ignorePendingCourse', (_event, classroomCourseId: stri
   ignorePendingClassroomCourse(classroomCourseId);
 });
 
+// Immediately syncs coursework/announcements for the just-mapped course
+// after linking, rather than waiting for the next launch/"Sync now" click —
+// same reasoning as setDriveFolder's immediate scan after saving a folder:
+// the user shouldn't have to trigger a second, separate action to see the
+// course they just confirmed actually populate.
 ipcMain.handle(
   'classroom:mapCourseToExisting',
-  (_event, classroomCourseId: string, atlasCourseId: number) => {
+  async (_event, classroomCourseId: string, atlasCourseId: number) => {
     linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
+    void scanClassroomAndNotify();
   }
 );
 
@@ -934,6 +940,7 @@ ipcMain.handle(
     startWatchingCourseStorage(Number(courseId), folderName);
 
     removePendingClassroomCourse(classroomCourseId);
+    void scanClassroomAndNotify();
     return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
   }
 );
