@@ -28,8 +28,8 @@ Goal: Atlas is useful *before* any external sync exists.
 ## Phase 2 — Handwritten notes
 
 - [x] Import flow: photos, scans, phone scans, tablet exports — "+ Import scan" on the Notes page, multi-select or drag-and-drop, PDF (multi-page, the primary real-world case — Adobe Scan and similar apps) and single images both supported
-- [x] OCR pipeline (local, offline via Tesseract.js — see `ARCHITECTURE.md` §3), storing both original image and extracted text — one imported file (however many PDF pages) becomes one note, via `notes.image_path`/`notes.ocr_text`
-- [x] Handwritten notes searchable and surfaced identically to typed notes — `content_markdown` is seeded from the OCR text, so autosave/search/editing all already work with no special-casing; a small ✍️ badge and a "View original scan" toggle are the only visible differences from a typed note
+- [x] OCR pipeline (local, offline via Tesseract.js — see `ARCHITECTURE.md` §3), storing both original image and extracted text — one imported file (however many PDF pages) becomes one note, via `notes.image_path`. OCR itself is **opt-in per note** (a "Run OCR" button, reviewed before accepting), not automatic on import — the user found local OCR's accuracy on real handwriting too poor to trust silently, and prefers reading a scan via Claude Code's vision when they need an accurate read; see `docs/open-questions.md` #18.
+- [x] Handwritten notes searchable and surfaced identically to typed notes — once OCR is run and accepted (or the user just types over the scan), `content_markdown` behaves exactly like a typed note (autosave/search/editing, no special-casing); a small ✍️ badge, "View original scan," and "Run OCR" are the only visible differences
 
 ## Phase 3 — External sync (current)
 

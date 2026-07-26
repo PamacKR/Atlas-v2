@@ -701,7 +701,12 @@ const fs = require('fs');
   await window.evaluate((id) => window.atlas.deleteNote(id), boldNoteIdActual);
   await goToPage('notes');
 
-  // --- Phase 2: handwritten notes (OCR import) ---
+  // --- Phase 2: handwritten notes (opt-in OCR import) ---
+  // Import no longer runs OCR automatically (the user found local Tesseract's
+  // accuracy on real handwriting too poor to trust silently) — it just
+  // stores the original scan on a blank note. OCR is a separate, explicit
+  // "Run OCR" action reviewed before being accepted into the note.
+  //
   // PDF path via the native-dialog test hook (ATLAS_TEST_SCAN_PATHS, set at
   // launch above) — the fixture has 2 pages of plain printed text, so this
   // also exercises the multi-page join (page texts separated by "---").
@@ -710,25 +715,22 @@ const fs = require('fs');
   await window.click('#course-picker-list li:has-text("Verify Script Test Course")');
   await window.waitForTimeout(200);
   await window.click('#course-picker-browse');
-  await window.waitForTimeout(8000); // real OCR round-trip, not mocked
+  await window.waitForTimeout(500); // just a file copy now, no OCR
   const modalHiddenAfterImport = await window.isHidden('#course-picker-overlay');
   console.log('course-picker modal closed after scan import finished:', modalHiddenAfterImport);
   if (!modalHiddenAfterImport) throw new Error('FAIL: course-picker modal did not close after scan import finished');
 
   const pdfNote = await window.evaluate(async () => {
     const notes = await window.atlas.listAllNotes();
-    return notes.find((n) => n.is_handwritten && n.ocr_text && n.ocr_text.includes('SCAN PAGE ONE'));
+    return notes.find((n) => n.is_handwritten && n.image_path && n.image_path.endsWith('sample-scan.pdf'));
   });
-  console.log('PDF scan note:', pdfNote && { title: pdfNote.title, ocr_text: pdfNote.ocr_text, image_path: pdfNote.image_path });
+  console.log('PDF scan note:', pdfNote && { title: pdfNote.title, content_markdown: pdfNote.content_markdown, image_path: pdfNote.image_path });
   if (!pdfNote) throw new Error('FAIL: importing the PDF fixture did not create a handwritten note');
-  if (!pdfNote.ocr_text.includes('SCAN PAGE ONE') || !pdfNote.ocr_text.includes('SCAN PAGE TWO')) {
-    throw new Error(`FAIL: PDF note's OCR text is missing one of the two pages: ${JSON.stringify(pdfNote.ocr_text)}`);
+  if (pdfNote.content_markdown !== '') {
+    throw new Error(`FAIL: a freshly imported scan should have no content until OCR is run and accepted, got ${JSON.stringify(pdfNote.content_markdown)}`);
   }
-  if (!pdfNote.ocr_text.includes('---')) {
-    throw new Error('FAIL: multi-page OCR text should be joined with a page separator');
-  }
-  if (!pdfNote.image_path || !pdfNote.image_path.endsWith('sample-scan.pdf')) {
-    throw new Error(`FAIL: handwritten note's image_path should point at the copied PDF, got ${pdfNote.image_path}`);
+  if (pdfNote.title !== 'sample-scan') {
+    throw new Error(`FAIL: an un-OCR'd scan's title should default to the filename, got "${pdfNote.title}"`);
   }
   if (!fs.existsSync(pdfNote.image_path)) {
     throw new Error('FAIL: the copied original scan file does not exist on disk');
@@ -759,6 +761,48 @@ const fs = require('fs');
   if (!scanPanelVisible || !scanIframeSrc) {
     throw new Error('FAIL: "View original scan" did not render the original PDF');
   }
+
+  // "Run OCR" — shows a review panel with the extracted text; discarding
+  // must leave the note's content untouched.
+  const ocrButtonVisible = !(await window.isHidden('#note-run-ocr'));
+  console.log('"Run OCR" button visible for a handwritten note:', ocrButtonVisible);
+  if (!ocrButtonVisible) throw new Error('FAIL: "Run OCR" should be visible for a handwritten note');
+  await window.click('#note-run-ocr');
+  await window.waitForTimeout(8000); // real OCR round-trip, not mocked
+  const ocrPreviewVisible = !(await window.isHidden('#note-ocr-preview'));
+  const ocrPreviewText = await window.textContent('#note-ocr-preview-text');
+  console.log('OCR preview visible:', ocrPreviewVisible, '— text:', JSON.stringify(ocrPreviewText));
+  if (!ocrPreviewVisible || !ocrPreviewText.includes('SCAN PAGE ONE') || !ocrPreviewText.includes('SCAN PAGE TWO')) {
+    throw new Error(`FAIL: OCR preview should show both pages' text, got ${JSON.stringify(ocrPreviewText)}`);
+  }
+  await window.click('#note-ocr-discard');
+  await window.waitForTimeout(200);
+  if (!(await window.isHidden('#note-ocr-preview'))) throw new Error('FAIL: "Discard" did not hide the OCR preview');
+  const contentAfterDiscard = await window.evaluate(async (id) => {
+    const notes = await window.atlas.listAllNotes();
+    return notes.find((n) => n.id === id).content_markdown;
+  }, pdfNote.id);
+  if (contentAfterDiscard !== '') {
+    throw new Error(`FAIL: discarding an OCR result should leave the note's content untouched, got ${JSON.stringify(contentAfterDiscard)}`);
+  }
+
+  // Running it again and accepting this time should insert the text and
+  // re-derive the title from it, same as typing would.
+  await window.click('#note-run-ocr');
+  await window.waitForTimeout(8000);
+  await window.click('#note-ocr-insert');
+  await window.waitForTimeout(500);
+  const acceptedNote = await window.evaluate(async (id) => {
+    const notes = await window.atlas.listAllNotes();
+    return notes.find((n) => n.id === id);
+  }, pdfNote.id);
+  console.log('note after accepting OCR:', { title: acceptedNote.title, content_markdown: acceptedNote.content_markdown });
+  if (!acceptedNote.content_markdown.includes('SCAN PAGE ONE') || !acceptedNote.content_markdown.includes('SCAN PAGE TWO')) {
+    throw new Error(`FAIL: accepting OCR should insert both pages' text, got ${JSON.stringify(acceptedNote.content_markdown)}`);
+  }
+  if (acceptedNote.title !== 'SCAN PAGE ONE') {
+    throw new Error(`FAIL: title should re-derive from the accepted OCR text, got "${acceptedNote.title}"`);
+  }
   await window.click('#note-close');
   await window.waitForTimeout(200);
 
@@ -766,6 +810,8 @@ const fs = require('fs');
   // same technique as the Resources drag-and-drop tests — Playwright can't
   // drag a real OS file) — a PNG with real rendered text, generated at
   // runtime with @napi-rs/canvas rather than checked in as a binary fixture.
+  // Only checks the import itself here (blank note, original attached);
+  // the Run OCR review/accept/discard flow is already covered above.
   const scanImageBase64 = (() => {
     const { createCanvas } = require('@napi-rs/canvas');
     const c = createCanvas(320, 100);
@@ -791,15 +837,15 @@ const fs = require('fs');
       .getElementById('course-picker-dropzone')
       .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
   }, scanImageBase64);
-  await window.waitForTimeout(6000); // real OCR round-trip
+  await window.waitForTimeout(500);
   const imageScanNote = await window.evaluate(async () => {
     const notes = await window.atlas.listAllNotes();
-    return notes.find((n) => n.is_handwritten && n.ocr_text && n.ocr_text.includes('DROPPED SCAN TEXT'));
+    return notes.find((n) => n.is_handwritten && n.image_path && n.image_path.endsWith('dropped-scan.png'));
   });
-  console.log('dropped-image scan note:', imageScanNote && { title: imageScanNote.title, ocr_text: imageScanNote.ocr_text });
+  console.log('dropped-image scan note:', imageScanNote && { title: imageScanNote.title, content_markdown: imageScanNote.content_markdown });
   if (!imageScanNote) throw new Error('FAIL: drag-and-drop image scan import did not create a handwritten note');
-  if (!imageScanNote.image_path.endsWith('dropped-scan.png')) {
-    throw new Error(`FAIL: image scan note's image_path should point at the copied image, got ${imageScanNote.image_path}`);
+  if (imageScanNote.content_markdown !== '') {
+    throw new Error('FAIL: a freshly dropped scan should have no content until OCR is run and accepted');
   }
 
   // Confirm on-disk layout: course folder named after the course (not

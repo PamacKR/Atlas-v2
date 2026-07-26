@@ -59,10 +59,8 @@ export interface Deadline {
   description: string | null;
 }
 
-export interface ImportScanProgress {
-  fileIndex: number;
-  fileCount: number;
-  filename: string;
+export interface NoteOcrProgress {
+  noteId: number;
   page: number;
   totalPages: number;
 }
@@ -175,8 +173,9 @@ contextBridge.exposeInMainWorld('atlas', {
   importScan: (courseId: number): Promise<Note[]> => ipcRenderer.invoke('notes:importScan', courseId),
   importScanBuffer: (courseId: number, filename: string, buffer: ArrayBuffer): Promise<Note | null> =>
     ipcRenderer.invoke('notes:importScanBuffer', courseId, filename, buffer),
-  onImportScanProgress: (handler: (progress: ImportScanProgress) => void): void => {
-    ipcRenderer.on('notes:importScanProgress', (_event, progress: ImportScanProgress) => handler(progress));
+  runNoteOcr: (noteId: number): Promise<string | null> => ipcRenderer.invoke('notes:runOcr', noteId),
+  onNoteOcrProgress: (handler: (progress: NoteOcrProgress) => void): void => {
+    ipcRenderer.on('notes:ocrProgress', (_event, progress: NoteOcrProgress) => handler(progress));
   },
   search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('search:query', query),
   listDeadlines: (courseId: number): Promise<Deadline[]> =>

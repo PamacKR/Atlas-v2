@@ -131,4 +131,28 @@ Handwritten notes (OCR via local Tesseract.js) is the more self-contained option
 
 **Status:** Resolved (2026-07-26) — kept the original order. The user said "ok go ahead with phase 2" (handwritten notes), confirming the recommendation above rather than swapping in external sync first. Phase 2 is now built (see `STATUS.md` session 39, `ARCHITECTURE.md` §3); Phase 3 (external sync) is next per `ROADMAP.md`.
 
+### 18. Local OCR vs. reading handwriting via Claude's vision
+
+After using Phase 2's OCR import on their actual handwriting, the user found local Tesseract's accuracy poor (expected — `ARCHITECTURE.md` §3 already documented this as an accepted tradeoff of the no-cloud-API constraint, not a bug). They then asked directly: since Claude can already read handwritten images/PDFs via vision, could that replace OCR?
+
+**Answer given:** Yes — Claude Code (this assistant) can read a handwritten scan directly today, no Atlas feature required, just by being shown the file. That's a fundamentally different and generally more accurate path than local OCR for handwriting specifically, and it fits "Atlas owns data, Claude owns reasoning" (`CLAUDE.md`) exactly: Atlas stores the scan, Claude reads it at query time when asked, nothing is a stored AI-generated transformation written back as fact.
+
+**Decision (2026-07-26):** Don't drop OCR entirely — the user also pointed out OCR is still genuinely useful for **typed/printed PDFs that lack a text layer** (e.g. a scanned book), which is a different case from handwriting. Landed on:
+
+- **Handwritten-note import no longer runs OCR automatically.** A scan is just stored (original file + blank note) until the user explicitly asks for OCR via a new "Run OCR" button, and even then the result is a reviewable draft (Discard/Insert), never silently trusted or auto-saved. See `ARCHITECTURE.md` §3 for the implementation.
+- For an accurate read of a specific handwritten note, the expected path is now: ask Claude Code directly to read the note's original scan (already possible, no new Atlas work) — the in-app OCR button is for when a rough, good-enough, fully local pass is fine (e.g. skimming a stack of notes for keywords).
+- The "OCR helps for typed PDFs without a text layer" case the user raised is **not built** — it would mean adding OCR as an on-demand action on Resources (not just handwritten Notes), which is a real but separate feature. Logged here rather than built speculatively.
+
+**Status:** Resolved for handwritten notes (opt-in, reviewed, not automatic). Open as a possible future item: an equivalent on-demand "OCR this PDF" action for text-layer-less Resources (not just Notes) — not scoped or requested yet, revisit if the user hits an actual PDF book/scan that needs it.
+
+### 19. Easier upload from tablet (typed notes) and phone (handwritten scans)
+
+The user will primarily take typed notes on a tablet and scan handwritten notes on a phone (via an app like Adobe Scan), and asked if there's an easier way to get those files into Atlas than manual transfer.
+
+**Answer given:** For phone-scanned PDFs specifically, the existing **Watched Folders** feature (Phase 1, per-course, `ARCHITECTURE.md` §4) already solves most of this with no new Atlas development: point a watched folder at wherever a cloud-sync app (Google Drive/OneDrive/Dropbox desktop client, whichever the user already has) lands files synced from a phone or tablet, and Atlas auto-imports anything that appears there. Most scanning apps can "export"/"save" directly into a cloud-drive folder from the phone itself.
+
+**Caveat surfaced, not yet resolved:** watched folders import as plain `resources`, not as handwritten `notes` via the "Import scan" path (`is_handwritten`/`image_path`) — a scan landing via a watched folder today becomes a Resource, not a Note. If the user wants phone scans to specifically become handwritten Notes automatically (not just Resources), that needs a small, well-scoped enhancement: a folder-watch mode that routes through `importScanFileIntoNote` instead of `importFileIntoCourse`. Not built — genuinely no Atlas feature exists for "typed notes made in another tablet app" either, beyond exporting/syncing them as files and manually copying content in; a full remote/mobile client for Atlas itself is explicitly out of scope for V1 (PRD, "Explicitly out of scope for V1" — no mobile app).
+
+**Status:** Open — the watched-folder recommendation is usable today for phone scans (as Resources); whether to build the "watched folder routes straight into a handwritten Note" enhancement is the user's call, not yet requested.
+
 **Status:** Open — leans toward keeping the current order (Phase 2 = handwritten notes, Phase 3 = sync) for the lower-risk/self-contained reasons above, but this is a value-sequencing call for the user to make, not a technical blocker either way; both orders are equally buildable. `ROADMAP.md` stays unchanged until the user decides.

@@ -1137,12 +1137,19 @@ ipcMain.on('notes:contextMenu', (event, noteId: number) => {
   if (win) menu.popup({ window: win });
 });
 
-// --- Handwritten notes: import a scan (PDF or image), OCR it locally
-// (src/main/ocr.ts, Tesseract.js — see ARCHITECTURE.md §3), and create one
-// note per imported file. One file always becomes one note, however many
-// pages a PDF has — matches how the user actually scans (one Adobe Scan PDF
-// per lecture) and needs no schema change, since notes.image_path/ocr_text
-// were already added ahead of this feature.
+// --- Handwritten notes: import a scan (PDF or image) and create one note
+// per imported file — one file always becomes one note, however many pages
+// a PDF has, matching how the user actually scans (one Adobe Scan PDF per
+// lecture). No schema change needed, since notes.image_path/ocr_text were
+// already added ahead of this feature.
+//
+// OCR is deliberately NOT run automatically at import. It was at first, but
+// the user found local Tesseract's accuracy on their actual handwriting too
+// poor to be worth it automatically — and pointed out that reading a scan
+// via Claude Code's vision (already possible today, no Atlas feature needed)
+// is a better fit for handwriting anyway. OCR is now an explicit per-note
+// action (notes:runOcr below) the user opts into and reviews before
+// accepting, rather than something that runs and gets silently trusted.
 const SCAN_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp']);
 
 function isScanFile(filePath: string): boolean {
@@ -1150,35 +1157,25 @@ function isScanFile(filePath: string): boolean {
 }
 
 // Shared by the native-dialog and drag-and-drop import paths once the scan
-// file is already copied into the course's own scans/ folder: runs OCR,
-// seeds a new note from the extracted text exactly like a typed note (so
-// autosave/search/editing all just work with no special-casing), and marks
-// it handwritten.
-async function finishScanImport(
-  courseId: number,
-  destPath: string,
-  onProgress?: (page: number, totalPages: number) => void
-): Promise<unknown> {
+// file is already copied into the course's own scans/ folder: creates a
+// blank note pointing at it, titled from the original filename (a real title
+// isn't derivable yet with no OCR text — renaming, or later accepting an OCR
+// result, both naturally replace it).
+function finishScanImport(courseId: number, destPath: string, titleGuess: string): unknown {
   const db = getDb();
-  const ocrText = await extractTextFromScan(destPath, onProgress);
-
   const insertResult = db
     .prepare(
-      `INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path, ocr_text)
-       VALUES (?, ?, ?, 1, ?, ?)`
+      `INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path)
+       VALUES (?, ?, '', 1, ?)`
     )
-    .run(courseId, deriveTitleFromMarkdown(ocrText), ocrText, destPath, ocrText);
+    .run(courseId, titleGuess || 'Untitled scan', destPath);
   const noteId = Number(insertResult.lastInsertRowid);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
   return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
 }
 
-async function importScanFileIntoNote(
-  courseId: number,
-  sourcePath: string,
-  onProgress?: (page: number, totalPages: number) => void
-): Promise<unknown> {
+function importScanFileIntoNote(courseId: number, sourcePath: string): unknown {
   const db = getDb();
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
     | { folder_name: string }
@@ -1187,21 +1184,17 @@ async function importScanFileIntoNote(
 
   const scansDir = getScanImagesDir(course.folder_name);
   fs.mkdirSync(scansDir, { recursive: true });
-  const destPath = uniqueDestPath(scansDir, path.basename(sourcePath));
+  const originalFilename = path.basename(sourcePath);
+  const destPath = uniqueDestPath(scansDir, originalFilename);
   fs.copyFileSync(sourcePath, destPath);
 
-  return finishScanImport(courseId, destPath, onProgress);
+  return finishScanImport(courseId, destPath, path.basename(originalFilename, path.extname(originalFilename)));
 }
 
 // Drag-and-drop variant — same reasoning as importBufferIntoCourse for
 // resources: the renderer only has the dropped File's contents, not a real
 // filesystem path, under contextIsolation.
-async function importScanBufferIntoNote(
-  courseId: number,
-  originalFilename: string,
-  buffer: Buffer,
-  onProgress?: (page: number, totalPages: number) => void
-): Promise<unknown> {
+function importScanBufferIntoNote(courseId: number, originalFilename: string, buffer: Buffer): unknown {
   const db = getDb();
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
     | { folder_name: string }
@@ -1213,10 +1206,10 @@ async function importScanBufferIntoNote(
   const destPath = uniqueDestPath(scansDir, originalFilename);
   fs.writeFileSync(destPath, buffer);
 
-  return finishScanImport(courseId, destPath, onProgress);
+  return finishScanImport(courseId, destPath, path.basename(originalFilename, path.extname(originalFilename)));
 }
 
-ipcMain.handle('notes:importScan', async (event, courseId: number) => {
+ipcMain.handle('notes:importScan', async (_event, courseId: number) => {
   // Test hook mirroring ATLAS_TEST_UPLOAD_PATH (resources:upload) — native
   // multi-file pickers can't be driven by Playwright. Multiple paths are
   // delimiter-separated (path.delimiter: ';' on Windows, ':' elsewhere).
@@ -1233,22 +1226,7 @@ ipcMain.handle('notes:importScan', async (event, courseId: number) => {
     sourcePaths = result.filePaths.filter(isScanFile);
   }
 
-  const createdNotes: unknown[] = [];
-  for (let i = 0; i < sourcePaths.length; i++) {
-    const sourcePath = sourcePaths[i];
-    const note = await importScanFileIntoNote(courseId, sourcePath, (page, totalPages) => {
-      event.sender.send('notes:importScanProgress', {
-        fileIndex: i + 1,
-        fileCount: sourcePaths.length,
-        filename: path.basename(sourcePath),
-        page,
-        totalPages,
-      });
-    });
-    if (note) createdNotes.push(note);
-  }
-  await endOcrBatch();
-  return createdNotes;
+  return sourcePaths.map((sourcePath) => importScanFileIntoNote(courseId, sourcePath)).filter(Boolean);
 });
 
 // Reuses the exact same Preview shape/rendering the Resources preview modal
@@ -1263,22 +1241,26 @@ ipcMain.handle('notes:getScanPreview', (_event, noteId: number) => {
   return getPreview(kindFromExtension(note.image_path), note.image_path);
 });
 
-ipcMain.handle(
-  'notes:importScanBuffer',
-  async (event, courseId: number, filename: string, buffer: ArrayBuffer) => {
-    if (!isScanFile(filename)) return null;
-    const note = await importScanBufferIntoNote(courseId, filename, Buffer.from(buffer), (page, totalPages) => {
-      event.sender.send('notes:importScanProgress', {
-        fileIndex: 1,
-        fileCount: 1,
-        filename,
-        page,
-        totalPages,
-      });
-    });
-    return note;
-  }
-);
+ipcMain.handle('notes:importScanBuffer', (_event, courseId: number, filename: string, buffer: ArrayBuffer) => {
+  if (!isScanFile(filename)) return null;
+  return importScanBufferIntoNote(courseId, filename, Buffer.from(buffer));
+});
+
+// On-demand OCR (see the comment above importScanFileIntoNote for why this
+// isn't automatic). Deliberately does NOT write anything to the database —
+// it just returns the extracted text for the renderer to show the user, who
+// then explicitly accepts it (via the existing notes:updateContent, same as
+// any other edit) or discards it. Nothing is "silently trusted."
+ipcMain.handle('notes:runOcr', async (event, noteId: number) => {
+  const db = getDb();
+  const note = db.prepare('SELECT image_path FROM notes WHERE id = ?').get(noteId) as
+    | { image_path: string | null }
+    | undefined;
+  if (!note?.image_path) return null;
+  return extractTextFromScan(note.image_path, (page, totalPages) => {
+    event.sender.send('notes:ocrProgress', { noteId, page, totalPages });
+  });
+});
 
 // --- IPC: deadlines ---
 // One unified per-course timeline (PRD §12) — assignments/readings/quizzes/

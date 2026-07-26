@@ -59,10 +59,8 @@ interface MentionCandidate {
   title: string;
 }
 
-interface ImportScanProgress {
-  fileIndex: number;
-  fileCount: number;
-  filename: string;
+interface NoteOcrProgress {
+  noteId: number;
   page: number;
   totalPages: number;
 }
@@ -156,7 +154,8 @@ interface AtlasApi {
   getNoteScanPreview: (noteId: number) => Promise<Preview | null>;
   importScan: (courseId: number) => Promise<Note[]>;
   importScanBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Note | null>;
-  onImportScanProgress: (handler: (progress: ImportScanProgress) => void) => void;
+  runNoteOcr: (noteId: number) => Promise<string | null>;
+  onNoteOcrProgress: (handler: (progress: NoteOcrProgress) => void) => void;
   search: (query: string) => Promise<SearchResult[]>;
   listDeadlines: (courseId: number) => Promise<Deadline[]>;
   createDeadline: (
@@ -520,10 +519,11 @@ let coursePickerSelectedId: number | null = null;
 // is the only thing left to choose, so clicking one uploads immediately
 // instead of also requiring a second drop into the modal's own dropzone.
 let coursePickerPendingFile: File | null = null;
-// True while a scan import is actually running (OCR can take real time) —
-// the modal stays open and shows progress instead of closing immediately
-// like upload/note do, and closing is blocked so the in-progress batch isn't
-// abandoned mid-way.
+// True while a scan import is actually running — the modal stays open and
+// shows progress instead of closing immediately like upload/note do, and
+// closing is blocked so the in-progress batch isn't abandoned mid-way. OCR
+// is no longer run at import time (see main.ts), so this is brief, but a
+// multi-file drop is still processed one at a time rather than all at once.
 let coursePickerBusy = false;
 
 async function uploadDroppedFile(courseId: number, file: File): Promise<void> {
@@ -538,10 +538,6 @@ function setImportScanProgress(text: string | null): void {
   el.hidden = text === null;
 }
 
-// Sequential, not parallel — a shared Tesseract worker (src/main/ocr.ts) is
-// reused across the whole batch on the main-process side, so importing one
-// file at a time here lets that reuse actually happen instead of racing
-// several OCR jobs against one worker.
 async function importScanFiles(courseId: number, files: File[]): Promise<void> {
   coursePickerBusy = true;
   const dropzone = document.getElementById('course-picker-dropzone')!;
@@ -1359,26 +1355,17 @@ async function flushPendingNoteSave(): Promise<void> {
 // opening a note never navigates away from whatever page is currently
 // showing (Dashboard, a course detail view, the Notes page itself), same
 // reasoning as openPreview().
-async function openNoteEditor(note: Note): Promise<void> {
-  const overlay = document.getElementById('note-overlay')!;
-  const titleInput = document.getElementById('note-title-input') as HTMLInputElement;
-  const statusEl = document.getElementById('note-save-status')!;
+// Builds a fresh Crepe instance for `note` into #note-editor-root, replacing
+// any existing one — factored out of openNoteEditor so accepting an OCR
+// result (insertNoteOcr, below) can reload the editor with new content the
+// same way, rather than duplicating the Crepe setup.
+async function mountNoteEditor(note: Note): Promise<void> {
+  if (noteEditorInstance) {
+    await noteEditorInstance.destroy();
+    noteEditorInstance = null;
+  }
   const root = document.getElementById('note-editor-root')!;
-
-  currentNoteId = note.id;
-  titleInput.value = note.title;
-  statusEl.textContent = '';
   root.innerHTML = '';
-  overlay.hidden = false;
-
-  // "View original scan" only makes sense for a handwritten note — the panel
-  // always starts collapsed on open, even if it was left open on whatever
-  // note was viewed last.
-  const scanToggle = document.getElementById('note-view-scan') as HTMLButtonElement;
-  const scanPanel = document.getElementById('note-scan-panel')!;
-  scanToggle.hidden = !note.is_handwritten;
-  scanPanel.hidden = true;
-  scanPanel.innerHTML = '';
 
   const saveImage = async (file: File): Promise<string> => {
     const buffer = await file.arrayBuffer();
@@ -1419,6 +1406,32 @@ async function openNoteEditor(note: Note): Promise<void> {
   noteEditorInstance = crepe;
 }
 
+async function openNoteEditor(note: Note): Promise<void> {
+  const overlay = document.getElementById('note-overlay')!;
+  const titleInput = document.getElementById('note-title-input') as HTMLInputElement;
+  const statusEl = document.getElementById('note-save-status')!;
+
+  currentNoteId = note.id;
+  titleInput.value = note.title;
+  statusEl.textContent = '';
+  overlay.hidden = false;
+
+  // "View original scan"/"Run OCR" only make sense for a handwritten note —
+  // both start collapsed/reset on open, even if left open on whatever note
+  // was viewed last.
+  const scanToggle = document.getElementById('note-view-scan') as HTMLButtonElement;
+  const scanPanel = document.getElementById('note-scan-panel')!;
+  const ocrButton = document.getElementById('note-run-ocr') as HTMLButtonElement;
+  scanToggle.hidden = !note.is_handwritten;
+  ocrButton.hidden = !note.is_handwritten;
+  ocrButton.disabled = false;
+  scanPanel.hidden = true;
+  scanPanel.innerHTML = '';
+  discardNoteOcr();
+
+  await mountNoteEditor(note);
+}
+
 async function closeNoteEditor(): Promise<void> {
   await flushPendingNoteSave();
 
@@ -1427,6 +1440,7 @@ async function closeNoteEditor(): Promise<void> {
   overlay.classList.remove('fullscreen');
   resetNoteFullscreenButton();
   document.getElementById('note-scan-panel')!.hidden = true;
+  discardNoteOcr();
 
   if (noteEditorInstance) {
     await noteEditorInstance.destroy();
@@ -1495,6 +1509,50 @@ async function toggleNoteScanPanel(): Promise<void> {
   panel.hidden = false;
   const preview = await atlasApi.getNoteScanPreview(currentNoteId);
   if (preview) renderScanInto(panel, preview);
+}
+
+// OCR is opt-in per note, not automatic on import (see main.ts for why —
+// the user found local Tesseract's accuracy on their actual handwriting too
+// poor to trust silently). Running it never touches the note on its own;
+// the extracted text is only a candidate the user reviews and explicitly
+// accepts (insertNoteOcr) or discards.
+let pendingOcrText: string | null = null;
+
+function discardNoteOcr(): void {
+  pendingOcrText = null;
+  document.getElementById('note-ocr-preview')!.hidden = true;
+}
+
+async function runNoteOcr(): Promise<void> {
+  if (currentNoteId === null) return;
+  const noteId = currentNoteId;
+  const button = document.getElementById('note-run-ocr') as HTMLButtonElement;
+  const statusEl = document.getElementById('note-save-status')!;
+  button.disabled = true;
+  statusEl.textContent = 'Running OCR…';
+  const text = await atlasApi.runNoteOcr(noteId);
+  button.disabled = false;
+  statusEl.textContent = '';
+  if (text === null || currentNoteId !== noteId) return; // note closed/changed while OCR ran
+
+  pendingOcrText = text;
+  const preview = document.getElementById('note-ocr-preview')!;
+  document.getElementById('note-ocr-preview-text')!.textContent = text.trim() || '(No text detected.)';
+  preview.hidden = false;
+}
+
+async function insertNoteOcr(): Promise<void> {
+  if (currentNoteId === null || pendingOcrText === null) return;
+  const noteId = currentNoteId;
+  const text = pendingOcrText;
+  discardNoteOcr();
+
+  await atlasApi.updateNoteContent(noteId, text);
+  const notes = await atlasApi.listAllNotes();
+  const updated = notes.find((n) => n.id === noteId);
+  if (!updated) return;
+  (document.getElementById('note-title-input') as HTMLInputElement).value = updated.title;
+  await mountNoteEditor(updated);
 }
 
 // The Courses page shows either the grid (courses-list-view) or one
@@ -2210,11 +2268,13 @@ async function init(): Promise<void> {
   document.getElementById('new-note-button')!.addEventListener('click', () => openCoursePicker('note'));
   document.getElementById('import-scan-button')!.addEventListener('click', () => openCoursePicker('scan'));
 
-  atlasApi.onImportScanProgress((progress) => {
-    const fileLabel =
-      progress.fileCount > 1 ? `"${progress.filename}" (${progress.fileIndex} of ${progress.fileCount})` : `"${progress.filename}"`;
-    const pageLabel = progress.totalPages > 1 ? ` — page ${progress.page} of ${progress.totalPages}` : '';
-    setImportScanProgress(`Processing ${fileLabel}${pageLabel}…`);
+  document.getElementById('note-run-ocr')!.addEventListener('click', runNoteOcr);
+  document.getElementById('note-ocr-discard')!.addEventListener('click', discardNoteOcr);
+  document.getElementById('note-ocr-insert')!.addEventListener('click', insertNoteOcr);
+  atlasApi.onNoteOcrProgress((progress) => {
+    if (progress.noteId !== currentNoteId) return;
+    document.getElementById('note-save-status')!.textContent =
+      progress.totalPages > 1 ? `Running OCR… page ${progress.page} of ${progress.totalPages}` : 'Running OCR…';
   });
 
   const noteTitleInput = document.getElementById('note-title-input') as HTMLInputElement;
@@ -2465,10 +2525,9 @@ async function init(): Promise<void> {
     const courseId = coursePickerSelectedId;
 
     if (coursePickerMode === 'scan') {
-      // Native multi-select dialog + OCR all happen inside this one IPC
-      // call (main.ts), so the modal just waits and shows progress — it
-      // can't close early like upload/note do, since there's nothing to
-      // hand off to run in the background.
+      // Native multi-select dialog + import happen inside this one IPC call
+      // (main.ts) — no OCR runs here (see main.ts), just a file copy per
+      // selected scan, but the modal still waits rather than closing early.
       coursePickerBusy = true;
       (document.getElementById('course-picker-search') as HTMLInputElement).disabled = true;
       setImportScanProgress('Choose scan(s) to import…');

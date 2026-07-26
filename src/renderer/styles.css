@@ -1041,6 +1041,59 @@ ul#course-list.view-list li.course-card .course-card-counts {
   background: white;
 }
 
+/* OCR review step — shown after "Run OCR" completes, holds the raw
+   extracted text until the user explicitly accepts (Insert) or discards it.
+   Same [hidden]-vs-own-selector trap as elsewhere in this file. */
+#note-ocr-preview:not([hidden]) {
+  display: block;
+  flex-shrink: 0;
+  max-height: 40%;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  overflow: auto;
+}
+
+#note-ocr-preview p.muted {
+  margin: 0 0 0.5rem 0;
+}
+
+#note-ocr-preview-text {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+#note-ocr-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+#note-ocr-preview-actions button {
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#note-ocr-discard {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+}
+
+#note-ocr-discard:hover {
+  background: var(--color-hover-bg);
+}
+
+#note-ocr-insert {
+  border: none;
+  background: var(--color-accent);
+  color: white;
+}
+
 /* Resource preview: a full overlay modal (not a docked pane) — the docked
    pane tried before this left too little width for the Resources list next
    to it for what the content actually needed. Same overlay pattern as
