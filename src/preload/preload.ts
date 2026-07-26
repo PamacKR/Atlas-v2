@@ -59,6 +59,14 @@ export interface Deadline {
   description: string | null;
 }
 
+export interface ImportScanProgress {
+  fileIndex: number;
+  fileCount: number;
+  filename: string;
+  page: number;
+  totalPages: number;
+}
+
 export interface SearchResult {
   entityType: 'note' | 'resource' | 'announcement' | 'assignment';
   entityId: number;
@@ -162,6 +170,14 @@ contextBridge.exposeInMainWorld('atlas', {
   getNoteBrowserUrl: (noteId: number): Promise<string> => ipcRenderer.invoke('notes:browserUrl', noteId),
   saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string): Promise<string> =>
     ipcRenderer.invoke('notes:saveImage', courseId, buffer, extension),
+  getNoteScanPreview: (noteId: number): Promise<Preview | null> =>
+    ipcRenderer.invoke('notes:getScanPreview', noteId),
+  importScan: (courseId: number): Promise<Note[]> => ipcRenderer.invoke('notes:importScan', courseId),
+  importScanBuffer: (courseId: number, filename: string, buffer: ArrayBuffer): Promise<Note | null> =>
+    ipcRenderer.invoke('notes:importScanBuffer', courseId, filename, buffer),
+  onImportScanProgress: (handler: (progress: ImportScanProgress) => void): void => {
+    ipcRenderer.on('notes:importScanProgress', (_event, progress: ImportScanProgress) => handler(progress));
+  },
   search: (query: string): Promise<SearchResult[]> => ipcRenderer.invoke('search:query', query),
   listDeadlines: (courseId: number): Promise<Deadline[]> =>
     ipcRenderer.invoke('deadlines:listByCourse', courseId),

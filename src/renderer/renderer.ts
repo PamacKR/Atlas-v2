@@ -59,6 +59,14 @@ interface MentionCandidate {
   title: string;
 }
 
+interface ImportScanProgress {
+  fileIndex: number;
+  fileCount: number;
+  filename: string;
+  page: number;
+  totalPages: number;
+}
+
 interface SearchResult {
   entityType: 'note' | 'resource' | 'announcement' | 'assignment';
   entityId: number;
@@ -145,6 +153,10 @@ interface AtlasApi {
   onNoteContextMenuDelete: (handler: (noteId: number) => void) => void;
   getNoteBrowserUrl: (noteId: number) => Promise<string>;
   saveNoteImage: (courseId: number, buffer: ArrayBuffer, extension: string) => Promise<string>;
+  getNoteScanPreview: (noteId: number) => Promise<Preview | null>;
+  importScan: (courseId: number) => Promise<Note[]>;
+  importScanBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Note | null>;
+  onImportScanProgress: (handler: (progress: ImportScanProgress) => void) => void;
   search: (query: string) => Promise<SearchResult[]>;
   listDeadlines: (courseId: number) => Promise<Deadline[]>;
   createDeadline: (
@@ -498,7 +510,7 @@ function renderCourseRail(
 // were more than a couple of courses. Shared between the Upload and New Note
 // flows via `mode`; Upload additionally carries a drag-and-drop zone.
 
-type CoursePickerMode = 'upload' | 'note';
+type CoursePickerMode = 'upload' | 'note' | 'scan';
 
 let coursePickerMode: CoursePickerMode = 'upload';
 let coursePickerCourses: Course[] = [];
@@ -508,6 +520,11 @@ let coursePickerSelectedId: number | null = null;
 // is the only thing left to choose, so clicking one uploads immediately
 // instead of also requiring a second drop into the modal's own dropzone.
 let coursePickerPendingFile: File | null = null;
+// True while a scan import is actually running (OCR can take real time) —
+// the modal stays open and shows progress instead of closing immediately
+// like upload/note do, and closing is blocked so the in-progress batch isn't
+// abandoned mid-way.
+let coursePickerBusy = false;
 
 async function uploadDroppedFile(courseId: number, file: File): Promise<void> {
   const buffer = await file.arrayBuffer();
@@ -515,8 +532,40 @@ async function uploadDroppedFile(courseId: number, file: File): Promise<void> {
   if (resource) await renderResourcesPage();
 }
 
+function setImportScanProgress(text: string | null): void {
+  const el = document.getElementById('course-picker-progress')!;
+  el.textContent = text ?? '';
+  el.hidden = text === null;
+}
+
+// Sequential, not parallel — a shared Tesseract worker (src/main/ocr.ts) is
+// reused across the whole batch on the main-process side, so importing one
+// file at a time here lets that reuse actually happen instead of racing
+// several OCR jobs against one worker.
+async function importScanFiles(courseId: number, files: File[]): Promise<void> {
+  coursePickerBusy = true;
+  const dropzone = document.getElementById('course-picker-dropzone')!;
+  const searchInput = document.getElementById('course-picker-search') as HTMLInputElement;
+  dropzone.classList.add('disabled');
+  searchInput.disabled = true;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    setImportScanProgress(`Processing "${file.name}" (${i + 1} of ${files.length})…`);
+    const buffer = await file.arrayBuffer();
+    await atlasApi.importScanBuffer(courseId, file.name, buffer);
+  }
+
+  coursePickerBusy = false;
+  searchInput.disabled = false;
+  closeCoursePicker();
+  await renderNotesPage();
+}
+
 function closeCoursePicker(): void {
+  if (coursePickerBusy) return;
   document.getElementById('course-picker-overlay')!.hidden = true;
+  document.getElementById('course-picker-progress')!.hidden = true;
   coursePickerSelectedId = null;
   coursePickerPendingFile = null;
 }
@@ -563,16 +612,18 @@ async function selectCoursePickerCourse(courseId: number): Promise<void> {
     return;
   }
 
-  // Upload mode, no file yet — just highlight the selection and enable the
-  // dropzone below; the user still needs to drop a file or click Browse.
+  // Upload/scan mode, no file yet — just highlight the selection and enable
+  // the dropzone below; the user still needs to drop a file (or several, for
+  // scan mode) or click Browse.
   const searchValue = (document.getElementById('course-picker-search') as HTMLInputElement).value;
   renderCoursePickerList(searchValue);
   const dropzone = document.getElementById('course-picker-dropzone')!;
   dropzone.classList.remove('disabled');
   const course = coursePickerCourses.find((c) => c.id === courseId);
+  const noun = coursePickerMode === 'scan' ? 'scan(s)' : 'a file';
   document.getElementById('course-picker-dropzone-hint')!.textContent = course
-    ? `Drop a file here for ${course.name}`
-    : 'Drop a file here';
+    ? `Drop ${noun} here for ${course.name}`
+    : `Drop ${noun} here`;
 }
 
 async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<void> {
@@ -586,12 +637,20 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
   const dropzone = document.getElementById('course-picker-dropzone')!;
   searchInput.value = '';
 
+  document.getElementById('course-picker-progress')!.hidden = true;
+
   if (mode === 'note') {
     title.textContent = 'New note';
     dropzone.hidden = true;
   } else if (file) {
     title.textContent = `Upload "${file.name}" to…`;
     dropzone.hidden = true;
+  } else if (mode === 'scan') {
+    title.textContent = 'Import scan';
+    dropzone.hidden = false;
+    dropzone.classList.add('disabled');
+    document.getElementById('course-picker-dropzone-hint')!.textContent =
+      'Select a course above, then drop scan(s) here';
   } else {
     title.textContent = 'Upload file';
     dropzone.hidden = false;
@@ -718,7 +777,7 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
 
       const title = document.createElement('div');
       title.className = 'note-item-title';
-      title.textContent = note.title;
+      title.textContent = note.is_handwritten ? `✍️ ${note.title}` : note.title;
       li.appendChild(title);
 
       const meta = document.createElement('div');
@@ -1312,6 +1371,15 @@ async function openNoteEditor(note: Note): Promise<void> {
   root.innerHTML = '';
   overlay.hidden = false;
 
+  // "View original scan" only makes sense for a handwritten note — the panel
+  // always starts collapsed on open, even if it was left open on whatever
+  // note was viewed last.
+  const scanToggle = document.getElementById('note-view-scan') as HTMLButtonElement;
+  const scanPanel = document.getElementById('note-scan-panel')!;
+  scanToggle.hidden = !note.is_handwritten;
+  scanPanel.hidden = true;
+  scanPanel.innerHTML = '';
+
   const saveImage = async (file: File): Promise<string> => {
     const buffer = await file.arrayBuffer();
     const dot = file.name.lastIndexOf('.');
@@ -1359,6 +1427,7 @@ async function closeNoteEditor(): Promise<void> {
   overlay.classList.remove('wide', 'fullscreen');
   resetNoteWidenButton();
   resetNoteFullscreenButton();
+  document.getElementById('note-scan-panel')!.hidden = true;
 
   if (noteEditorInstance) {
     await noteEditorInstance.destroy();
@@ -1424,6 +1493,37 @@ function toggleNoteTrueFullscreen(): void {
   button.innerHTML = isFullscreen ? NOTE_EXIT_FULLSCREEN_ICON : NOTE_FULLSCREEN_ICON;
   button.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
   button.setAttribute('aria-label', button.title);
+}
+
+// Renders a scan preview (image or PDF) into a plain container — same two
+// branches openPreview() has for resources, since a handwritten note's scan
+// is just a file on disk with no different rendering needs. Only image/pdf
+// are possible here (see SCAN_EXTENSIONS in main.ts), so the html/text/
+// unsupported branches openPreview() also handles don't apply.
+function renderScanInto(container: HTMLElement, preview: Preview): void {
+  container.innerHTML = '';
+  if (preview.type === 'pdf') {
+    const iframe = document.createElement('iframe');
+    iframe.src = preview.url;
+    container.appendChild(iframe);
+  } else if (preview.type === 'image') {
+    const img = document.createElement('img');
+    img.src = preview.url;
+    container.appendChild(img);
+  }
+}
+
+async function toggleNoteScanPanel(): Promise<void> {
+  const panel = document.getElementById('note-scan-panel')!;
+  if (!panel.hidden) {
+    panel.hidden = true;
+    return;
+  }
+  if (currentNoteId === null) return;
+  panel.innerHTML = '<p class="muted">Loading scan…</p>';
+  panel.hidden = false;
+  const preview = await atlasApi.getNoteScanPreview(currentNoteId);
+  if (preview) renderScanInto(panel, preview);
 }
 
 // The Courses page shows either the grid (courses-list-view) or one
@@ -1516,7 +1616,7 @@ async function renderCourseDetailPreviews(courseId: number): Promise<void> {
   } else {
     for (const note of notes.slice(0, COURSE_DETAIL_PREVIEW_LIMIT)) {
       const li = document.createElement('li');
-      li.textContent = note.title;
+      li.textContent = note.is_handwritten ? `✍️ ${note.title}` : note.title;
       li.addEventListener('click', () => openNoteEditor(note));
       noteList.appendChild(li);
     }
@@ -2137,6 +2237,14 @@ async function init(): Promise<void> {
   });
 
   document.getElementById('new-note-button')!.addEventListener('click', () => openCoursePicker('note'));
+  document.getElementById('import-scan-button')!.addEventListener('click', () => openCoursePicker('scan'));
+
+  atlasApi.onImportScanProgress((progress) => {
+    const fileLabel =
+      progress.fileCount > 1 ? `"${progress.filename}" (${progress.fileIndex} of ${progress.fileCount})` : `"${progress.filename}"`;
+    const pageLabel = progress.totalPages > 1 ? ` — page ${progress.page} of ${progress.totalPages}` : '';
+    setImportScanProgress(`Processing ${fileLabel}${pageLabel}…`);
+  });
 
   const noteTitleInput = document.getElementById('note-title-input') as HTMLInputElement;
   noteTitleInput.addEventListener('focus', () => {
@@ -2168,6 +2276,7 @@ async function init(): Promise<void> {
   document.getElementById('note-close')!.addEventListener('click', closeNoteEditor);
   document.getElementById('note-widen')!.addEventListener('click', toggleNoteWidth);
   document.getElementById('note-fullscreen')!.addEventListener('click', toggleNoteTrueFullscreen);
+  document.getElementById('note-view-scan')!.addEventListener('click', toggleNoteScanPanel);
 
   atlasApi.onNoteContextMenuDelete(async (noteId) => {
     if (!(await showConfirm("Delete this note? This can't be undone."))) return;
@@ -2382,8 +2491,29 @@ async function init(): Promise<void> {
     if (e.key === 'Escape') closeCoursePicker();
   });
   document.getElementById('course-picker-browse')!.addEventListener('click', async () => {
-    if (coursePickerSelectedId === null) return;
+    if (coursePickerSelectedId === null || coursePickerBusy) return;
     const courseId = coursePickerSelectedId;
+
+    if (coursePickerMode === 'scan') {
+      // Native multi-select dialog + OCR all happen inside this one IPC
+      // call (main.ts), so the modal just waits and shows progress — it
+      // can't close early like upload/note do, since there's nothing to
+      // hand off to run in the background.
+      coursePickerBusy = true;
+      (document.getElementById('course-picker-search') as HTMLInputElement).disabled = true;
+      setImportScanProgress('Choose scan(s) to import…');
+      const createdNotes = await atlasApi.importScan(courseId);
+      coursePickerBusy = false;
+      (document.getElementById('course-picker-search') as HTMLInputElement).disabled = false;
+      if (createdNotes.length > 0) {
+        closeCoursePicker();
+        await renderNotesPage();
+      } else {
+        setImportScanProgress(null); // dialog was cancelled — let the user try again
+      }
+      return;
+    }
+
     closeCoursePicker();
     const resource = await atlasApi.uploadResource(courseId);
     if (resource) await renderResourcesPage();
@@ -2392,17 +2522,25 @@ async function init(): Promise<void> {
   const coursePickerDropzone = document.getElementById('course-picker-dropzone')!;
   coursePickerDropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    if (coursePickerSelectedId === null) return;
+    if (coursePickerSelectedId === null || coursePickerBusy) return;
     coursePickerDropzone.classList.add('drag-active');
   });
   coursePickerDropzone.addEventListener('dragleave', () => coursePickerDropzone.classList.remove('drag-active'));
   coursePickerDropzone.addEventListener('drop', async (e) => {
     e.preventDefault();
     coursePickerDropzone.classList.remove('drag-active');
-    if (coursePickerSelectedId === null) return;
+    if (coursePickerSelectedId === null || coursePickerBusy) return;
+    const courseId = coursePickerSelectedId;
+
+    if (coursePickerMode === 'scan') {
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length === 0) return;
+      await importScanFiles(courseId, files);
+      return;
+    }
+
     const file = e.dataTransfer?.files[0];
     if (!file) return;
-    const courseId = coursePickerSelectedId;
     closeCoursePicker();
     await uploadDroppedFile(courseId, file);
   });

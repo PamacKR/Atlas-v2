@@ -17,9 +17,20 @@ const fs = require('fs');
   const testUploadPath = path.join(testDataDir, 'sample-lecture-notes.md');
   fs.writeFileSync(testUploadPath, '# Sample lecture notes\n\nUsed only by scripts/verify-app.js.');
 
+  // Checked-in 2-page PDF fixture (plain printed text) for the handwritten-
+  // notes/OCR import test — same ATLAS_TEST_*_PATH(S) escape-hatch pattern as
+  // ATLAS_TEST_UPLOAD_PATH above, since the native multi-select dialog can't
+  // be driven by Playwright either.
+  const testScanPath = path.join(__dirname, 'fixtures', 'sample-scan.pdf');
+
   const app = await electron.launch({
     args: [path.join(__dirname, '..')],
-    env: { ...process.env, ATLAS_DATA_DIR: testDataDir, ATLAS_TEST_UPLOAD_PATH: testUploadPath },
+    env: {
+      ...process.env,
+      ATLAS_DATA_DIR: testDataDir,
+      ATLAS_TEST_UPLOAD_PATH: testUploadPath,
+      ATLAS_TEST_SCAN_PATHS: testScanPath,
+    },
   });
   const window = await app.firstWindow();
   window.on('console', (msg) => console.log('[renderer console]', msg.type(), msg.text()));
@@ -690,6 +701,107 @@ const fs = require('fs');
   const boldNoteIdActual = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
   await window.evaluate((id) => window.atlas.deleteNote(id), boldNoteIdActual);
   await goToPage('notes');
+
+  // --- Phase 2: handwritten notes (OCR import) ---
+  // PDF path via the native-dialog test hook (ATLAS_TEST_SCAN_PATHS, set at
+  // launch above) — the fixture has 2 pages of plain printed text, so this
+  // also exercises the multi-page join (page texts separated by "---").
+  await window.click('#import-scan-button');
+  await window.waitForTimeout(200);
+  await window.click('#course-picker-list li:has-text("Verify Script Test Course")');
+  await window.waitForTimeout(200);
+  await window.click('#course-picker-browse');
+  await window.waitForTimeout(8000); // real OCR round-trip, not mocked
+  const modalHiddenAfterImport = await window.isHidden('#course-picker-overlay');
+  console.log('course-picker modal closed after scan import finished:', modalHiddenAfterImport);
+  if (!modalHiddenAfterImport) throw new Error('FAIL: course-picker modal did not close after scan import finished');
+
+  const pdfNote = await window.evaluate(async () => {
+    const notes = await window.atlas.listAllNotes();
+    return notes.find((n) => n.is_handwritten && n.ocr_text && n.ocr_text.includes('SCAN PAGE ONE'));
+  });
+  console.log('PDF scan note:', pdfNote && { title: pdfNote.title, ocr_text: pdfNote.ocr_text, image_path: pdfNote.image_path });
+  if (!pdfNote) throw new Error('FAIL: importing the PDF fixture did not create a handwritten note');
+  if (!pdfNote.ocr_text.includes('SCAN PAGE ONE') || !pdfNote.ocr_text.includes('SCAN PAGE TWO')) {
+    throw new Error(`FAIL: PDF note's OCR text is missing one of the two pages: ${JSON.stringify(pdfNote.ocr_text)}`);
+  }
+  if (!pdfNote.ocr_text.includes('---')) {
+    throw new Error('FAIL: multi-page OCR text should be joined with a page separator');
+  }
+  if (!pdfNote.image_path || !pdfNote.image_path.endsWith('sample-scan.pdf')) {
+    throw new Error(`FAIL: handwritten note's image_path should point at the copied PDF, got ${pdfNote.image_path}`);
+  }
+  if (!fs.existsSync(pdfNote.image_path)) {
+    throw new Error('FAIL: the copied original scan file does not exist on disk');
+  }
+
+  // The handwritten badge (✍️) should distinguish it from a typed note in the list.
+  const pdfNoteTitleInList = await window.textContent(
+    `#all-notes-list li[data-note-id="${pdfNote.id}"] .note-item-title`
+  );
+  console.log('handwritten note title in list:', pdfNoteTitleInList);
+  if (!pdfNoteTitleInList.includes('✍️')) {
+    throw new Error(`FAIL: handwritten note should show a badge in the list, got "${pdfNoteTitleInList}"`);
+  }
+
+  // "View original scan" — hidden for a typed note, shown for this one, and
+  // clicking it renders the original PDF via the same preview plumbing the
+  // Resources page uses.
+  await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
+  await window.waitForTimeout(300);
+  const scanToggleVisible = !(await window.isHidden('#note-view-scan'));
+  console.log('"View original scan" button visible for a handwritten note:', scanToggleVisible);
+  if (!scanToggleVisible) throw new Error('FAIL: "View original scan" should be visible for a handwritten note');
+  await window.click('#note-view-scan');
+  await window.waitForTimeout(500);
+  const scanPanelVisible = !(await window.isHidden('#note-scan-panel'));
+  const scanIframeSrc = await window.getAttribute('#note-scan-panel iframe', 'src').catch(() => null);
+  console.log('scan panel visible:', scanPanelVisible, '— iframe src:', scanIframeSrc);
+  if (!scanPanelVisible || !scanIframeSrc) {
+    throw new Error('FAIL: "View original scan" did not render the original PDF');
+  }
+  await window.click('#note-close');
+  await window.waitForTimeout(200);
+
+  // Image path via drag-and-drop (synthetic DragEvent/DataTransfer/File,
+  // same technique as the Resources drag-and-drop tests — Playwright can't
+  // drag a real OS file) — a PNG with real rendered text, generated at
+  // runtime with @napi-rs/canvas rather than checked in as a binary fixture.
+  const scanImageBase64 = (() => {
+    const { createCanvas } = require('@napi-rs/canvas');
+    const c = createCanvas(320, 100);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, 320, 100);
+    ctx.fillStyle = 'black';
+    ctx.font = '28px sans-serif';
+    ctx.fillText('DROPPED SCAN TEXT', 10, 55);
+    return c.toBuffer('image/png').toString('base64');
+  })();
+  await window.click('#import-scan-button');
+  await window.waitForTimeout(200);
+  await window.click('#course-picker-list li:has-text("Verify Script Test Course")');
+  await window.waitForTimeout(200);
+  await window.evaluate((base64) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'dropped-scan.png', { type: 'image/png' }));
+    document
+      .getElementById('course-picker-dropzone')
+      .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, scanImageBase64);
+  await window.waitForTimeout(6000); // real OCR round-trip
+  const imageScanNote = await window.evaluate(async () => {
+    const notes = await window.atlas.listAllNotes();
+    return notes.find((n) => n.is_handwritten && n.ocr_text && n.ocr_text.includes('DROPPED SCAN TEXT'));
+  });
+  console.log('dropped-image scan note:', imageScanNote && { title: imageScanNote.title, ocr_text: imageScanNote.ocr_text });
+  if (!imageScanNote) throw new Error('FAIL: drag-and-drop image scan import did not create a handwritten note');
+  if (!imageScanNote.image_path.endsWith('dropped-scan.png')) {
+    throw new Error(`FAIL: image scan note's image_path should point at the copied image, got ${imageScanNote.image_path}`);
+  }
 
   // Confirm on-disk layout: course folder named after the course (not
   // course-<id>), and the uploaded file keeping its original filename.

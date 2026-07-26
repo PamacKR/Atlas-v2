@@ -2,12 +2,12 @@
 
 This roadmap sequences the PRD into buildable phases. Nothing here is committed to a calendar date — phases are ordered by dependency, not by deadline, and should be re-scoped as we learn from building each one.
 
-## Phase 0 — Foundation (current)
+## Phase 0 — Foundation
 
 - [x] Repository created (private, `PamacKR/Atlas`)
 - [x] PRD, architecture, roadmap, and behavior documentation
-- [ ] Project scaffold: Electron + TypeScript app skeleton, SQLite schema v1, build/dev tooling
-- [ ] Decide and document the on-disk data directory layout (where original files, DB, and config live)
+- [x] Project scaffold: Electron + TypeScript app skeleton, SQLite schema v1, build/dev tooling
+- [x] Decide and document the on-disk data directory layout (where original files, DB, and config live) — `docs/open-questions.md` #6
 
 ## Phase 1 — Core data model & local-only workflow
 
@@ -27,11 +27,11 @@ Goal: Atlas is useful *before* any external sync exists.
 
 ## Phase 2 — Handwritten notes
 
-- Import flow: photos, scans, phone scans, tablet exports
-- OCR pipeline (local, offline via Tesseract.js — see `ARCHITECTURE.md` §3), storing both original image and extracted text
-- Handwritten notes searchable and surfaced identically to typed notes
+- [x] Import flow: photos, scans, phone scans, tablet exports — "+ Import scan" on the Notes page, multi-select or drag-and-drop, PDF (multi-page, the primary real-world case — Adobe Scan and similar apps) and single images both supported
+- [x] OCR pipeline (local, offline via Tesseract.js — see `ARCHITECTURE.md` §3), storing both original image and extracted text — one imported file (however many PDF pages) becomes one note, via `notes.image_path`/`notes.ocr_text`
+- [x] Handwritten notes searchable and surfaced identically to typed notes — `content_markdown` is seeded from the OCR text, so autosave/search/editing all already work with no special-casing; a small ✍️ badge and a "View original scan" toggle are the only visible differences from a typed note
 
-## Phase 3 — External sync
+## Phase 3 — External sync (current)
 
 - Google Classroom adapter: courses, assignments, announcements, attachments, due dates, structure
 - Gmail adapter: academic email detection and course association

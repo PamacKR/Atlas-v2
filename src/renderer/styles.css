@@ -1009,6 +1009,35 @@ ul#course-list.view-list li.course-card .course-card-counts {
   border-radius: 0;
 }
 
+/* Original scan (image/PDF) for a handwritten note — toggled via
+   #note-view-scan, shown above the editor rather than replacing it, so the
+   OCR'd text and the source it came from can be compared side by side.
+   Same [hidden]-vs-own-selector trap as documented elsewhere — display must
+   be conditioned on :not([hidden]). */
+#note-scan-panel:not([hidden]) {
+  display: block;
+  flex-shrink: 0;
+  height: 40%;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: auto;
+  background: var(--color-canvas);
+}
+
+#note-scan-panel img {
+  max-width: 100%;
+  display: block;
+  margin: 0 auto;
+}
+
+#note-scan-panel iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
 /* Resource preview: a full overlay modal (not a docked pane) — the docked
    pane tried before this left too little width for the Resources list next
    to it for what the content actually needed. Same overlay pattern as
@@ -1087,6 +1116,12 @@ ul#course-list.view-list li.course-card .course-card-counts {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0.9rem;
+}
+
+#course-picker-progress {
+  margin: 0.75rem 0 0 0;
+  text-align: center;
+  font-size: 0.85rem;
 }
 
 .modal-header h3 {
@@ -1603,6 +1638,12 @@ form#course-form button {
   background: #8f3636;
 }
 
+.notes-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 button#new-note-button {
   padding: 0.5rem 1rem;
   border-radius: 4px;
@@ -1610,6 +1651,19 @@ button#new-note-button {
   background: var(--color-accent);
   color: white;
   cursor: pointer;
+}
+
+button#import-scan-button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+button#import-scan-button:hover {
+  background: var(--color-hover-bg);
 }
 
 section#deadlines-section {

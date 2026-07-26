@@ -33,3 +33,11 @@ export function getFilesDir(): string {
 export function getNoteImagesDir(courseFolderName: string): string {
   return path.join(getFilesDir(), courseFolderName, 'notes', 'note-images');
 }
+
+// Original scans (photos/PDFs) imported as handwritten notes — kept
+// alongside note-images/ under the same course's notes/ folder, so
+// everything for a course's notes still lives under one subtree. See
+// src/main/ocr.ts and ARCHITECTURE.md §3.
+export function getScanImagesDir(courseFolderName: string): string {
+  return path.join(getFilesDir(), courseFolderName, 'notes', 'scans');
+}

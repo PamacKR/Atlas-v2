@@ -4,8 +4,9 @@ import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
 import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
-import { getFilesDir, getNoteImagesDir } from './paths';
+import { getFilesDir, getNoteImagesDir, getScanImagesDir } from './paths';
 import { getPreview } from './preview';
+import { extractTextFromScan, endOcrBatch } from './ocr';
 import {
   startLocalServer,
   stopLocalServer,
@@ -510,6 +511,12 @@ app.on('window-all-closed', () => {
   for (const courseId of activeCourseStorageWatchers.keys()) stopWatchingCourseStorage(courseId);
   stopLocalServer();
   closeDb();
+  // The shared Tesseract worker (src/main/ocr.ts) may still be resident if a
+  // scan was ever dropped via notes:importScanBuffer, which doesn't
+  // terminate it itself (each drop is a separate IPC call, so terminating
+  // after every single one would lose the point of reusing one worker
+  // across a multi-file drop) — best-effort cleanup on the way out.
+  void endOcrBatch();
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -1129,6 +1136,149 @@ ipcMain.on('notes:contextMenu', (event, noteId: number) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) menu.popup({ window: win });
 });
+
+// --- Handwritten notes: import a scan (PDF or image), OCR it locally
+// (src/main/ocr.ts, Tesseract.js — see ARCHITECTURE.md §3), and create one
+// note per imported file. One file always becomes one note, however many
+// pages a PDF has — matches how the user actually scans (one Adobe Scan PDF
+// per lecture) and needs no schema change, since notes.image_path/ocr_text
+// were already added ahead of this feature.
+const SCAN_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp']);
+
+function isScanFile(filePath: string): boolean {
+  return SCAN_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+// Shared by the native-dialog and drag-and-drop import paths once the scan
+// file is already copied into the course's own scans/ folder: runs OCR,
+// seeds a new note from the extracted text exactly like a typed note (so
+// autosave/search/editing all just work with no special-casing), and marks
+// it handwritten.
+async function finishScanImport(
+  courseId: number,
+  destPath: string,
+  onProgress?: (page: number, totalPages: number) => void
+): Promise<unknown> {
+  const db = getDb();
+  const ocrText = await extractTextFromScan(destPath, onProgress);
+
+  const insertResult = db
+    .prepare(
+      `INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path, ocr_text)
+       VALUES (?, ?, ?, 1, ?, ?)`
+    )
+    .run(courseId, deriveTitleFromMarkdown(ocrText), ocrText, destPath, ocrText);
+  const noteId = Number(insertResult.lastInsertRowid);
+  exportNoteToFile(noteId);
+  rebuildSearchIndex();
+  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+}
+
+async function importScanFileIntoNote(
+  courseId: number,
+  sourcePath: string,
+  onProgress?: (page: number, totalPages: number) => void
+): Promise<unknown> {
+  const db = getDb();
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
+  if (!course) return null;
+
+  const scansDir = getScanImagesDir(course.folder_name);
+  fs.mkdirSync(scansDir, { recursive: true });
+  const destPath = uniqueDestPath(scansDir, path.basename(sourcePath));
+  fs.copyFileSync(sourcePath, destPath);
+
+  return finishScanImport(courseId, destPath, onProgress);
+}
+
+// Drag-and-drop variant — same reasoning as importBufferIntoCourse for
+// resources: the renderer only has the dropped File's contents, not a real
+// filesystem path, under contextIsolation.
+async function importScanBufferIntoNote(
+  courseId: number,
+  originalFilename: string,
+  buffer: Buffer,
+  onProgress?: (page: number, totalPages: number) => void
+): Promise<unknown> {
+  const db = getDb();
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
+  if (!course) return null;
+
+  const scansDir = getScanImagesDir(course.folder_name);
+  fs.mkdirSync(scansDir, { recursive: true });
+  const destPath = uniqueDestPath(scansDir, originalFilename);
+  fs.writeFileSync(destPath, buffer);
+
+  return finishScanImport(courseId, destPath, onProgress);
+}
+
+ipcMain.handle('notes:importScan', async (event, courseId: number) => {
+  // Test hook mirroring ATLAS_TEST_UPLOAD_PATH (resources:upload) — native
+  // multi-file pickers can't be driven by Playwright. Multiple paths are
+  // delimiter-separated (path.delimiter: ';' on Windows, ':' elsewhere).
+  let sourcePaths: string[];
+  if (process.env.ATLAS_TEST_SCAN_PATHS) {
+    sourcePaths = process.env.ATLAS_TEST_SCAN_PATHS.split(path.delimiter);
+  } else {
+    if (!mainWindow) return [];
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Scans', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) return [];
+    sourcePaths = result.filePaths.filter(isScanFile);
+  }
+
+  const createdNotes: unknown[] = [];
+  for (let i = 0; i < sourcePaths.length; i++) {
+    const sourcePath = sourcePaths[i];
+    const note = await importScanFileIntoNote(courseId, sourcePath, (page, totalPages) => {
+      event.sender.send('notes:importScanProgress', {
+        fileIndex: i + 1,
+        fileCount: sourcePaths.length,
+        filename: path.basename(sourcePath),
+        page,
+        totalPages,
+      });
+    });
+    if (note) createdNotes.push(note);
+  }
+  await endOcrBatch();
+  return createdNotes;
+});
+
+// Reuses the exact same Preview shape/rendering the Resources preview modal
+// already uses (getPreview() from preview.ts) — a handwritten note's scan is
+// just a PDF or image file on disk, no different from a resource's.
+ipcMain.handle('notes:getScanPreview', (_event, noteId: number) => {
+  const db = getDb();
+  const note = db.prepare('SELECT image_path FROM notes WHERE id = ?').get(noteId) as
+    | { image_path: string | null }
+    | undefined;
+  if (!note?.image_path) return null;
+  return getPreview(kindFromExtension(note.image_path), note.image_path);
+});
+
+ipcMain.handle(
+  'notes:importScanBuffer',
+  async (event, courseId: number, filename: string, buffer: ArrayBuffer) => {
+    if (!isScanFile(filename)) return null;
+    const note = await importScanBufferIntoNote(courseId, filename, Buffer.from(buffer), (page, totalPages) => {
+      event.sender.send('notes:importScanProgress', {
+        fileIndex: 1,
+        fileCount: 1,
+        filename,
+        page,
+        totalPages,
+      });
+    });
+    return note;
+  }
+);
 
 // --- IPC: deadlines ---
 // One unified per-course timeline (PRD §12) — assignments/readings/quizzes/
