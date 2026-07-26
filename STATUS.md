@@ -2,7 +2,34 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-26 (session 44)
+**Last updated:** 2026-07-26 (session 45, in progress — see "Approved, not-yet-executed plan" below)
+
+## Approved, not-yet-executed plan (session 45 — read this first if resuming)
+
+The user approved a large plan (plan-mode, this session) but asked to compact context before execution starts — nothing below has been coded yet, this is a to-do, not a changelog entry. Full plan file at `C:\Users\Pamac\.claude\plans\read-prd-md-this-was-elegant-tower.md`, but that file gets overwritten by future plan-mode uses, so the decisions are captured here too in case it's gone by the time this resumes.
+
+**Three requests driving this**: (1) a per-course "Connect to Classroom" button + real Announcements/Assignments/Classwork content sync; (2) a Dashboard "Upcoming" widget + a full Calendar page, per two screenshots the user shared (described below since images aren't preserved in this file); (3) a real bug — the user's last Classroom import attempt pulled **zero content** per mapped course, needs fixing as part of this, not separately.
+
+**Root cause found for (3)** (read `googleClassroom.ts` + `main.ts`'s `classroom:*` block in full): `syncClassroomCourseworkForMappedCourses()` has no per-course try/catch — one mapped course's `courses.courseWork.list`/`courses.announcements.list` call throwing (expired token, transient error, anything) aborts the *entire* sync loop for every course, and the only catch is `scanClassroomAndNotify()`'s outer one, which just `console.error`s and returns `false` — indistinguishable in the UI from "ran fine, nothing new." The two course-mapping IPC handlers also fire-and-forget `scanClassroomAndNotify()` with zero visibility into success/failure.
+
+**Also confirmed**: `courses.courseWorkMaterials.list` (Classroom's *ungraded* "Classwork" posts, distinct from graded `courseWork`) is never called at all — only graded assignments + announcements sync today. Non-Drive-file attachment materials (links/YouTube/Forms) are silently dropped because `resources.file_path` is `NOT NULL`.
+
+**Course detail page has no tab pattern today** — Overview/Resources-preview/Notes-preview/Deadlines/Watched-folders are inline sections on one scrolling page, not tabs. New sections follow that same convention.
+
+**Decisions locked in for this plan (user already confirmed via AskUserQuestion where noted)**:
+1. **Attachments: Drive-link only, no download** (user's explicit choice — "less files on my laptop"). Implementation: no new nullable `external_url` column (would need relaxing `resources.file_path`'s `NOT NULL`, which SQLite can't do without a full table rebuild) — instead a **new `resources.kind = 'link'`** value, where `file_path` holds the Drive URL directly instead of a local path. One new branch in the "open resource" dispatch (`preview.ts`/`localServer.ts`/renderer): `kind === 'link'` → `shell.openExternal(file_path)`.
+2. **New `classwork_materials` table** (mirrors `assignments`/`announcements` shape: course_id, title, description, `classroom_coursework_material_id` unique, posted_at) for Classroom's ungraded Classwork posts. Each post's attachments become `kind='link'` resources with a new nullable `resources.classwork_material_id` FK back to the post.
+3. **Course-detail sections, not tabs**: Announcements/Assignments/Classwork as new inline sections (same idiom as `#deadlines-section`), shown only when `course.classroom_course_id IS NOT NULL`. Assignments section = existing `assignments` table. Classwork section = union of `assignments` + new `classwork_materials`.
+4. **Per-course "Connect to Classroom" button**: new section on course detail (near Files/Watched-folders) — "Connect to Classroom" when unmapped, "Connected to <name>" + Disconnect when mapped. Opens a picker listing currently-unmapped live Classroom courses (new `classroom:listAvailableCoursesForLinking()`), user picks one, calls the **existing** `linkClassroomCourseToExisting` (already resyncs immediately, no new logic needed there).
+5. **Sync reliability fix**: per-course try/catch in `syncClassroomCourseworkForMappedCourses()` (collect `{courseId, error}` pairs, keep going on the rest); errors propagate back to the renderer (a status string) instead of only `console.error`, shown in the Classroom widget/connect section — a real failure becomes visible instead of silently looking like "nothing new."
+6. **Dashboard "Upcoming" widget** (per screenshot 1: a middle-column widget with an All/Assignments/Exams/Readings/Tasks tab row, each row = date block + colored left border + title + course name + kind badge + "Due in N days"/Today/Tomorrow, "View full calendar" link at bottom): replaces the current plain `#dashboard-deadlines` list. Sources from `deadlines` only — assignments already mirror into `deadlines` (existing Classroom design), so "combines deadlines and assignments" is already true structurally.
+7. **New Calendar page** (per screenshot 2: sidebar nav item, month grid with Day/Week/Month toggle + Today + Add event, colored event chips per day, right column with grouped "Upcoming" list + "Tasks due soon" + a mini month-picker + a "Filters" checkbox panel) — scoped down for v1: **month grid only** (Day/Week omitted, fast-follow), day cells show up to 3 course-colored deadline chips + "+N more" (click opens the existing deadline viewer), right column = grouped-by-date Upcoming list + a simple course-color legend row (not the full Filters checkbox panel — fast-follow, to be logged in `docs/open-questions.md` not silently cut). New sidebar nav item + `AppPage` value + `showPage()` branch (mechanical, the click-handler wiring is already generic per-`data-page`).
+
+**Critical files**: `src/main/googleClassroom.ts`, `src/main/db/schema.sql`/`database.ts`, `src/main/preview.ts`/`localServer.ts`, `src/main/main.ts` (`classroom:*` block), `src/renderer/index.html`/`renderer.ts`/`styles.css`, and docs (`ARCHITECTURE.md` §4b, `docs/open-questions.md`, `ROADMAP.md`, this file).
+
+**Verification plan**: `npm run build` after each chunk, one full `npm run verify` before committing; then a manual pass with the user — connect one of the 5 real courses via the new per-course button, confirm Announcements/Assignments/Classwork actually populate this time (the real test of the bug fix), confirm a link-type resource opens the Drive file in the browser, eyeball the Dashboard widget + Calendar page against the two screenshots.
+
+**Nothing has been coded yet for this plan** — git is clean at commit `e5e5317` as of this note. Resume by re-entering plan mode only if the user wants to revise; otherwise just start implementing per the decisions above.
 
 ## Where things stand (accurate as of session 44 — read this before the per-session log below)
 
