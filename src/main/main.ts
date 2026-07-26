@@ -963,9 +963,27 @@ ipcMain.handle(
   }
 );
 
+// Disconnecting a course from Classroom also deletes everything that came
+// from that link for this course (announcements/assignments/their mirrored
+// deadlines/classwork/link-resources) — a real "undo" for connecting the
+// wrong Classroom class, which otherwise had no fallback (the user hit this
+// exact scenario in practice). The renderer confirms with the user before
+// calling this, since it's destructive. Deleting classwork_materials first
+// cascades any resources that reference it via classwork_material_id
+// (foreign_keys pragma is ON); the resources delete afterward catches
+// courseWork/announcement-attachment link-resources not already covered.
 ipcMain.handle('classroom:disconnectCourse', (_event, atlasCourseId: number) => {
   const db = getDb();
-  db.prepare('UPDATE courses SET classroom_course_id = NULL WHERE id = ?').run(atlasCourseId);
+  const run = db.transaction((courseId: number) => {
+    db.prepare("DELETE FROM deadlines WHERE course_id = ? AND source = 'classroom'").run(courseId);
+    db.prepare("DELETE FROM assignments WHERE course_id = ? AND source = 'classroom'").run(courseId);
+    db.prepare("DELETE FROM announcements WHERE course_id = ? AND source = 'classroom'").run(courseId);
+    db.prepare('DELETE FROM classwork_materials WHERE course_id = ?').run(courseId);
+    db.prepare("DELETE FROM resources WHERE course_id = ? AND source = 'classroom'").run(courseId);
+    db.prepare('UPDATE courses SET classroom_course_id = NULL WHERE id = ?').run(courseId);
+  });
+  run(atlasCourseId);
+  rebuildSearchIndex();
 });
 
 // Backs the course-detail Announcements/Assignments/Classwork sections —

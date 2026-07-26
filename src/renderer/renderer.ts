@@ -2684,14 +2684,26 @@ async function confirmClassroomConnect(): Promise<void> {
   }
 }
 
+// Destructive — disconnecting also deletes this course's synced
+// announcements/assignments/deadlines/classwork/link-resources (see
+// classroom:disconnectCourse in main.ts), so it's the real "undo" for
+// having connected the wrong Classroom class. Confirmed first since there's
+// no separate delete step the user could otherwise catch this at.
 async function disconnectCourseClassroomClicked(): Promise<void> {
   if (!selectedCourse) return;
+  const confirmed = await showConfirm(
+    'Disconnect from Classroom? This also deletes everything synced from that class for this course — announcements, assignments, Classwork posts, and their attached links. This cannot be undone.'
+  );
+  if (!confirmed) return;
+
   await atlasApi.disconnectCourseFromClassroom(selectedCourse.id);
   const updatedCourses = await atlasApi.listCourses();
   const updated = updatedCourses.find((c) => c.id === selectedCourse!.id);
   if (updated) {
     selectedCourse = updated;
     await renderCourseClassroomSection(updated);
+    await renderCourseDetailPreviews(updated.id);
+    await renderDeadlines();
   }
 }
 
