@@ -118,6 +118,8 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('resources:listByCourse', courseId),
   uploadResource: (courseId: number): Promise<Resource | null> =>
     ipcRenderer.invoke('resources:upload', courseId),
+  uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer): Promise<Resource | null> =>
+    ipcRenderer.invoke('resources:uploadBuffer', courseId, filename, buffer),
   deleteCourse: (courseId: number): Promise<void> => ipcRenderer.invoke('courses:delete', courseId),
   deleteResource: (resourceId: number): Promise<void> =>
     ipcRenderer.invoke('resources:delete', resourceId),

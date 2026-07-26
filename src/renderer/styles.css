@@ -584,13 +584,24 @@ ul#all-resources-list li .code {
   gap: 0.6rem;
 }
 
-#course-sort {
+#course-sort,
+#resources-sort {
   padding: 0.4rem 0.6rem;
   border-radius: 4px;
   border: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
   color: var(--color-text);
   font-size: 0.85rem;
+}
+
+/* Resources has no left-side filter on this row (the kind-filter chips
+   above already do that job), so the sort+view-toggle group is simply
+   right-aligned — same grouping/spacing as Courses' toolbar-right, just
+   without a sibling on the left to space-between against. */
+.resources-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
 }
 
 /* Grid is the default course view (matches the mockup); .view-list falls
@@ -737,24 +748,29 @@ ul#course-list.view-list li.course-card .course-card-counts {
   margin: 0.15rem 0 0 0;
 }
 
-.course-detail-links {
-  display: flex;
-  gap: 0.75rem;
+/* Short inline previews (a handful of items each) of this course's own
+   Resources/Notes, reusing the dashboard widget card styling — "View all"
+   still navigates to the full global page pre-filtered to this course;
+   these previews just mean the user doesn't have to leave the course page
+   at all for a quick look. */
+.course-detail-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
   margin-bottom: 1.5rem;
 }
 
-.course-detail-link {
-  padding: 0.5rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
-.course-detail-link:hover {
-  background: var(--color-hover-bg);
+.link-button:hover {
+  text-decoration: underline;
 }
 
 /* Kind-filter chip row (Resources page) */
@@ -798,6 +814,16 @@ ul#course-list.view-list li.course-card .course-card-counts {
    Resources' course filter. */
 #resources-split {
   grid-template-columns: 180px minmax(0, 1fr);
+  border-radius: 8px;
+  transition: outline-color 0.1s ease;
+  outline: 2px dashed transparent;
+  outline-offset: 4px;
+}
+
+/* Dropping a file directly onto the page uploads it — see the drop handler
+   on #resources-split in renderer.ts. */
+#resources-split.drag-active {
+  outline-color: var(--color-accent);
 }
 
 #notes-split {
@@ -942,6 +968,17 @@ ul#course-list.view-list li.course-card .course-card-counts {
   grid-template-columns: 1fr;
 }
 
+/* Genuine fullscreen (distinct from "expand width" above): pulled out of the
+   page grid entirely and pinned to the viewport, covering the sidebar/topbar
+   too — same mechanism as #preview-overlay.fullscreen, just applied directly
+   to the docked pane element instead of a separate overlay wrapper. */
+#notes-editor-pane.true-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border-radius: 0;
+}
+
 /* Resource preview: a full overlay modal (not a docked pane) — the docked
    pane tried before this left too little width for the Resources list next
    to it for what the content actually needed. Same overlay pattern as
@@ -983,40 +1020,154 @@ ul#course-list.view-list li.course-card .course-card-counts {
   border-radius: 0;
 }
 
-/* Small floating menu used to choose a target course for an action that
-   isn't scoped to any one course on screen (uploading a resource, creating
-   a note) — anchored under whichever button opened it via JS-set
-   top/left, rather than a <select> sitting in the page header, which read
-   as another course filter next to the ones the page already has (the
-   Resources course rail, or once Notes got one too). */
-.course-picker-menu {
+/* A real modal used to choose a target course for an action that isn't
+   scoped to any one course on screen (uploading a resource, creating a
+   note), with a search box for when there are many courses — replaces an
+   earlier small anchored popup that cut off past the screen edge once there
+   were more than a couple of courses. Same overlay pattern as
+   #confirm-overlay/#deadline-editor-overlay, including the same
+   [hidden]-vs-own-selector fix (CLAUDE.md). */
+#course-picker-overlay {
   position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
   z-index: 30;
+}
+
+#course-picker-overlay:not([hidden]) {
+  display: flex;
+}
+
+#course-picker-panel {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 380px;
+  max-height: 80vh;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal-header button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.modal-header button:hover {
+  background: var(--color-hover-bg);
+}
+
+.modal-header button svg {
+  width: 16px;
+  height: 16px;
+}
+
+#course-picker-search {
+  padding: 0.5rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+#course-picker-search:focus {
+  outline: 2px solid var(--color-accent);
+}
+
+ul#course-picker-list {
   list-style: none;
   margin: 0;
-  padding: 0.3rem;
-  min-width: 200px;
-  max-height: 300px;
+  padding: 0;
   overflow-y: auto;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
+  max-height: 260px;
+}
+
+#course-picker-list li {
+  padding: 0.55rem 0.7rem;
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  font-size: 0.9rem;
 }
 
-.course-picker-menu:not([hidden]) {
-  display: block;
+#course-picker-list li:hover {
+  background: var(--color-hover-bg);
 }
 
-.course-picker-menu li {
-  padding: 0.5rem 0.6rem;
+#course-picker-list li.selected {
+  background: var(--color-hover-bg);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+#course-picker-list li.empty {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* Dropzone for the Upload flow specifically — greyed out/inert until a
+   course is picked from the list above, so it's clear dropping a file
+   requires choosing where it goes first. */
+#course-picker-dropzone {
+  margin-top: 0.9rem;
+  padding: 1.25rem 1rem;
+  border: 2px dashed var(--color-border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+#course-picker-dropzone.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+#course-picker-dropzone.drag-active {
+  border-color: var(--color-accent);
+  background: var(--color-hover-bg);
+}
+
+#course-picker-dropzone p {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.85rem;
+}
+
+#course-picker-browse {
+  padding: 0.45rem 0.9rem;
   border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
   cursor: pointer;
   font-size: 0.85rem;
 }
 
-.course-picker-menu li:hover {
-  background: var(--color-border-soft);
+#course-picker-browse:hover {
+  background: var(--color-hover-bg);
 }
 
 #preview-body {
@@ -1107,6 +1258,7 @@ ul.notes-group-list li.selected {
 }
 
 .resources-header h2,
+.resources-header h3,
 .resources-header h4 {
   margin: 0;
 }

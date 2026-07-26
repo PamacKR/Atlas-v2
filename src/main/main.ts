@@ -186,6 +186,36 @@ function importFileIntoCourse(
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 }
 
+// Drag-and-drop upload: the renderer only has the dropped File's contents
+// (via arrayBuffer()), not a real filesystem path — Electron's exposure of
+// File.path is deprecated/unavailable under contextIsolation, so this writes
+// the buffer directly instead of going through importFileIntoCourse's
+// copy-from-a-source-path flow. Otherwise identical (same filename
+// collision handling via uniqueDestPath, same resources row shape).
+function importBufferIntoCourse(courseId: number, originalFilename: string, buffer: Buffer): unknown {
+  const db = getDb();
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
+  if (!course) return null;
+
+  const courseFilesDir = path.join(getFilesDir(), course.folder_name);
+  fs.mkdirSync(courseFilesDir, { recursive: true });
+
+  const destPath = uniqueDestPath(courseFilesDir, originalFilename);
+  fs.writeFileSync(destPath, buffer);
+
+  const insertResult = db
+    .prepare(
+      `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename)
+       VALUES (?, ?, ?, 'manual', ?, ?)`
+    )
+    .run(courseId, originalFilename, kindFromExtension(originalFilename), destPath, originalFilename);
+
+  rebuildSearchIndex();
+  return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
+}
+
 // One chokidar watcher per watched folder, keyed by watched_folders.id, so a
 // single folder can be stopped/started independently of the others.
 const activeWatchers = new Map<number, FSWatcher>();
@@ -432,6 +462,16 @@ function createWindow(): void {
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
+
+// Electron's auto-generated default menu (File/Edit/View/Window/Help) is a
+// dev-oriented template — Reload/Toggle DevTools/Force Reload under View,
+// generic Undo/Cut/Copy/Paste under Edit — none of it corresponds to a real
+// Atlas feature (no File > Open/Save flow, no custom View actions), and
+// standard text-field editing (Ctrl+C/X/V, Ctrl+Z) already works natively in
+// inputs/contenteditable regardless of whether an application menu exists.
+// Removed entirely rather than left as unexplained, oddly-styled dead chrome
+// that Alt happened to reveal.
+Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
   const db = getDb(); // initializes DB + schema in Downloads/Atlas on first launch
@@ -707,6 +747,12 @@ ipcMain.handle('resources:upload', async (_event, courseId: number) => {
 
   return importFileIntoCourse(courseId, sourcePath, 'manual', null);
 });
+
+ipcMain.handle(
+  'resources:uploadBuffer',
+  (_event, courseId: number, filename: string, buffer: ArrayBuffer) =>
+    importBufferIntoCourse(courseId, filename, Buffer.from(buffer))
+);
 
 ipcMain.handle('resources:getPreview', async (_event, resourceId: number) => {
   const db = getDb();

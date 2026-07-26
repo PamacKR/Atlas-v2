@@ -121,6 +121,7 @@ interface AtlasApi {
   setSetting: (key: string, value: string) => Promise<void>;
   listResources: (courseId: number) => Promise<Resource[]>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
+  uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
   deleteResource: (resourceId: number) => Promise<void>;
   getPreview: (resourceId: number) => Promise<Preview>;
@@ -309,7 +310,15 @@ function resolveConfirm(result: boolean): void {
 }
 
 let courseViewMode: 'grid' | 'list' = 'grid';
-let courseSort: 'name' | 'resources' = 'name';
+type CourseSort = 'name' | 'resources' | 'deadlines' | 'notes';
+let courseSort: CourseSort = 'name';
+
+function compareCourseSummaries(a: CourseSummary, b: CourseSummary, sort: CourseSort): number {
+  if (sort === 'resources') return b.resource_count - a.resource_count;
+  if (sort === 'deadlines') return b.deadline_count - a.deadline_count;
+  if (sort === 'notes') return b.note_count - a.note_count;
+  return a.name.localeCompare(b.name);
+}
 
 // Card grid by default (matches the mockup the user provided), a flat list
 // as the alternative — same view-toggle convention used for resources/
@@ -320,9 +329,7 @@ async function renderCourses(): Promise<void> {
   const list = document.getElementById('course-list')!;
   const allSummaries = await atlasApi.getCourseSummaries();
   let courses = semesterFilter ? allSummaries.filter((c) => c.term === semesterFilter) : allSummaries;
-  courses = [...courses].sort((a, b) =>
-    courseSort === 'resources' ? b.resource_count - a.resource_count : a.name.localeCompare(b.name)
-  );
+  courses = [...courses].sort((a, b) => compareCourseSummaries(a, b, courseSort));
 
   list.className = courseViewMode === 'grid' ? 'view-grid' : 'view-list';
   list.innerHTML = '';
@@ -484,71 +491,130 @@ function renderCourseRail(
   }
 }
 
-// Small floating menu for choosing a target course when an action (upload a
-// resource, create a note) isn't scoped to any one course already visible on
-// screen — anchored under whichever button opened it, rather than a <select>
-// permanently sitting in the page header (which read as yet another course
-// filter next to the rail the page already has). Resolves the chosen course
-// id, or null if dismissed (outside click / Escape) or there are no courses
-// to choose from. Skips the menu entirely when there's only one course —
-// nothing to actually choose.
-let coursePickerResolve: ((courseId: number | null) => void) | null = null;
-let coursePickerCleanup: (() => void) | null = null;
+// --- Course picker modal: choose a target course for an action that isn't
+// scoped to any one course already visible on screen (uploading a resource,
+// creating a note). A real modal with a search box, not a small anchored
+// popup — the popup this replaced cut off past the screen edge once there
+// were more than a couple of courses. Shared between the Upload and New Note
+// flows via `mode`; Upload additionally carries a drag-and-drop zone.
 
-function closeCoursePicker(result: number | null): void {
-  const menu = document.getElementById('course-picker-menu')!;
-  menu.hidden = true;
-  menu.innerHTML = '';
-  if (coursePickerCleanup) {
-    coursePickerCleanup();
-    coursePickerCleanup = null;
+type CoursePickerMode = 'upload' | 'note';
+
+let coursePickerMode: CoursePickerMode = 'upload';
+let coursePickerCourses: Course[] = [];
+let coursePickerSelectedId: number | null = null;
+// Set when the picker was opened from a file already dropped onto the
+// Resources page directly (not the Upload button) — in that case the course
+// is the only thing left to choose, so clicking one uploads immediately
+// instead of also requiring a second drop into the modal's own dropzone.
+let coursePickerPendingFile: File | null = null;
+
+async function uploadDroppedFile(courseId: number, file: File): Promise<void> {
+  const buffer = await file.arrayBuffer();
+  const resource = await atlasApi.uploadResourceBuffer(courseId, file.name, buffer);
+  if (resource) await renderResourcesPage();
+}
+
+function closeCoursePicker(): void {
+  document.getElementById('course-picker-overlay')!.hidden = true;
+  coursePickerSelectedId = null;
+  coursePickerPendingFile = null;
+}
+
+function renderCoursePickerList(filterText: string): void {
+  const list = document.getElementById('course-picker-list')!;
+  list.innerHTML = '';
+  const query = filterText.trim().toLowerCase();
+  const filtered = query
+    ? coursePickerCourses.filter((c) => c.name.toLowerCase().includes(query))
+    : coursePickerCourses;
+
+  if (filtered.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'No matching courses.';
+    list.appendChild(li);
+    return;
   }
-  if (coursePickerResolve) {
-    const resolve = coursePickerResolve;
-    coursePickerResolve = null;
-    resolve(result);
+
+  for (const course of filtered) {
+    const li = document.createElement('li');
+    li.textContent = course.name;
+    li.classList.toggle('selected', coursePickerSelectedId === course.id);
+    li.addEventListener('click', () => selectCoursePickerCourse(course.id));
+    list.appendChild(li);
   }
 }
 
-async function pickCourse(anchor: HTMLElement): Promise<number | null> {
-  const courses = await atlasApi.listCourses();
-  if (courses.length === 0) return null;
-  if (courses.length === 1) return courses[0].id;
+async function selectCoursePickerCourse(courseId: number): Promise<void> {
+  coursePickerSelectedId = courseId;
 
-  const menu = document.getElementById('course-picker-menu')!;
-  menu.innerHTML = '';
-  for (const course of courses) {
-    const li = document.createElement('li');
-    li.textContent = course.name;
-    li.addEventListener('click', () => closeCoursePicker(course.id));
-    menu.appendChild(li);
+  if (coursePickerMode === 'note') {
+    closeCoursePicker();
+    const note = await atlasApi.createNote(courseId);
+    await openNoteEditor(note);
+    return;
   }
 
-  const rect = anchor.getBoundingClientRect();
-  menu.style.top = `${rect.bottom + 4}px`;
-  menu.style.left = `${rect.left}px`;
-  menu.hidden = false;
+  if (coursePickerPendingFile) {
+    const file = coursePickerPendingFile;
+    closeCoursePicker();
+    await uploadDroppedFile(courseId, file);
+    return;
+  }
 
-  return new Promise((resolve) => {
-    coursePickerResolve = resolve;
+  // Upload mode, no file yet — just highlight the selection and enable the
+  // dropzone below; the user still needs to drop a file or click Browse.
+  const searchValue = (document.getElementById('course-picker-search') as HTMLInputElement).value;
+  renderCoursePickerList(searchValue);
+  const dropzone = document.getElementById('course-picker-dropzone')!;
+  dropzone.classList.remove('disabled');
+  const course = coursePickerCourses.find((c) => c.id === courseId);
+  document.getElementById('course-picker-dropzone-hint')!.textContent = course
+    ? `Drop a file here for ${course.name}`
+    : 'Drop a file here';
+}
 
-    const onOutsideClick = (e: MouseEvent) => {
-      if (!menu.contains(e.target as Node) && e.target !== anchor) closeCoursePicker(null);
-    };
-    const onEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeCoursePicker(null);
-    };
-    // Deferred so the very click that opened this menu (still bubbling up
-    // to document) doesn't immediately close it again.
-    setTimeout(() => {
-      document.addEventListener('click', onOutsideClick);
-      document.addEventListener('keydown', onEscape);
-    }, 0);
-    coursePickerCleanup = () => {
-      document.removeEventListener('click', onOutsideClick);
-      document.removeEventListener('keydown', onEscape);
-    };
-  });
+async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<void> {
+  coursePickerMode = mode;
+  coursePickerPendingFile = file ?? null;
+  coursePickerSelectedId = null;
+  coursePickerCourses = await atlasApi.listCourses();
+
+  const title = document.getElementById('course-picker-title')!;
+  const searchInput = document.getElementById('course-picker-search') as HTMLInputElement;
+  const dropzone = document.getElementById('course-picker-dropzone')!;
+  searchInput.value = '';
+
+  if (mode === 'note') {
+    title.textContent = 'New note';
+    dropzone.hidden = true;
+  } else if (file) {
+    title.textContent = `Upload "${file.name}" to…`;
+    dropzone.hidden = true;
+  } else {
+    title.textContent = 'Upload file';
+    dropzone.hidden = false;
+    dropzone.classList.add('disabled');
+    document.getElementById('course-picker-dropzone-hint')!.textContent =
+      'Select a course above, then drop a file here';
+  }
+
+  renderCoursePickerList('');
+  document.getElementById('course-picker-overlay')!.hidden = false;
+  searchInput.focus();
+}
+
+type ResourcesSort = 'name' | 'recent' | 'kind' | 'course';
+let resourcesSort: ResourcesSort = 'name';
+
+function sortResources(resources: ResourceWithCourse[], sort: ResourcesSort): ResourceWithCourse[] {
+  const sorted = [...resources];
+  if (sort === 'name') sorted.sort((a, b) => a.title.localeCompare(b.title));
+  else if (sort === 'kind') sorted.sort((a, b) => a.kind.localeCompare(b.kind));
+  else if (sort === 'course') sorted.sort((a, b) => a.course_name.localeCompare(b.course_name));
+  // 'recent': listAllResources() is already ORDER BY added_at DESC — no re-sort needed.
+  return sorted;
 }
 
 async function renderResourcesPage(): Promise<void> {
@@ -569,7 +635,7 @@ async function renderResourcesPage(): Promise<void> {
     const kinds = resourcesKindFilter.split(',');
     filtered = filtered.filter((r) => kinds.includes(r.kind));
   }
-  renderAllResourcesList(filtered);
+  renderAllResourcesList(sortResources(filtered, resourcesSort));
 }
 
 async function renderWatchedFolders(): Promise<void> {
@@ -1209,10 +1275,9 @@ async function closeNoteEditor(): Promise<void> {
   const split = document.getElementById('notes-split')!;
   pane.hidden = true;
   split.classList.remove('pane-fullscreen');
-  const fullscreenButton = document.getElementById('note-fullscreen') as HTMLButtonElement;
-  fullscreenButton.innerHTML = NOTE_MAXIMIZE_ICON;
-  fullscreenButton.title = 'Fullscreen';
-  fullscreenButton.setAttribute('aria-label', 'Fullscreen');
+  pane.classList.remove('true-fullscreen');
+  resetNoteWidenButton();
+  resetNoteFullscreenButton();
 
   if (noteEditorInstance) {
     await noteEditorInstance.destroy();
@@ -1227,16 +1292,49 @@ const NOTE_MAXIMIZE_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
 const NOTE_MINIMIZE_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
+const NOTE_FULLSCREEN_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg>';
+const NOTE_EXIT_FULLSCREEN_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>';
 
-// Same "fullscreen == collapse the list column" meaning as the resources
-// pane's fullscreen toggle — there's no overlay to cover the app window
-// with anymore.
-function toggleNoteFullscreen(): void {
-  const split = document.getElementById('notes-split')!;
+function resetNoteWidenButton(): void {
+  const button = document.getElementById('note-widen') as HTMLButtonElement;
+  button.innerHTML = NOTE_MAXIMIZE_ICON;
+  button.title = 'Expand width';
+  button.setAttribute('aria-label', button.title);
+}
+
+function resetNoteFullscreenButton(): void {
   const button = document.getElementById('note-fullscreen') as HTMLButtonElement;
-  const isFullscreen = split.classList.toggle('pane-fullscreen');
-  button.innerHTML = isFullscreen ? NOTE_MINIMIZE_ICON : NOTE_MAXIMIZE_ICON;
-  button.title = isFullscreen ? 'Exit Fullscreen' : 'Fullscreen';
+  button.innerHTML = NOTE_FULLSCREEN_ICON;
+  button.title = 'Fullscreen';
+  button.setAttribute('aria-label', button.title);
+}
+
+// "Expand width" collapses the list column so the editor fills the page's
+// width — it does NOT cover the sidebar/topbar/search box, which is why the
+// user pointed out that what used to be the only "fullscreen" option wasn't
+// actually fullscreen. See toggleNoteTrueFullscreen() below for the genuine
+// one.
+function toggleNoteWidth(): void {
+  const split = document.getElementById('notes-split')!;
+  const isWide = split.classList.toggle('pane-fullscreen');
+  const button = document.getElementById('note-widen') as HTMLButtonElement;
+  button.innerHTML = isWide ? NOTE_MINIMIZE_ICON : NOTE_MAXIMIZE_ICON;
+  button.title = isWide ? 'Exit expanded width' : 'Expand width';
+  button.setAttribute('aria-label', button.title);
+}
+
+// Genuine fullscreen: pulls the editor pane out of the page grid entirely
+// (position: fixed, inset: 0 — see .true-fullscreen in styles.css) so it
+// covers the whole window, sidebar and topbar included, the same way the
+// Resources preview modal does.
+function toggleNoteTrueFullscreen(): void {
+  const pane = document.getElementById('notes-editor-pane')!;
+  const isFullscreen = pane.classList.toggle('true-fullscreen');
+  const button = document.getElementById('note-fullscreen') as HTMLButtonElement;
+  button.innerHTML = isFullscreen ? NOTE_EXIT_FULLSCREEN_ICON : NOTE_FULLSCREEN_ICON;
+  button.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
   button.setAttribute('aria-label', button.title);
 }
 
@@ -1284,8 +1382,53 @@ async function selectCourse(course: Course): Promise<void> {
   document.getElementById('course-detail-resource-count')!.textContent = String(summary?.resource_count ?? 0);
   document.getElementById('course-detail-note-count')!.textContent = String(summary?.note_count ?? 0);
 
+  await renderCourseDetailPreviews(course.id);
   await renderDeadlines();
   await renderWatchedFolders();
+}
+
+// Short inline previews of this course's own Resources/Notes (a handful of
+// items each) — "View all" still exists to reach the full global page, but
+// this means a quick look doesn't require leaving the course page at all.
+const COURSE_DETAIL_PREVIEW_LIMIT = 5;
+
+async function renderCourseDetailPreviews(courseId: number): Promise<void> {
+  const [resources, notes] = await Promise.all([
+    atlasApi.listResources(courseId),
+    atlasApi.listNotes(courseId),
+  ]);
+
+  const resourceList = document.getElementById('course-detail-resources-preview')!;
+  resourceList.innerHTML = '';
+  if (resources.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No resources yet.';
+    resourceList.appendChild(li);
+  } else {
+    for (const resource of resources.slice(0, COURSE_DETAIL_PREVIEW_LIMIT)) {
+      const li = document.createElement('li');
+      li.textContent = resource.title;
+      li.addEventListener('click', () => openPreview(resource));
+      resourceList.appendChild(li);
+    }
+  }
+
+  const noteList = document.getElementById('course-detail-notes-preview')!;
+  noteList.innerHTML = '';
+  if (notes.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No notes yet.';
+    noteList.appendChild(li);
+  } else {
+    for (const note of notes.slice(0, COURSE_DETAIL_PREVIEW_LIMIT)) {
+      const li = document.createElement('li');
+      li.textContent = note.title;
+      li.addEventListener('click', () => openNoteEditor(note));
+      noteList.appendChild(li);
+    }
+  }
 }
 
 async function setSemesterFilter(term: string, persist = true): Promise<void> {
@@ -1829,7 +1972,7 @@ async function init(): Promise<void> {
   document.getElementById('course-view-grid')!.addEventListener('click', () => setCourseViewMode('grid'));
   document.getElementById('course-view-list')!.addEventListener('click', () => setCourseViewMode('list'));
   document.getElementById('course-sort')!.addEventListener('change', (e) => {
-    courseSort = (e.target as HTMLSelectElement).value as 'name' | 'resources';
+    courseSort = (e.target as HTMLSelectElement).value as CourseSort;
     void renderCourses();
   });
 
@@ -1845,13 +1988,7 @@ async function init(): Promise<void> {
     showPage('notes');
   });
 
-  const uploadButton = document.getElementById('upload-button') as HTMLButtonElement;
-  uploadButton.addEventListener('click', async () => {
-    const courseId = await pickCourse(uploadButton);
-    if (!courseId) return;
-    const resource = await atlasApi.uploadResource(courseId);
-    if (resource) await renderResourcesPage();
-  });
+  document.getElementById('upload-button')!.addEventListener('click', () => openCoursePicker('upload'));
 
   const addWatchFolderButton = document.getElementById('add-watch-folder') as HTMLButtonElement;
   addWatchFolderButton.addEventListener('click', async () => {
@@ -1877,6 +2014,11 @@ async function init(): Promise<void> {
     });
   });
 
+  document.getElementById('resources-sort')!.addEventListener('change', (e) => {
+    resourcesSort = (e.target as HTMLSelectElement).value as ResourcesSort;
+    void renderResourcesPage();
+  });
+
   document.getElementById('theme-toggle')!.addEventListener('click', () => {
     const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
     const next = current === 'light' ? 'dark' : 'light';
@@ -1900,13 +2042,7 @@ async function init(): Promise<void> {
     setSemesterFilter((e.target as HTMLSelectElement).value);
   });
 
-  const newNoteButton = document.getElementById('new-note-button') as HTMLButtonElement;
-  newNoteButton.addEventListener('click', async () => {
-    const courseId = await pickCourse(newNoteButton);
-    if (!courseId) return;
-    const note = await atlasApi.createNote(courseId);
-    await openNoteEditor(note);
-  });
+  document.getElementById('new-note-button')!.addEventListener('click', () => openCoursePicker('note'));
 
   const noteTitleInput = document.getElementById('note-title-input') as HTMLInputElement;
   noteTitleInput.addEventListener('focus', () => {
@@ -1936,7 +2072,8 @@ async function init(): Promise<void> {
   });
 
   document.getElementById('note-close')!.addEventListener('click', closeNoteEditor);
-  document.getElementById('note-fullscreen')!.addEventListener('click', toggleNoteFullscreen);
+  document.getElementById('note-widen')!.addEventListener('click', toggleNoteWidth);
+  document.getElementById('note-fullscreen')!.addEventListener('click', toggleNoteTrueFullscreen);
 
   atlasApi.onNoteContextMenuDelete(async (noteId) => {
     if (!(await showConfirm("Delete this note? This can't be undone."))) return;
@@ -1978,7 +2115,7 @@ async function init(): Promise<void> {
       }
       if (currentPage === 'notes' && !(document.getElementById('notes-editor-pane') as HTMLElement).hidden) {
         e.preventDefault();
-        toggleNoteFullscreen();
+        toggleNoteTrueFullscreen();
         return;
       }
     }
@@ -2136,6 +2273,68 @@ async function init(): Promise<void> {
 
   document.getElementById('confirm-cancel')!.addEventListener('click', () => resolveConfirm(false));
   document.getElementById('confirm-yes')!.addEventListener('click', () => resolveConfirm(true));
+
+  document.getElementById('course-picker-close')!.addEventListener('click', closeCoursePicker);
+  document.getElementById('course-picker-overlay')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeCoursePicker();
+  });
+  document.getElementById('course-picker-search')!.addEventListener('input', (e) => {
+    renderCoursePickerList((e.target as HTMLInputElement).value);
+  });
+  document.getElementById('course-picker-search')!.addEventListener('keydown', (e) => {
+    // Escape closes the modal even though focus starts in this text field
+    // (searchInput.focus() on open) — the global keydown handler's Escape
+    // case skips text fields entirely, so this needs its own listener.
+    if (e.key === 'Escape') closeCoursePicker();
+  });
+  document.getElementById('course-picker-browse')!.addEventListener('click', async () => {
+    if (coursePickerSelectedId === null) return;
+    const courseId = coursePickerSelectedId;
+    closeCoursePicker();
+    const resource = await atlasApi.uploadResource(courseId);
+    if (resource) await renderResourcesPage();
+  });
+
+  const coursePickerDropzone = document.getElementById('course-picker-dropzone')!;
+  coursePickerDropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (coursePickerSelectedId === null) return;
+    coursePickerDropzone.classList.add('drag-active');
+  });
+  coursePickerDropzone.addEventListener('dragleave', () => coursePickerDropzone.classList.remove('drag-active'));
+  coursePickerDropzone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    coursePickerDropzone.classList.remove('drag-active');
+    if (coursePickerSelectedId === null) return;
+    const file = e.dataTransfer?.files[0];
+    if (!file) return;
+    const courseId = coursePickerSelectedId;
+    closeCoursePicker();
+    await uploadDroppedFile(courseId, file);
+  });
+
+  // Dropping a file directly onto the Resources page list uploads it — to
+  // whichever course the rail is currently filtered to, or via the course
+  // picker (with the file already attached) if "All Resources" is showing.
+  const resourcesSplit = document.getElementById('resources-split')!;
+  resourcesSplit.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    resourcesSplit.classList.add('drag-active');
+  });
+  resourcesSplit.addEventListener('dragleave', (e) => {
+    if (e.target === resourcesSplit) resourcesSplit.classList.remove('drag-active');
+  });
+  resourcesSplit.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    resourcesSplit.classList.remove('drag-active');
+    const file = e.dataTransfer?.files[0];
+    if (!file) return;
+    if (resourcesCourseFilterId !== null) {
+      await uploadDroppedFile(resourcesCourseFilterId, file);
+    } else {
+      await openCoursePicker('upload', file);
+    }
+  });
 
   atlasApi.onFolderContextMenuRemove(async (folderId) => {
     if (!(await showConfirm('Stop watching this folder? Files already imported stay in Atlas.')))

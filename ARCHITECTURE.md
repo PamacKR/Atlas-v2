@@ -235,6 +235,32 @@ Documented in `CLAUDE.md` as a standing check, and still worth calling out how o
 
 The user asked "why does one course show resource/deadline counts and the other doesn't" — investigation (via a throwaway Playwright script measuring `getBoundingClientRect()` against the user's real data) found a stale CSS rule, `ul#course-list li { display: flex; ... }`, left over from before the course-card grid was built. Because it's an ID selector, it silently outranked `li.course-card`'s own (class-only) layout rule, turning every card into a flex row instead of a stacked column — the counts row got squeezed into a narrow strip pushed past the card's right edge and clipped by `overflow: hidden`, visible or not depending on exact content width. Fixed by deleting the stale rule (the flat-list layout it was written for no longer exists — every `#course-list` item is a `.course-card` now) and consolidating the `.selected` outline into one rule that covers both grid and list view.
 
+### A real modal for the course picker, plus drag-and-drop upload
+
+A follow-up round of feedback pointed out that the small anchored course-picker popup (`pickCourse()`) cut off past the screen edge once there were more than a couple of courses — genuinely unusable with a realistic course list. Replaced with `#course-picker-overlay`, a proper modal with a search box (`renderCoursePickerList()` filters as you type) shared between the Upload and New Note flows via a `mode` parameter.
+
+Upload additionally gets a drag-and-drop zone inside the modal (`#course-picker-dropzone`, greyed out until a course is picked from the list above it) plus a "Browse…" button that still goes through the existing native `dialog.showOpenDialog` path. Dropping a file requires a course first because the modal doesn't know which course a bare file belongs to — selecting one just highlights it and enables the dropzone; nothing uploads until a file actually lands.
+
+**Files dropped can't rely on a real filesystem path.** Electron's exposure of a dropped `File`'s `.path` is deprecated/unavailable under `contextIsolation: true`, so drag-and-drop reads the file's contents via `file.arrayBuffer()` in the renderer and sends the buffer over IPC (`resources:uploadBuffer` → `importBufferIntoCourse()` in `main.ts`) rather than a path `importFileIntoCourse()` could `copy` from. This is the same buffer-over-IPC pattern already used for note images (`notes:saveImage`), just applied to resources.
+
+**Dropping a file directly onto the Resources page list** (not just inside the modal) is also wired up: a drop handler on `#resources-split` uploads immediately to whichever course the rail is currently filtered to, or opens the course-picker modal with the file already attached (skipping its dropzone entirely — the course is the only thing left to choose) if "All Resources" is showing.
+
+### Notes editor: two distinct fullscreen levels
+
+The Notes editor's only "fullscreen" option (from the original reskin) just collapsed the sibling list column so the editor filled the page's own width — it never actually covered the sidebar or top bar, which is what prompted the user to point out it wasn't real fullscreen. Split into two buttons with distinct icons: **"Expand width"** (`#note-widen`, the original behavior, toggles `.pane-fullscreen` on `#notes-split`) and **"Fullscreen"** (`#note-fullscreen`, new — toggles `.true-fullscreen` on `#notes-editor-pane` itself, which pulls it out of the page grid entirely via `position: fixed; inset: 0`, the same mechanism `#preview-overlay.fullscreen` already used for the Resources modal). The "F" keyboard shortcut now triggers genuine fullscreen, matching what F does on the Resources preview.
+
+### Grid/List order and toolbar position standardized between Courses and Resources
+
+Courses' view toggle was already Grid-then-List; Resources' and Deadlines' were List-then-Grid (inherited from before the rename in the previous round) — swapped to match. Resources also gained a sort dropdown (Name/Recently added/Kind/Course) positioned identically to Courses' own sort-plus-view-toggle grouping (`.courses-toolbar-right`, reused directly), rather than the view toggle sitting alone at the top of the list with no equivalent sort control. Courses' own sort dropdown was extended with Deadlines/Notes options now that `dashboard:courseSummaries` already returns `note_count` alongside `resource_count`/`deadline_count`.
+
+### Course detail page: inline Resources/Notes previews, not just a count button
+
+The two "N Resources" / "N Notes" buttons on the course detail page (session 34) were plain buttons that only navigated away to the filtered global page. Reworked into two small widget cards (reusing `.dashboard-widget` styling) showing up to 5 of the course's own most-recent resources/notes inline, each clickable to open directly, with a "View all →" link still available for the full filtered list. The user explicitly left this one to judgment ("if you think the current functionality is enough then okay") rather than asking for it outright — implemented as a genuine but bounded improvement (existing per-course `listResources`/`listNotes` IPC calls, no new backend surface) rather than skipped or over-built.
+
+### Default application menu removed
+
+Electron auto-generates a File/Edit/View/Window/Help menu (Reload, Toggle DevTools, generic Undo/Cut/Copy/Paste, etc.) whenever `Menu.setApplicationMenu()` is never called — this is what the auto-hidden menu bar (Alt to reveal, session 31) was actually showing, and none of it corresponds to a real Atlas feature. Removed entirely via `Menu.setApplicationMenu(null)` in `main.ts`; standard text-field editing (Ctrl+C/X/V/A/Z) is unaffected since Chromium binds those directly to inputs/contenteditable regardless of whether an application menu exists — confirmed via a Playwright check (`Menu.getApplicationMenu()` returns `null`, and Ctrl+A + typing still replaces an input's contents correctly) rather than assumed.
+
 ## Layer summary
 
 ```

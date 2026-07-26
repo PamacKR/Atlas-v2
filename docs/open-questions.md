@@ -28,7 +28,7 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 - How are semesters archived?
 - Should old courses remain searchable by default?
 
-**Status:** Open. Deferred to Phase 5.
+**Status:** Open. Deferred to Phase 5. Resurfaced 2026-07-26: the user noticed the Courses grid has no way to hide finished-semester courses as more get added each term, and explicitly asked to defer building it now but wanted it logged so it isn't lost.
 
 ## 5. AI provider independence
 

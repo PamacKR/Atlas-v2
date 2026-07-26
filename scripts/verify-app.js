@@ -41,6 +41,26 @@ const fs = require('fs');
     await window.waitForTimeout(300);
   }
 
+  // Upload/New Note both open the course-picker modal now (real search +
+  // list, not the small anchored popup it replaced) — select the course by
+  // name, then (Upload only) confirm via Browse, which goes through the
+  // same ATLAS_TEST_UPLOAD_PATH test hook as a direct upload.
+  async function uploadViaModal(courseName) {
+    await window.click('#upload-button');
+    await window.waitForTimeout(200);
+    await window.click(`#course-picker-list li:has-text("${courseName}")`);
+    await window.waitForTimeout(150);
+    await window.click('#course-picker-browse');
+    await window.waitForTimeout(300);
+  }
+
+  async function createNoteViaModal(courseName) {
+    await window.click('#new-note-button');
+    await window.waitForTimeout(200);
+    await window.click(`#course-picker-list li:has-text("${courseName}")`);
+    await window.waitForTimeout(400);
+  }
+
   // --- Sidebar nav: genuine page switching, not a decorative scroll shortcut.
   await goToPage('courses');
   let coursesPageHidden = await window.getAttribute('#page-courses', 'hidden');
@@ -185,11 +205,7 @@ const fs = require('fs');
 
   // --- Resources page (global — every resource across every course) ---
   await goToPage('resources');
-  // Only one course exists at this point in the run, so the course-picker
-  // menu pickCourse() would otherwise show is skipped automatically (nothing
-  // to actually choose) and Upload proceeds directly against it.
-  await window.click('#upload-button');
-  await window.waitForTimeout(300);
+  await uploadViaModal('Verify Script Test Course');
 
   const resourceItems = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
   console.log('resources after upload:', resourceItems);
@@ -401,6 +417,64 @@ const fs = require('fs');
   await window.click('#preview-close');
   await window.waitForTimeout(200);
 
+  // Drag-and-drop upload directly onto the Resources page. Playwright can't
+  // drag a real OS file, so this dispatches a synthetic 'drop' event with an
+  // in-page File/DataTransfer — the same DOM API the drop handler consumes,
+  // just constructed in the renderer instead of coming from the OS.
+  await window.click('#resources-course-rail li:has-text("All Resources")');
+  await window.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['dropped content'], 'dropped-all-resources.txt', { type: 'text/plain' }));
+    document
+      .getElementById('resources-split')
+      .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  });
+  await window.waitForTimeout(300);
+  const dropModalVisible = !(await window.isHidden('#course-picker-overlay'));
+  console.log('course-picker modal opens on drop with no course filter active:', dropModalVisible);
+  if (!dropModalVisible) throw new Error('FAIL: dropping a file with "All Resources" showing did not open the course picker');
+  await window.click(`#course-picker-list li:has-text("Verify Script Test Course")`);
+  await window.waitForTimeout(300);
+  let resourcesAfterDrop = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  console.log('resources after drop-then-pick-course upload:', resourcesAfterDrop);
+  if (!resourcesAfterDrop.some((t) => t && t.includes('dropped-all-resources.txt'))) {
+    throw new Error('FAIL: file dropped with no course filter did not upload after picking a course');
+  }
+
+  // With the rail filtered to one course, a drop should upload immediately —
+  // no course-picker modal, since there's nothing left to choose.
+  await window.click('#resources-course-rail li:has-text("Verify Script Test Course")');
+  await window.waitForTimeout(200);
+  await window.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['dropped content 2'], 'dropped-filtered.txt', { type: 'text/plain' }));
+    document
+      .getElementById('resources-split')
+      .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  });
+  await window.waitForTimeout(300);
+  if (!(await window.isHidden('#course-picker-overlay'))) {
+    throw new Error('FAIL: dropping a file with a course filter active should not open the course picker');
+  }
+  resourcesAfterDrop = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  console.log('resources after direct (filtered) drop:', resourcesAfterDrop);
+  if (!resourcesAfterDrop.some((t) => t && t.includes('dropped-filtered.txt'))) {
+    throw new Error('FAIL: file dropped with a course filter active did not upload directly');
+  }
+
+  // Resources sort dropdown (name/recent/kind/course) — positioned next to
+  // the view toggle, same grouping/placement as Courses' own sort+toggle.
+  await window.selectOption('#resources-sort', 'name');
+  await window.waitForTimeout(200);
+  const namesSorted = await window.$$eval('#all-resources-list .resource-name', (els) =>
+    els.map((e) => e.textContent)
+  );
+  const expectedSorted = [...namesSorted].sort((a, b) => a.localeCompare(b));
+  console.log('resources sorted by name:', namesSorted);
+  if (JSON.stringify(namesSorted) !== JSON.stringify(expectedSorted)) {
+    throw new Error(`FAIL: "Sort by: Name" did not alphabetize the resource list: ${JSON.stringify(namesSorted)}`);
+  }
+
   // Kind-filter chips (All/PDF/Document/Image/.../Other).
   await window.click('#resources-kind-filter .chip[data-kind-filter="image"]');
   await window.waitForTimeout(200);
@@ -456,9 +530,7 @@ const fs = require('fs');
   // Toast UI Editor, which didn't support it), confirm autosave, close/
   // reopen to confirm persistence, then delete.
   await goToPage('notes');
-  // Same single-course auto-skip as the Resources upload above.
-  await window.click('#new-note-button');
-  await window.waitForTimeout(500);
+  await createNoteViaModal('Verify Script Test Course');
   const noteEditorVisible = !(await window.isHidden('#notes-editor-pane'));
   console.log('notes editor pane visible:', noteEditorVisible);
   if (!noteEditorVisible) throw new Error('FAIL: note editor did not open on "New note"');
@@ -482,13 +554,15 @@ const fs = require('fs');
   console.log('typing "- " created a real bullet list item:', bulletCreated);
   if (!bulletCreated) throw new Error('FAIL: "- " did not convert to a real bullet list item');
 
-  // "F" toggles note fullscreen (collapses the list column), but only when
-  // not actually typing in the note — typing "f" into the editor itself
-  // must produce a literal "f", never hijacked into a fullscreen toggle.
+  // "F" toggles genuine fullscreen (pane pinned over the whole window, see
+  // .true-fullscreen in styles.css — distinct from the "expand width" button,
+  // which only collapses the list column), but only when not actually typing
+  // in the note — typing "f" into the editor itself must produce a literal
+  // "f", never hijacked into a fullscreen toggle.
   await window.keyboard.type('f');
   await window.waitForTimeout(200);
   let noteFullscreenWhileTyping = await window.evaluate(() =>
-    document.getElementById('notes-split').classList.contains('pane-fullscreen')
+    document.getElementById('notes-editor-pane').classList.contains('true-fullscreen')
   );
   console.log('note fullscreen after typing "f" inside the editor (should stay false):', noteFullscreenWhileTyping);
   if (noteFullscreenWhileTyping) {
@@ -508,17 +582,28 @@ const fs = require('fs');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   let noteFullscreen = await window.evaluate(() =>
-    document.getElementById('notes-split').classList.contains('pane-fullscreen')
+    document.getElementById('notes-editor-pane').classList.contains('true-fullscreen')
   );
   console.log('note fullscreen after pressing "f" outside a text field:', noteFullscreen);
   if (!noteFullscreen) throw new Error('FAIL: pressing "f" did not enter note fullscreen');
   await window.keyboard.press('f');
   await window.waitForTimeout(200);
   noteFullscreen = await window.evaluate(() =>
-    document.getElementById('notes-split').classList.contains('pane-fullscreen')
+    document.getElementById('notes-editor-pane').classList.contains('true-fullscreen')
   );
   console.log('note fullscreen after pressing "f" again:', noteFullscreen);
   if (noteFullscreen) throw new Error('FAIL: pressing "f" again did not exit note fullscreen');
+
+  // The separate "expand width" button still does the old collapse-the-
+  // list-column behavior.
+  await window.click('#note-widen');
+  await window.waitForTimeout(200);
+  const noteWidened = await window.evaluate(() =>
+    document.getElementById('notes-split').classList.contains('pane-fullscreen')
+  );
+  console.log('notes-split widened after clicking "Expand width":', noteWidened);
+  if (!noteWidened) throw new Error('FAIL: "Expand width" did not widen the editor pane');
+  await window.click('#note-widen'); // revert
 
   await window.click('#note-close');
   await window.waitForTimeout(300);
@@ -590,8 +675,7 @@ const fs = require('fs');
   // Title auto-derivation must strip inline formatting (bold/italic/etc.),
   // not just block-level markers — a bolded first line should produce a
   // plain-text title, not one with literal ** in it.
-  await window.click('#new-note-button');
-  await window.waitForTimeout(500);
+  await createNoteViaModal('Verify Script Test Course');
   await window.click(noteEditableSelector, { force: true });
   await window.keyboard.type('W2L3 Recap');
   await window.waitForTimeout(150);
@@ -861,6 +945,29 @@ const fs = require('fs');
   await goToPage('courses');
   // Navigating to Courses fresh lands on the grid — reselect the course to
   // reach its detail view (Deadlines) again.
+  await window.click('#course-list li.course-card');
+  await window.waitForTimeout(200);
+
+  // Inline Resources/Notes previews on the course detail page — a short list
+  // of this course's own items (not the full global page) plus a "View all"
+  // link into the pre-filtered global page.
+  const detailResourcePreview = await window.$$eval('#course-detail-resources-preview li', (els) =>
+    els.map((e) => e.textContent)
+  );
+  console.log('course detail resources preview:', detailResourcePreview);
+  // Capped at 5 most-recent items — by this point in the run there are more
+  // than 5 resources for this course (several drag-and-drop tests added
+  // more), so just confirm the preview is non-empty and respects the cap,
+  // not which specific items made the cut.
+  if (detailResourcePreview.length === 0 || detailResourcePreview.length > 5) {
+    throw new Error(`FAIL: course detail resources preview should show 1-5 items, got ${detailResourcePreview.length}`);
+  }
+  await window.click('#course-detail-view-resources');
+  await window.waitForTimeout(300);
+  if ((await window.getAttribute('#page-resources', 'hidden')) !== null) {
+    throw new Error('FAIL: "View all" (Resources) did not navigate to the Resources page');
+  }
+  await goToPage('courses');
   await window.click('#course-list li.course-card');
   await window.waitForTimeout(200);
 
@@ -1197,10 +1304,7 @@ const fs = require('fs');
   // previously-inserted image 404'd on the very next launch once the port
   // changed. Fixed by pinning the server to a fixed port (localServer.ts).
   await goToPage('notes');
-  // Only "Watch Test Course" exists at this point, so pickCourse() skips
-  // its menu automatically.
-  await window.click('#new-note-button');
-  await window.waitForTimeout(500);
+  await createNoteViaModal('Watch Test Course');
   const imageNoteEditableSelector = '.milkdown [contenteditable="true"]';
   await window.click(imageNoteEditableSelector, { force: true });
   await window.keyboard.type('/');

@@ -112,6 +112,8 @@
               <select id="course-sort">
                 <option value="name">Sort by: Name</option>
                 <option value="resources">Sort by: Resources</option>
+                <option value="deadlines">Sort by: Deadlines</option>
+                <option value="notes">Sort by: Notes</option>
               </select>
               <div class="view-toggle">
                 <button id="course-view-grid" type="button" class="active" title="Grid view" aria-label="Grid view">
@@ -141,24 +143,32 @@
             </div>
           </div>
 
-          <div class="course-detail-links">
-            <button id="course-detail-view-resources" type="button" class="course-detail-link">
-              📄 <span id="course-detail-resource-count">0</span> Resources
-            </button>
-            <button id="course-detail-view-notes" type="button" class="course-detail-link">
-              📝 <span id="course-detail-note-count">0</span> Notes
-            </button>
+          <div class="course-detail-widgets">
+            <div class="dashboard-widget">
+              <div class="resources-header">
+                <h3>📄 Resources (<span id="course-detail-resource-count">0</span>)</h3>
+                <button id="course-detail-view-resources" type="button" class="link-button">View all →</button>
+              </div>
+              <ul id="course-detail-resources-preview"></ul>
+            </div>
+            <div class="dashboard-widget">
+              <div class="resources-header">
+                <h3>📝 Notes (<span id="course-detail-note-count">0</span>)</h3>
+                <button id="course-detail-view-notes" type="button" class="link-button">View all →</button>
+              </div>
+              <ul id="course-detail-notes-preview"></ul>
+            </div>
           </div>
 
           <section id="deadlines-section">
             <div class="resources-header">
               <h4 id="deadlines-heading">Deadlines</h4>
               <div class="view-toggle">
-                <button id="deadline-view-list-toggle" type="button" class="active" title="List view" aria-label="List view">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                </button>
                 <button id="deadline-view-grid-toggle" type="button" title="Grid view" aria-label="Grid view">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                </button>
+                <button id="deadline-view-list-toggle" type="button" class="active" title="List view" aria-label="List view">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 </button>
               </div>
             </div>
@@ -181,7 +191,7 @@
             <h2>Resources</h2>
             <p class="muted">All your course materials in one place.</p>
           </div>
-          <button id="upload-button" type="button">Upload file</button>
+          <button id="upload-button" type="button">+ Upload file</button>
         </div>
 
         <div class="chip-row" id="resources-kind-filter">
@@ -200,13 +210,23 @@
             <ul id="resources-course-rail"></ul>
           </aside>
           <div class="split-list">
-            <div class="view-toggle">
-              <button id="view-list" type="button" class="active" title="List view" aria-label="List view">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-              </button>
-              <button id="view-grid" type="button" title="Grid view" aria-label="Grid view">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-              </button>
+            <div class="resources-toolbar">
+              <div class="courses-toolbar-right">
+                <select id="resources-sort">
+                  <option value="name">Sort by: Name</option>
+                  <option value="recent">Sort by: Recently added</option>
+                  <option value="kind">Sort by: Kind</option>
+                  <option value="course">Sort by: Course</option>
+                </select>
+                <div class="view-toggle">
+                  <button id="view-grid" type="button" title="Grid view" aria-label="Grid view">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  </button>
+                  <button id="view-list" type="button" class="active" title="List view" aria-label="List view">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
             </div>
             <ul id="all-resources-list" class="view-list"></ul>
           </div>
@@ -235,8 +255,11 @@
               <input id="note-title-input" type="text" placeholder="Untitled" />
               <div class="split-preview-actions">
                 <span id="note-save-status" class="muted"></span>
-                <button id="note-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+                <button id="note-widen" type="button" title="Expand width" aria-label="Expand width">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+                <button id="note-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg>
                 </button>
                 <button id="note-close" type="button" title="Close" aria-label="Close">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -251,7 +274,22 @@
     </div>
   </div>
 
-  <ul id="course-picker-menu" class="course-picker-menu" hidden></ul>
+  <div id="course-picker-overlay" hidden>
+    <div id="course-picker-panel">
+      <div class="modal-header">
+        <h3 id="course-picker-title">Choose a course</h3>
+        <button id="course-picker-close" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <input id="course-picker-search" type="text" placeholder="Search courses…" autocomplete="off" />
+      <ul id="course-picker-list"></ul>
+      <div id="course-picker-dropzone" hidden>
+        <p id="course-picker-dropzone-hint" class="muted">Select a course above, then drop a file here</p>
+        <button id="course-picker-browse" type="button">Browse files…</button>
+      </div>
+    </div>
+  </div>
 
   <div id="preview-overlay" hidden>
     <div id="preview-panel">
