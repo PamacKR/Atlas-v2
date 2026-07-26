@@ -159,27 +159,38 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
   let changed = false;
   const errors: ClassroomSyncError[] = [];
 
+  // The ON CONFLICT target here is a *partial* unique index (WHERE ... IS
+  // NOT NULL, see database.ts's migrate() — a plain UNIQUE column
+  // constraint can't be added to an already-existing table via ALTER TABLE,
+  // so these use a partial index instead). SQLite requires a partial
+  // index's WHERE predicate to be restated immediately after the conflict
+  // column list (`ON CONFLICT(col) WHERE ... DO UPDATE`) — a trailing
+  // `DO UPDATE SET ... WHERE ...` is a different clause (filters which
+  // conflicting row gets updated) and does NOT satisfy that requirement.
+  // Getting this wrong made db.prepare() itself throw
+  // ("ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE
+  // constraint") every single time — since these three prepare() calls run
+  // unconditionally before the per-course try/catch loop even starts, that
+  // exception was probably the *actual* root cause of every past report of
+  // "nothing synced," not just the missing per-course guard.
   const upsertAssignment = db.prepare(`
     INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, updated_at)
     VALUES (?, ?, ?, ?, 'classroom', ?, ?)
-    ON CONFLICT (classroom_coursework_id) DO UPDATE SET
+    ON CONFLICT (classroom_coursework_id) WHERE classroom_coursework_id IS NOT NULL DO UPDATE SET
       title = excluded.title, description = excluded.description,
       due_at = excluded.due_at, updated_at = excluded.updated_at
-    WHERE classroom_coursework_id IS NOT NULL
   `);
   const upsertDeadline = db.prepare(`
     INSERT INTO deadlines (course_id, title, kind, due_at, source, classroom_coursework_id)
     VALUES (?, ?, 'assignment', ?, 'classroom', ?)
-    ON CONFLICT (classroom_coursework_id) DO UPDATE SET
+    ON CONFLICT (classroom_coursework_id) WHERE classroom_coursework_id IS NOT NULL DO UPDATE SET
       title = excluded.title, due_at = excluded.due_at
-    WHERE classroom_coursework_id IS NOT NULL
   `);
   const upsertAnnouncement = db.prepare(`
     INSERT INTO announcements (course_id, source, title, body, posted_at, classroom_announcement_id)
     VALUES (?, 'classroom', ?, ?, ?, ?)
-    ON CONFLICT (classroom_announcement_id) DO UPDATE SET
+    ON CONFLICT (classroom_announcement_id) WHERE classroom_announcement_id IS NOT NULL DO UPDATE SET
       title = excluded.title, body = excluded.body
-    WHERE classroom_announcement_id IS NOT NULL
   `);
   const upsertClasswork = db.prepare(`
     INSERT INTO classwork_materials (course_id, title, description, posted_at, classroom_coursework_material_id)
