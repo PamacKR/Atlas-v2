@@ -33,11 +33,13 @@ Goal: Atlas is useful *before* any external sync exists.
 
 ## Phase 3 — External sync (current)
 
-- Google Classroom adapter: courses, assignments, announcements, attachments, due dates, structure
-- Gmail adapter: academic email detection and course association
-- Google Drive adapter (optional, user-enabled): selected folder/file sync
-- Sync configuration: manual vs. automatic, frequency (see `docs/open-questions.md`)
-- Conflict handling for data that changed both locally and at the source
+Reordered 2026-07-26 (user decision) to build the **Google Drive adapter first**, ahead of Classroom/Gmail — it's what directly replaces the manual phone-scan/tablet-note transfer workflow (`docs/open-questions.md` #19), which was the actual immediate pain point, rather than following the phase's original listed order.
+
+- [ ] Google Drive adapter (first): one Drive folder the user designates as an "inbox" (e.g. "Atlas File Share"), polled while Atlas is running (~15–30s) plus a full scan on every launch — not a webhook/push subscription, which would need a public HTTPS endpoint that doesn't fit a local desktop app. New files surface in a review panel (course + Resource/Note per file, individually or bulk, dismissible and reopenable later, not forced immediately). Files are downloaded and copied into local managed storage on import — Drive is the inbox, Atlas still owns the data afterward, same as every other source.
+- [ ] Google Classroom adapter: courses, assignments, announcements, attachments, due dates, structure
+- [ ] Gmail adapter: academic email detection and course association
+- [ ] Sync configuration: manual vs. automatic, frequency (see `docs/open-questions.md`)
+- [ ] Conflict handling for data that changed both locally and at the source
 
 ## Phase 4 — Context Builder & Claude Code integration
 
