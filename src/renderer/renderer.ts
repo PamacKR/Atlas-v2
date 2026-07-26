@@ -1478,8 +1478,10 @@ function toggleClassroomReviewSelectAll(): void {
 // and lets them pick which to create as real Atlas courses. planner.db has
 // no reliable calendar-year term string (only a bare season name and an
 // ordinal program-year) — so the term is something the user confirms in a
-// text input here, pre-filled with that raw season as a hint, rather than
-// something Atlas silently guesses. Dedup (skip a candidate already
+// dropdown here — the same fixed semester options course-creation already
+// uses (there's never more than one semester's worth of secured courses in
+// a single plan, so one shared selection covers the whole batch) — rather
+// than something Atlas silently guesses. Dedup (skip a candidate already
 // imported under that exact term) happens at import time in main.ts, since
 // it depends on the term the user actually confirms.
 async function openAshokaImportPanel(): Promise<void> {
@@ -1501,7 +1503,14 @@ async function openAshokaImportPanel(): Promise<void> {
     atlasApi.listSecuredAshokaCourses(),
     atlasApi.getAshokaSemesterHint(),
   ]);
-  (document.getElementById('ashoka-review-term') as HTMLInputElement).value = semesterHint ?? '';
+  const termSelect = document.getElementById('ashoka-review-term') as HTMLSelectElement;
+  // Best-effort preselect from planner.db's bare season name (e.g. "Monsoon")
+  // against the fixed dropdown options ("Monsoon 26", ...) — just a
+  // convenience default, the user still confirms/changes it before import.
+  const matchingOption = semesterHint
+    ? Array.from(termSelect.options).find((o) => o.value.toLowerCase().startsWith(semesterHint.toLowerCase()))
+    : null;
+  termSelect.value = matchingOption ? matchingOption.value : '';
   renderAshokaReviewList(candidates);
   document.getElementById('ashoka-review-overlay')!.hidden = false;
 }
@@ -1539,7 +1548,7 @@ function renderAshokaReviewList(candidates: AshokaCourseCandidate[]): void {
 }
 
 async function importSelectedAshokaCourses(): Promise<void> {
-  const term = (document.getElementById('ashoka-review-term') as HTMLInputElement).value.trim();
+  const term = (document.getElementById('ashoka-review-term') as HTMLSelectElement).value.trim();
   if (!term) {
     alert('Enter the term/semester these courses belong to before importing.');
     return;
