@@ -141,9 +141,10 @@ After using Phase 2's OCR import on their actual handwriting, the user found loc
 
 - **Handwritten-note import no longer runs OCR automatically.** A scan is just stored (original file + blank note) until the user explicitly asks for OCR via a new "Run OCR" button, and even then the result is a reviewable draft (Discard/Insert), never silently trusted or auto-saved. See `ARCHITECTURE.md` §3 for the implementation.
 - For an accurate read of a specific handwritten note, the expected path is now: ask Claude Code directly to read the note's original scan (already possible, no new Atlas work) — the in-app OCR button is for when a rough, good-enough, fully local pass is fine (e.g. skimming a stack of notes for keywords).
-- The "OCR helps for typed PDFs without a text layer" case the user raised is **not built** — it would mean adding OCR as an on-demand action on Resources (not just handwritten Notes), which is a real but separate feature. Logged here rather than built speculatively.
+- **Follow-up, built 2026-07-26**: the "OCR helps for typed PDFs without a text layer" case is now built — a "Run OCR" action on the Resources preview modal, for any `kind = 'pdf'` resource. Same reviewed/opt-in shape as the notes flow: extracted text is shown for review, and only an explicit "Save extracted text" writes it to a new `resources.ocr_text` column and makes it searchable (`rebuildSearchIndex`). The original PDF still opens by default in all cases — Run OCR is a strictly additional action, not a replacement view. See `ARCHITECTURE.md` §3.
+- **Follow-up, built 2026-07-26**: opening a handwritten note now shows the original scan by default, not the (blank-until-OCR) editor — the user pointed out that clicking a handwritten note should show the actual scan/PDF immediately, not an empty or OCR'd view. The toggle button switches to the editor/OCR view instead. See `ARCHITECTURE.md` §3.
 
-**Status:** Resolved for handwritten notes (opt-in, reviewed, not automatic). Open as a possible future item: an equivalent on-demand "OCR this PDF" action for text-layer-less Resources (not just Notes) — not scoped or requested yet, revisit if the user hits an actual PDF book/scan that needs it.
+**Status:** Resolved — both the Resources OCR action and the default-to-scan-view behavior for handwritten notes are built.
 
 ### 19. Easier upload from tablet (typed notes) and phone (handwritten scans)
 

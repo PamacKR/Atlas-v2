@@ -31,7 +31,13 @@ CREATE TABLE IF NOT EXISTS resources (
   -- watched_folders below). Used to detect "already imported" on watcher
   -- restart, since chokidar re-emits 'add' for every existing file each time
   -- a watch starts. NULL for manually-uploaded resources.
-  watch_source_path TEXT
+  watch_source_path TEXT,
+  -- Opt-in, user-reviewed OCR text (see resources:runOcr in main.ts) for PDFs
+  -- with no text layer (e.g. a scanned book) — mirrors notes.ocr_text. NULL
+  -- until the user runs OCR and explicitly saves the result; only then does
+  -- it get indexed into search_index, same "never silently trusted" rule as
+  -- handwritten notes (docs/open-questions.md #18).
+  ocr_text TEXT
 );
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to

@@ -745,37 +745,50 @@ const fs = require('fs');
     throw new Error(`FAIL: handwritten note should show a badge in the list, got "${pdfNoteTitleInList}"`);
   }
 
-  // "View original scan" — hidden for a typed note, shown for this one, and
-  // clicking it renders the original PDF via the same preview plumbing the
-  // Resources page uses.
+  // "View original scan" — hidden for a typed note, shown for this one. A
+  // handwritten note's editor is blank until OCR is run and accepted, so
+  // opening the note should show the original scan by default (not an
+  // empty editor) — the toggle switches to the editor/OCR view instead.
   await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
-  await window.waitForTimeout(300);
+  await window.waitForTimeout(500);
   const scanToggleVisible = !(await window.isHidden('#note-view-scan'));
   console.log('"View original scan" button visible for a handwritten note:', scanToggleVisible);
   if (!scanToggleVisible) throw new Error('FAIL: "View original scan" should be visible for a handwritten note');
-  await window.click('#note-view-scan');
-  await window.waitForTimeout(500);
-  const scanPanelVisible = !(await window.isHidden('#note-scan-panel'));
-  const scanIframeSrc = await window.getAttribute('#note-scan-panel iframe', 'src').catch(() => null);
-  console.log('scan panel visible:', scanPanelVisible, '— iframe src:', scanIframeSrc);
-  if (!scanPanelVisible || !scanIframeSrc) {
-    throw new Error('FAIL: "View original scan" did not render the original PDF');
+
+  const scanPanelVisibleByDefault = !(await window.isHidden('#note-scan-panel'));
+  const editorHiddenByDefault = await window.isHidden('#note-editor-root');
+  const scanIframeSrcByDefault = await window.getAttribute('#note-scan-panel iframe', 'src').catch(() => null);
+  console.log(
+    'scan shown by default for a handwritten note:',
+    scanPanelVisibleByDefault,
+    '— editor hidden:',
+    editorHiddenByDefault,
+    '— iframe src:',
+    scanIframeSrcByDefault
+  );
+  if (!scanPanelVisibleByDefault || !editorHiddenByDefault || !scanIframeSrcByDefault) {
+    throw new Error('FAIL: opening a handwritten note should show the original scan by default, not the editor');
   }
-  // It's a toggle between two full views, not a split layout — the editor
-  // must be hidden while the scan is showing, and reappear when toggled off.
-  const editorHiddenWhileScanShown = await window.isHidden('#note-editor-root');
-  console.log('editor hidden while scan is shown:', editorHiddenWhileScanShown);
-  if (!editorHiddenWhileScanShown) {
-    throw new Error('FAIL: "View original scan" should replace the editor, not sit alongside it');
+
+  // Toggling switches to the editor/OCR view, and back again to the scan —
+  // a real toggle between two full views, not a split layout.
+  await window.click('#note-view-scan');
+  await window.waitForTimeout(300);
+  const editorShownAfterToggle = !(await window.isHidden('#note-editor-root'));
+  const scanHiddenAfterToggle = await window.isHidden('#note-scan-panel');
+  console.log('editor shown after toggling to notes view:', editorShownAfterToggle, '— scan hidden:', scanHiddenAfterToggle);
+  if (!editorShownAfterToggle || !scanHiddenAfterToggle) {
+    throw new Error('FAIL: toggling "View original scan" should switch to the editor view');
   }
   await window.click('#note-view-scan');
   await window.waitForTimeout(300);
-  const editorShownAfterToggleBack = !(await window.isHidden('#note-editor-root'));
-  const scanHiddenAfterToggleBack = await window.isHidden('#note-scan-panel');
-  console.log('editor shown after toggling scan view off:', editorShownAfterToggleBack, '— scan hidden:', scanHiddenAfterToggleBack);
-  if (!editorShownAfterToggleBack || !scanHiddenAfterToggleBack) {
-    throw new Error('FAIL: toggling "View original scan" off did not restore the editor');
-  }
+  const scanShownAfterToggleBack = !(await window.isHidden('#note-scan-panel'));
+  console.log('scan shown after toggling back:', scanShownAfterToggleBack);
+  if (!scanShownAfterToggleBack) throw new Error('FAIL: toggling "View original scan" again should restore the scan view');
+
+  // Switch back to the editor view for the "Run OCR" test below.
+  await window.click('#note-view-scan');
+  await window.waitForTimeout(300);
 
   // "Run OCR" — shows a review panel with the extracted text; discarding
   // must leave the note's content untouched.
@@ -836,10 +849,13 @@ const fs = require('fs');
   if (!noteClosedAfterSecondEscape) throw new Error('FAIL: second Escape (nothing focused) should close the note');
 
   // A single Escape should close the note if it's only being viewed —
-  // nothing focused inside it to begin with.
+  // nothing focused inside it to begin with — a fresh open, no extra click,
+  // since clicking into the scan panel below (a PDF iframe, by default for a
+  // handwritten note) would steal keyboard focus into it, and the top-level
+  // Escape listener would never see the keypress at all: a real focus-trap
+  // risk, not just a test artifact, so this deliberately avoids that click.
   await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
   await window.waitForTimeout(300);
-  await window.click('#note-overlay-panel');
   await window.keyboard.press('Escape');
   await window.waitForTimeout(300);
   const noteClosedAfterViewingEscape = await window.isHidden('#note-overlay');
@@ -888,6 +904,62 @@ const fs = require('fs');
     throw new Error('FAIL: a freshly dropped scan should have no content until OCR is run and accepted');
   }
 
+  // --- On-demand OCR for regular (non-handwritten) Resources PDFs ---
+  // docs/open-questions.md #18: OCR is also useful for a typed/printed PDF
+  // with no text layer (e.g. a scanned book) — a separate, on-demand action
+  // on the Resources preview, reusing the same fixture and the same
+  // opt-in/reviewed shape as the Notes OCR flow above (never silently
+  // trusted; must be explicitly saved to become searchable).
+  await app.evaluate((_electron, fp) => {
+    process.env.ATLAS_TEST_UPLOAD_PATH = fp;
+  }, testScanPath);
+  const scanPdfResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
+  if (!scanPdfResource) throw new Error('FAIL: uploading the PDF fixture as a resource did not return a resource');
+  await goToPage('resources');
+  await window.click(`li[data-resource-id="${scanPdfResource.id}"] .resource-name`);
+  await window.waitForTimeout(300);
+
+  const ocrResourceButtonVisible = !(await window.isHidden('#preview-run-ocr'));
+  console.log('"Run OCR" visible for a PDF resource:', ocrResourceButtonVisible);
+  if (!ocrResourceButtonVisible) throw new Error('FAIL: "Run OCR" should be visible for a PDF resource preview');
+  // The original PDF must still be what's showing by default (not any OCR
+  // view) — Run OCR is purely an opt-in extra, never the default preview.
+  const pdfIframeSrcBeforeOcr = await window.getAttribute('#preview-body iframe', 'src').catch(() => null);
+  console.log('PDF iframe src before running OCR:', pdfIframeSrcBeforeOcr);
+  if (!pdfIframeSrcBeforeOcr) throw new Error('FAIL: opening a PDF resource should show the original PDF by default');
+
+  await window.click('#preview-run-ocr');
+  await window.waitForTimeout(8000); // real OCR round-trip, not mocked
+  const resourceOcrReviewVisible = !(await window.isHidden('#preview-ocr-review'));
+  const resourceOcrReviewText = await window.textContent('#preview-ocr-review-text');
+  console.log('resource OCR review visible:', resourceOcrReviewVisible, '— text:', JSON.stringify(resourceOcrReviewText));
+  if (!resourceOcrReviewVisible || !resourceOcrReviewText.includes('SCAN PAGE ONE') || !resourceOcrReviewText.includes('SCAN PAGE TWO')) {
+    throw new Error(`FAIL: OCR review should show both pages' text, got ${JSON.stringify(resourceOcrReviewText)}`);
+  }
+
+  // Discarding must leave the resource unsearchable (nothing written to ocr_text).
+  await window.click('#preview-ocr-discard');
+  await window.waitForTimeout(200);
+  if (!(await window.isHidden('#preview-ocr-review'))) throw new Error('FAIL: "Discard" did not hide the OCR review panel');
+  const searchResultsBeforeSave = await window.evaluate(() => window.atlas.search('SCAN PAGE ONE'));
+  console.log('search results before saving OCR text:', searchResultsBeforeSave.length);
+  if (searchResultsBeforeSave.some((r) => r.entityId === scanPdfResource.id && r.entityType === 'resource')) {
+    throw new Error('FAIL: discarding OCR text should not make the resource searchable');
+  }
+
+  // Running it again and saving should write ocr_text and make it searchable.
+  await window.click('#preview-run-ocr');
+  await window.waitForTimeout(8000);
+  await window.click('#preview-ocr-save');
+  await window.waitForTimeout(300);
+  const searchResultsAfterSave = await window.evaluate(() => window.atlas.search('SCAN PAGE ONE'));
+  console.log('search results after saving OCR text:', searchResultsAfterSave.length);
+  if (!searchResultsAfterSave.some((r) => r.entityId === scanPdfResource.id && r.entityType === 'resource')) {
+    throw new Error('FAIL: saving OCR text should make the resource searchable');
+  }
+  await window.click('#preview-close');
+  await window.waitForTimeout(200);
+
   // Confirm on-disk layout: course folder named after the course (not
   // course-<id>), and the uploaded file keeping its original filename.
   const expectedFilePath = path.join(
@@ -901,11 +973,10 @@ const fs = require('fs');
     throw new Error(`FAIL: expected file not found at ${expectedFilePath}`);
   }
 
-  // Global search (FTS5 over search_index) — the markdown resource uploaded
-  // earlier ("sample-lecture-notes.md") is still the only thing in the
-  // index at this point (the notes created above were already deleted), so
-  // a search for its content should surface exactly that one result and
-  // clicking it should open the resource preview (on the Resources page).
+  // Global search (FTS5 over search_index) — searching for the markdown
+  // resource uploaded earlier ("sample-lecture-notes.md") should surface
+  // that result and clicking it should open the resource preview (on the
+  // Resources page).
   await window.fill('#search-input', 'lecture');
   await window.waitForTimeout(500); // debounce (250ms) + IPC round-trip
   const searchResultTexts = await window.$$eval('#search-results li', (els) => els.map((e) => e.textContent));
@@ -1095,12 +1166,15 @@ const fs = require('fs');
   await window.click('#deadline-edit-button');
   await window.waitForTimeout(300);
   await window.click('#deadline-edit-description');
-  await window.keyboard.type('See @sample');
+  // "@sample-lecture" rather than just "@sample" — the Resources OCR test
+  // above added another resource ("sample-scan.pdf") whose name also starts
+  // with "sample", which would otherwise ambiguously match first here too.
+  await window.keyboard.type('See @sample-lecture');
   await window.waitForTimeout(400);
   const mentionSuggestionVisible = !(await window.isHidden('#deadline-mention-suggestions'));
   console.log('mention autocomplete suggestions visible:', mentionSuggestionVisible);
   if (!mentionSuggestionVisible) {
-    throw new Error('FAIL: typing "@sample" did not show mention autocomplete suggestions');
+    throw new Error('FAIL: typing "@sample-lecture" did not show mention autocomplete suggestions');
   }
   await window.press('#deadline-edit-description', 'ArrowDown');
   const mentionActiveAfterArrowDown = await window.$eval('#deadline-mention-suggestions li', (el) =>

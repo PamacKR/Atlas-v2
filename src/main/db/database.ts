@@ -43,6 +43,9 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('watch_source_path')) {
     db.exec('ALTER TABLE resources ADD COLUMN watch_source_path TEXT');
   }
+  if (!resourceColumns.includes('ocr_text')) {
+    db.exec('ALTER TABLE resources ADD COLUMN ocr_text TEXT');
+  }
 
   const noteColumns = (db.prepare('PRAGMA table_info(notes)').all() as { name: string }[]).map(
     (c) => c.name

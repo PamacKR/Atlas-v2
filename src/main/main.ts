@@ -55,12 +55,13 @@ function rebuildSearchIndex(): void {
     'INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES (?, ?, ?, ?, ?)'
   );
 
-  const resources = db.prepare('SELECT id, course_id, title, kind, file_path FROM resources').all() as {
+  const resources = db.prepare('SELECT id, course_id, title, kind, file_path, ocr_text FROM resources').all() as {
     id: number;
     course_id: number;
     title: string;
     kind: string;
     file_path: string;
+    ocr_text: string | null;
   }[];
   for (const resource of resources) {
     let body = '';
@@ -70,6 +71,8 @@ function rebuildSearchIndex(): void {
       } catch {
         body = '';
       }
+    } else if (resource.ocr_text) {
+      body = resource.ocr_text;
     }
     insert.run('resource', resource.id, resource.course_id, resource.title, body);
   }
@@ -768,6 +771,28 @@ ipcMain.handle('resources:getPreview', async (_event, resourceId: number) => {
     | undefined;
   if (!resource) return { type: 'unsupported' };
   return getPreview(resource.kind, resource.file_path, resource.zoom_level);
+});
+
+// On-demand OCR for PDFs Atlas can't already read as text (e.g. a scanned
+// book with no text layer) — docs/open-questions.md #18. Same "never
+// silently trusted" shape as notes:runOcr: returns extracted text only, the
+// renderer shows it for review, and it's only written to the DB (and made
+// searchable) if the user explicitly saves it via resources:saveOcrText.
+ipcMain.handle('resources:runOcr', async (event, resourceId: number) => {
+  const db = getDb();
+  const resource = db.prepare('SELECT file_path, kind FROM resources WHERE id = ?').get(resourceId) as
+    | { file_path: string; kind: string }
+    | undefined;
+  if (!resource || resource.kind !== 'pdf') return null;
+  return extractTextFromScan(resource.file_path, (page, totalPages) => {
+    event.sender.send('resources:ocrProgress', { resourceId, page, totalPages });
+  });
+});
+
+ipcMain.handle('resources:saveOcrText', (_event, resourceId: number, text: string) => {
+  const db = getDb();
+  db.prepare('UPDATE resources SET ocr_text = ? WHERE id = ?').run(text, resourceId);
+  rebuildSearchIndex();
 });
 
 ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) => {

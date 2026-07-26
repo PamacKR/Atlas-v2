@@ -20,6 +20,7 @@ export interface Resource {
   original_filename: string | null;
   added_at: string;
   synced_at: string | null;
+  ocr_text: string | null;
 }
 
 export interface WatchedFolder {
@@ -61,6 +62,12 @@ export interface Deadline {
 
 export interface NoteOcrProgress {
   noteId: number;
+  page: number;
+  totalPages: number;
+}
+
+export interface ResourceOcrProgress {
+  resourceId: number;
   page: number;
   totalPages: number;
 }
@@ -132,6 +139,13 @@ contextBridge.exposeInMainWorld('atlas', {
   getPreview: (resourceId: number): Promise<Preview> => ipcRenderer.invoke('resources:getPreview', resourceId),
   setResourceZoom: (resourceId: number, zoom: number): Promise<void> =>
     ipcRenderer.invoke('resources:setZoom', resourceId, zoom),
+  runResourceOcr: (resourceId: number): Promise<string | null> =>
+    ipcRenderer.invoke('resources:runOcr', resourceId),
+  saveResourceOcrText: (resourceId: number, text: string): Promise<void> =>
+    ipcRenderer.invoke('resources:saveOcrText', resourceId, text),
+  onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void): void => {
+    ipcRenderer.on('resources:ocrProgress', (_event, progress: ResourceOcrProgress) => handler(progress));
+  },
   showResourceContextMenu: (resourceId: number): void =>
     ipcRenderer.send('resources:contextMenu', resourceId),
   onContextMenuDelete: (handler: (resourceId: number) => void): void => {

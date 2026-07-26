@@ -1134,6 +1134,59 @@ ul#course-list.view-list li.course-card .course-card-counts {
   border-radius: 0;
 }
 
+/* OCR review step for a Resources PDF (see #note-ocr-preview above — same
+   opt-in/reviewed shape, just Save-to-DB instead of Insert-into-note). Same
+   [hidden]-vs-own-selector trap as elsewhere in this file. */
+#preview-ocr-review:not([hidden]) {
+  display: block;
+  flex-shrink: 0;
+  max-height: 40%;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  overflow: auto;
+}
+
+#preview-ocr-review p.muted {
+  margin: 0 0 0.5rem 0;
+}
+
+#preview-ocr-review-text {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+#preview-ocr-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+#preview-ocr-review-actions button {
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#preview-ocr-discard {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+}
+
+#preview-ocr-discard:hover {
+  background: var(--color-hover-bg);
+}
+
+#preview-ocr-save {
+  border: none;
+  background: var(--color-accent);
+  color: white;
+}
+
 /* A real modal used to choose a target course for an action that isn't
    scoped to any one course on screen (uploading a resource, creating a
    note), with a search box for when there are many courses — replaces an

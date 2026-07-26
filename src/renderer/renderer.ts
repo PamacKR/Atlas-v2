@@ -18,6 +18,7 @@ interface Resource {
   original_filename: string | null;
   added_at: string;
   synced_at: string | null;
+  ocr_text: string | null;
 }
 
 interface WatchedFolder {
@@ -61,6 +62,12 @@ interface MentionCandidate {
 
 interface NoteOcrProgress {
   noteId: number;
+  page: number;
+  totalPages: number;
+}
+
+interface ResourceOcrProgress {
+  resourceId: number;
   page: number;
   totalPages: number;
 }
@@ -132,6 +139,9 @@ interface AtlasApi {
   deleteResource: (resourceId: number) => Promise<void>;
   getPreview: (resourceId: number) => Promise<Preview>;
   setResourceZoom: (resourceId: number, zoom: number) => Promise<void>;
+  runResourceOcr: (resourceId: number) => Promise<string | null>;
+  saveResourceOcrText: (resourceId: number, text: string) => Promise<void>;
+  onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void) => void;
   showResourceContextMenu: (resourceId: number) => void;
   showCourseContextMenu: (courseId: number) => void;
   onContextMenuDelete: (handler: (resourceId: number) => void) => void;
@@ -1428,8 +1438,16 @@ async function openNoteEditor(note: Note): Promise<void> {
   scanPanel.hidden = true;
   scanPanel.innerHTML = '';
   discardNoteOcr();
+  updateScanToggleLabel(false);
 
   await mountNoteEditor(note);
+
+  // A handwritten note's editor is blank until OCR is run and accepted, so
+  // opening straight into an empty editor looks broken — show the original
+  // scan by default instead. The editor/OCR view is one toggle click away.
+  if (note.is_handwritten) {
+    await showNoteScanPanel(note.id);
+  }
 }
 
 async function closeNoteEditor(): Promise<void> {
@@ -1498,19 +1516,31 @@ function renderScanInto(container: HTMLElement, preview: Preview): void {
   }
 }
 
-// A toggle between two full views — the original scan, or the note's own
-// content — not a split layout with both stacked at once. Showing the scan
-// hides the editor outright (and vice versa), same idea as flipping a page
-// over rather than shrinking both into half the space.
-async function toggleNoteScanPanel(): Promise<void> {
+const NOTE_VIEW_SCAN_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+const NOTE_VIEW_NOTES_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+
+// The toggle button's icon/label reflects which view it would switch *to*,
+// not which one is currently showing — same convention as the fullscreen
+// button elsewhere in this file.
+function updateScanToggleLabel(showingScan: boolean): void {
+  const scanToggle = document.getElementById('note-view-scan') as HTMLButtonElement;
+  const label = showingScan ? 'View my notes' : 'View original scan';
+  scanToggle.innerHTML = showingScan ? NOTE_VIEW_NOTES_ICON : NOTE_VIEW_SCAN_ICON;
+  scanToggle.title = label;
+  scanToggle.setAttribute('aria-label', label);
+}
+
+// Loads and shows the original scan, hiding the editor outright — not a
+// split layout with both stacked at once, same idea as flipping a page over
+// rather than shrinking both into half the space. Factored out of
+// toggleNoteScanPanel so openNoteEditor can also call it directly: a
+// handwritten note's editor starts blank until OCR is run and accepted, so
+// the scan (not an empty editor) is what should show by default.
+async function showNoteScanPanel(noteId: number): Promise<void> {
   const panel = document.getElementById('note-scan-panel')!;
   const editorRoot = document.getElementById('note-editor-root')!;
-  if (!panel.hidden) {
-    panel.hidden = true;
-    editorRoot.hidden = false;
-    return;
-  }
-  if (currentNoteId === null) return;
   // Running OCR reviews its result stacked above the editor (see
   // runNoteOcr) — closing that out first keeps "viewing the scan" and
   // "reviewing an OCR result" mutually exclusive rather than both showing.
@@ -1518,8 +1548,22 @@ async function toggleNoteScanPanel(): Promise<void> {
   panel.innerHTML = '<p class="muted">Loading scan…</p>';
   panel.hidden = false;
   editorRoot.hidden = true;
-  const preview = await atlasApi.getNoteScanPreview(currentNoteId);
+  updateScanToggleLabel(true);
+  const preview = await atlasApi.getNoteScanPreview(noteId);
   if (preview) renderScanInto(panel, preview);
+}
+
+async function toggleNoteScanPanel(): Promise<void> {
+  const panel = document.getElementById('note-scan-panel')!;
+  const editorRoot = document.getElementById('note-editor-root')!;
+  if (!panel.hidden) {
+    panel.hidden = true;
+    editorRoot.hidden = false;
+    updateScanToggleLabel(false);
+    return;
+  }
+  if (currentNoteId === null) return;
+  await showNoteScanPanel(currentNoteId);
 }
 
 // OCR is opt-in per note, not automatic on import (see main.ts for why —
@@ -1544,6 +1588,7 @@ async function runNoteOcr(): Promise<void> {
   // make sure the scan view isn't showing before OCR review takes it over.
   document.getElementById('note-scan-panel')!.hidden = true;
   document.getElementById('note-editor-root')!.hidden = false;
+  updateScanToggleLabel(false);
 
   button.disabled = true;
   statusEl.textContent = 'Running OCR…';
@@ -1739,6 +1784,7 @@ async function openPreview(resource: Resource): Promise<void> {
   const note = document.getElementById('preview-note') as HTMLParagraphElement;
   const body = document.getElementById('preview-body')!;
   const zoomControls = document.getElementById('zoom-controls')!;
+  const ocrButton = document.getElementById('preview-run-ocr') as HTMLButtonElement;
 
   title.textContent = resource.title;
   note.hidden = true;
@@ -1747,6 +1793,15 @@ async function openPreview(resource: Resource): Promise<void> {
   body.innerHTML = '<p class="muted">Loading preview…</p>';
   overlay.hidden = false;
   currentPreviewResourceId = resource.id;
+
+  // Run OCR only makes sense for a PDF — same on-demand, reviewed-before-
+  // saving shape as handwritten notes (docs/open-questions.md #18), for
+  // text-layer-less PDFs like a scanned book. Resets on every open, even if
+  // left showing on whatever resource was previewed last.
+  ocrButton.hidden = resource.kind !== 'pdf';
+  ocrButton.disabled = false;
+  document.getElementById('preview-ocr-status')!.textContent = '';
+  discardResourceOcr();
 
   const preview = await atlasApi.getPreview(resource.id);
   body.innerHTML = '';
@@ -1795,7 +1850,48 @@ function closePreview(): void {
   fullscreenButton.title = 'Fullscreen';
   fullscreenButton.setAttribute('aria-label', 'Fullscreen');
   body.innerHTML = ''; // stop any iframe/media activity
+  discardResourceOcr();
   currentPreviewResourceId = null;
+}
+
+// OCR for a Resources PDF is opt-in and reviewed, same shape as handwritten
+// notes (docs/open-questions.md #18) — this is for PDFs Atlas can't already
+// read as text (e.g. a scanned book with no text layer). Running it never
+// touches the resource on its own; the extracted text is only a candidate
+// the user reviews and explicitly saves (saveResourceOcr) or discards.
+let pendingResourceOcrText: string | null = null;
+
+function discardResourceOcr(): void {
+  pendingResourceOcrText = null;
+  document.getElementById('preview-ocr-review')!.hidden = true;
+}
+
+async function runResourceOcr(): Promise<void> {
+  if (currentPreviewResourceId === null) return;
+  const resourceId = currentPreviewResourceId;
+  const button = document.getElementById('preview-run-ocr') as HTMLButtonElement;
+  const statusEl = document.getElementById('preview-ocr-status')!;
+
+  button.disabled = true;
+  statusEl.textContent = 'Running OCR…';
+  const text = await atlasApi.runResourceOcr(resourceId);
+  button.disabled = false;
+  statusEl.textContent = '';
+  if (text === null || currentPreviewResourceId !== resourceId) return; // preview closed/changed while OCR ran
+
+  pendingResourceOcrText = text;
+  const review = document.getElementById('preview-ocr-review')!;
+  document.getElementById('preview-ocr-review-text')!.textContent = text.trim() || '(No text detected.)';
+  review.hidden = false;
+}
+
+async function saveResourceOcr(): Promise<void> {
+  if (currentPreviewResourceId === null || pendingResourceOcrText === null) return;
+  const resourceId = currentPreviewResourceId;
+  const text = pendingResourceOcrText;
+  discardResourceOcr();
+  await atlasApi.saveResourceOcrText(resourceId, text);
+  document.getElementById('preview-ocr-status')!.textContent = 'Saved — now searchable.';
 }
 
 const MAXIMIZE_ICON =
@@ -2339,6 +2435,14 @@ async function init(): Promise<void> {
 
   document.getElementById('preview-close')!.addEventListener('click', closePreview);
   document.getElementById('preview-fullscreen')!.addEventListener('click', toggleFullscreenPreview);
+  document.getElementById('preview-run-ocr')!.addEventListener('click', runResourceOcr);
+  document.getElementById('preview-ocr-discard')!.addEventListener('click', discardResourceOcr);
+  document.getElementById('preview-ocr-save')!.addEventListener('click', saveResourceOcr);
+  atlasApi.onResourceOcrProgress((progress) => {
+    if (progress.resourceId !== currentPreviewResourceId) return;
+    document.getElementById('preview-ocr-status')!.textContent =
+      progress.totalPages > 1 ? `Running OCR… page ${progress.page} of ${progress.totalPages}` : 'Running OCR…';
+  });
   document.addEventListener('keydown', (e) => {
     // Ctrl+L jumps to search from anywhere, same convention as a browser's
     // address bar — selects any existing text so typing immediately
