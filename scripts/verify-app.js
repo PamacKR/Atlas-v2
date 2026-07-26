@@ -761,6 +761,21 @@ const fs = require('fs');
   if (!scanPanelVisible || !scanIframeSrc) {
     throw new Error('FAIL: "View original scan" did not render the original PDF');
   }
+  // It's a toggle between two full views, not a split layout — the editor
+  // must be hidden while the scan is showing, and reappear when toggled off.
+  const editorHiddenWhileScanShown = await window.isHidden('#note-editor-root');
+  console.log('editor hidden while scan is shown:', editorHiddenWhileScanShown);
+  if (!editorHiddenWhileScanShown) {
+    throw new Error('FAIL: "View original scan" should replace the editor, not sit alongside it');
+  }
+  await window.click('#note-view-scan');
+  await window.waitForTimeout(300);
+  const editorShownAfterToggleBack = !(await window.isHidden('#note-editor-root'));
+  const scanHiddenAfterToggleBack = await window.isHidden('#note-scan-panel');
+  console.log('editor shown after toggling scan view off:', editorShownAfterToggleBack, '— scan hidden:', scanHiddenAfterToggleBack);
+  if (!editorShownAfterToggleBack || !scanHiddenAfterToggleBack) {
+    throw new Error('FAIL: toggling "View original scan" off did not restore the editor');
+  }
 
   // "Run OCR" — shows a review panel with the extracted text; discarding
   // must leave the note's content untouched.
@@ -803,8 +818,33 @@ const fs = require('fs');
   if (acceptedNote.title !== 'SCAN PAGE ONE') {
     throw new Error(`FAIL: title should re-derive from the accepted OCR text, got "${acceptedNote.title}"`);
   }
-  await window.click('#note-close');
+
+  // Two-stage Escape: while actively typing, the first Escape only blurs
+  // out of editing (note stays open) — a second Escape then closes it.
+  await window.click('.milkdown [contenteditable="true"]', { force: true });
+  await window.keyboard.type('typing before escape');
   await window.waitForTimeout(200);
+  await window.keyboard.press('Escape');
+  await window.waitForTimeout(200);
+  const noteOpenAfterFirstEscape = !(await window.isHidden('#note-overlay'));
+  console.log('note still open after first Escape while typing:', noteOpenAfterFirstEscape);
+  if (!noteOpenAfterFirstEscape) throw new Error('FAIL: first Escape while typing should not close the note');
+  await window.keyboard.press('Escape');
+  await window.waitForTimeout(300);
+  const noteClosedAfterSecondEscape = await window.isHidden('#note-overlay');
+  console.log('note closed after second Escape:', noteClosedAfterSecondEscape);
+  if (!noteClosedAfterSecondEscape) throw new Error('FAIL: second Escape (nothing focused) should close the note');
+
+  // A single Escape should close the note if it's only being viewed —
+  // nothing focused inside it to begin with.
+  await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
+  await window.waitForTimeout(300);
+  await window.click('#note-overlay-panel');
+  await window.keyboard.press('Escape');
+  await window.waitForTimeout(300);
+  const noteClosedAfterViewingEscape = await window.isHidden('#note-overlay');
+  console.log('note closed after a single Escape while just viewing:', noteClosedAfterViewingEscape);
+  if (!noteClosedAfterViewingEscape) throw new Error('FAIL: a single Escape should close a note that is only being viewed');
 
   // Image path via drag-and-drop (synthetic DragEvent/DataTransfer/File,
   // same technique as the Resources drag-and-drop tests — Playwright can't

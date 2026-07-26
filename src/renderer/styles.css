@@ -1013,15 +1013,14 @@ ul#course-list.view-list li.course-card .course-card-counts {
 }
 
 /* Original scan (image/PDF) for a handwritten note — toggled via
-   #note-view-scan, shown above the editor rather than replacing it, so the
-   OCR'd text and the source it came from can be compared side by side.
-   Same [hidden]-vs-own-selector trap as documented elsewhere — display must
-   be conditioned on :not([hidden]). */
+   #note-view-scan, which swaps it in for the editor entirely (see
+   toggleNoteScanPanel) rather than stacking both at once. Same
+   [hidden]-vs-own-selector trap as documented elsewhere — display must be
+   conditioned on :not([hidden]). */
 #note-scan-panel:not([hidden]) {
   display: block;
-  flex-shrink: 0;
-  height: 40%;
-  margin-bottom: 0.75rem;
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--color-border);
   border-radius: 6px;
   overflow: auto;

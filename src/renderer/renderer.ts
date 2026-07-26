@@ -1498,15 +1498,26 @@ function renderScanInto(container: HTMLElement, preview: Preview): void {
   }
 }
 
+// A toggle between two full views — the original scan, or the note's own
+// content — not a split layout with both stacked at once. Showing the scan
+// hides the editor outright (and vice versa), same idea as flipping a page
+// over rather than shrinking both into half the space.
 async function toggleNoteScanPanel(): Promise<void> {
   const panel = document.getElementById('note-scan-panel')!;
+  const editorRoot = document.getElementById('note-editor-root')!;
   if (!panel.hidden) {
     panel.hidden = true;
+    editorRoot.hidden = false;
     return;
   }
   if (currentNoteId === null) return;
+  // Running OCR reviews its result stacked above the editor (see
+  // runNoteOcr) — closing that out first keeps "viewing the scan" and
+  // "reviewing an OCR result" mutually exclusive rather than both showing.
+  discardNoteOcr();
   panel.innerHTML = '<p class="muted">Loading scan…</p>';
   panel.hidden = false;
+  editorRoot.hidden = true;
   const preview = await atlasApi.getNoteScanPreview(currentNoteId);
   if (preview) renderScanInto(panel, preview);
 }
@@ -1528,6 +1539,12 @@ async function runNoteOcr(): Promise<void> {
   const noteId = currentNoteId;
   const button = document.getElementById('note-run-ocr') as HTMLButtonElement;
   const statusEl = document.getElementById('note-save-status')!;
+
+  // "View original scan" and the OCR review both want the editor's space —
+  // make sure the scan view isn't showing before OCR review takes it over.
+  document.getElementById('note-scan-panel')!.hidden = true;
+  document.getElementById('note-editor-root')!.hidden = false;
+
   button.disabled = true;
   statusEl.textContent = 'Running OCR…';
   const text = await atlasApi.runNoteOcr(noteId);
@@ -2294,11 +2311,16 @@ async function init(): Promise<void> {
   });
   noteTitleInput.addEventListener('keydown', (e) => {
     // Enter confirms the rename; Escape cancels editing the title (reverts
-    // to the last saved value) without touching the note itself — neither
-    // should close the whole editor.
+    // to the last saved value) and just blurs — the first Escape should
+    // only leave editing, never close the note outright. stopPropagation
+    // keeps the global keydown handler (which also acts on Escape, to close
+    // the note on a *second* press) from seeing this same keypress and
+    // closing immediately, since by the time it bubbles up the field is
+    // already blurred and would otherwise look like "nothing was focused."
     if (e.key === 'Enter') {
       noteTitleInput.blur();
     } else if (e.key === 'Escape') {
+      e.stopPropagation();
       noteTitleInput.value = noteTitleBeforeEdit;
       noteTitleInput.blur();
     }
@@ -2353,13 +2375,29 @@ async function init(): Promise<void> {
       }
     }
 
-    // Escape closes the resource preview overlay — but deliberately never
-    // the note editor pane, even via this same key: an editor with
-    // in-progress typing shouldn't disappear because of an incidental
-    // Escape (e.g. cancelling a text selection or a title edit). The X
-    // button is the only way to close a note, matching how Notion itself
-    // behaves (Escape doesn't close a page there either).
-    if (e.key !== 'Escape' || isTyping) return;
+    if (e.key !== 'Escape') return;
+
+    // Two-stage Escape for the note editor: while actively typing (title
+    // input or the Milkdown surface), the first Escape just blurs out of
+    // editing — same instinct as any text editor, and avoids an in-progress
+    // selection vanishing along with the whole note. A second Escape, once
+    // nothing is focused, closes the note; if the note was only being
+    // viewed (nothing focused to begin with), the very first Escape closes
+    // it, same as the resource preview below.
+    const noteOverlay = document.getElementById('note-overlay') as HTMLElement;
+    if (!noteOverlay.hidden) {
+      const editingNote =
+        active instanceof HTMLElement &&
+        (active.id === 'note-title-input' || document.getElementById('note-editor-root')!.contains(active));
+      if (editingNote) {
+        active.blur();
+      } else {
+        void closeNoteEditor();
+      }
+      return;
+    }
+
+    if (isTyping) return;
     if (!(document.getElementById('preview-overlay') as HTMLElement).hidden) {
       closePreview();
     }
