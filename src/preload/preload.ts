@@ -168,6 +168,7 @@ export interface ClassroomCourseContent {
     description: string | null;
     due_at: string | null;
     status: string;
+    classroom_coursework_id: string | null;
     links: ClassroomContentLink[];
   }[];
   classwork: {
@@ -192,6 +193,7 @@ contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
     ipcRenderer.invoke('courses:create', name, code, term),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
   isDriveConnected: (): Promise<boolean> => ipcRenderer.invoke('google:isDriveConnected'),

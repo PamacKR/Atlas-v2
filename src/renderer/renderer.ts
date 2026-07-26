@@ -50,6 +50,7 @@ interface Deadline {
   completed: number;
   source: string;
   description: string | null;
+  classroom_coursework_id: string | null;
 }
 
 // A candidate a deadline description's "@" autocomplete can insert a mention
@@ -122,6 +123,7 @@ interface ClassroomCourseContent {
     description: string | null;
     due_at: string | null;
     status: string;
+    classroom_coursework_id: string | null;
     links: ClassroomContentLink[];
   }[];
   classwork: {
@@ -201,6 +203,7 @@ interface AtlasApi {
   listCourses: () => Promise<Course[]>;
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
+  getAppVersion: () => Promise<string>;
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
   isDriveConnected: () => Promise<boolean>;
@@ -356,6 +359,39 @@ const KIND_ICON: Record<string, string> = {
   other: '📁',
 };
 
+const ICON_EXTENSION_MAP: Record<string, string> = {
+  pdf: 'pdf',
+  ppt: 'pptx',
+  pptx: 'pptx',
+  doc: 'docx',
+  docx: 'docx',
+  xls: 'xlsx',
+  xlsx: 'xlsx',
+  csv: 'xlsx',
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  gif: 'image',
+  webp: 'image',
+  txt: 'text',
+  md: 'markdown',
+  zip: 'zip',
+};
+
+// A `kind='link'` resource (a Classroom Drive-file/link/YouTube/Form
+// attachment, see googleClassroom.ts) always has kind literally 'link' —
+// that's what tells Atlas to open it externally rather than preview it in
+// app — so KIND_ICON['link'] alone would show every single one as a plain
+// 🔗, no matter what it actually links to. This guesses a more specific
+// icon from the linked file's own name/extension (still preserved in the
+// resource's title) purely for display; it never changes the stored kind.
+function resourceDisplayIcon(resource: { kind: string; title: string }): string {
+  if (resource.kind !== 'link') return KIND_ICON[resource.kind] ?? KIND_ICON.other;
+  const ext = resource.title.split('.').pop()?.toLowerCase() ?? '';
+  const mapped = ICON_EXTENSION_MAP[ext];
+  return mapped ? KIND_ICON[mapped] : KIND_ICON.link;
+}
+
 const DEADLINE_KIND_LABEL: Record<string, string> = {
   assignment: 'Assignment',
   reading: 'Reading',
@@ -404,7 +440,7 @@ let ashokaReviewCandidates: AshokaCourseCandidate[] = [];
 // Search stays a floating dropdown over whichever page is active (see
 // focusSearch(), triggered from the top-bar search box directly), so it
 // isn't one of these and has no sidebar entry of its own.
-type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'calendar';
+type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'calendar' | 'settings';
 let currentPage: AppPage = 'dashboard';
 
 function showPage(page: AppPage): void {
@@ -429,6 +465,32 @@ function showPage(page: AppPage): void {
   } else if (page === 'resources') void renderResourcesPage();
   else if (page === 'notes') void renderNotesPage();
   else if (page === 'calendar') void renderCalendarPage();
+  else if (page === 'settings') void renderSettingsPage();
+}
+
+// Settings' own General/Sources/About sub-tabs — same pattern as the course
+// detail page's tabs (see setCourseDetailTab), a separate one since these
+// two tab bars are otherwise unrelated.
+function setSettingsTab(tab: string): void {
+  document.querySelectorAll<HTMLElement>('.settings-nav-item').forEach((button) => {
+    button.classList.toggle('active', button.dataset.settingsTab === tab);
+  });
+  document.querySelectorAll<HTMLElement>('.settings-panel').forEach((panel) => {
+    panel.hidden = panel.dataset.settingsPanel !== tab;
+  });
+}
+
+async function renderSettingsPage(): Promise<void> {
+  await Promise.all([
+    renderDriveStatus(),
+    renderClassroomStatus(),
+    renderSettingsAbout(),
+  ]);
+}
+
+async function renderSettingsAbout(): Promise<void> {
+  const version = await atlasApi.getAppVersion();
+  document.getElementById('settings-about-version')!.textContent = `Atlas ${version}`;
 }
 
 let confirmResolve: ((result: boolean) => void) | null = null;
@@ -558,7 +620,7 @@ function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTML
     li.className = 'icon-tile';
     const icon = document.createElement('div');
     icon.className = 'icon-glyph';
-    icon.textContent = KIND_ICON[resource.kind] ?? KIND_ICON.other;
+    icon.textContent = resourceDisplayIcon(resource);
     li.appendChild(icon);
     const name = document.createElement('div');
     name.className = 'icon-name';
@@ -1131,8 +1193,6 @@ async function renderDashboard(): Promise<void> {
     renderDashboardDeadlines(),
     renderDashboardResources(),
     renderDashboardActivity(),
-    renderDriveStatus(),
-    renderClassroomStatus(),
   ]);
 }
 
@@ -1753,9 +1813,11 @@ function setDashboardUpcomingFilter(filter: string): void {
   renderDashboardDeadlineRows();
 }
 
-// A relative "Due in N days"/Today/Tomorrow/Overdue label — distinct from
+// A relative Today/Tomorrow/Overdue/"N days" value — distinct from
 // formatDueDate's absolute-date label, since the screenshot design calls for
-// the relative framing specifically for this widget's row layout.
+// the relative framing specifically for this widget's row layout. Paired
+// with a separate "Due in" label above it (see renderDashboardDeadlineRows),
+// so this returns just the value, not the full sentence.
 function formatDueInLabel(dueAt: string | null): string {
   if (!dueAt) return '';
   const { year, month, day } = splitDueAt(dueAt);
@@ -1766,7 +1828,7 @@ function formatDueInLabel(dueAt: string | null): string {
   if (diffDays < 0) return 'Overdue';
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Tomorrow';
-  return `Due in ${diffDays} days`;
+  return `${diffDays} days`;
 }
 
 // --- Calendar page (v1 — month grid + Upcoming sidebar only) ---
@@ -1815,7 +1877,10 @@ function groupDeadlinesByDate(deadlines: DashboardDeadline[]): Map<string, Dashb
   return byDate;
 }
 
-const CALENDAR_MAX_CHIPS_PER_DAY = 3;
+// Lowered from 3 to 2 when the chips became two-line (title + course name)
+// and visually bigger, per the user's request to make them more legible —
+// 3 of the taller chips no longer fit a day cell without overflowing.
+const CALENDAR_MAX_CHIPS_PER_DAY = 2;
 
 function renderCalendarGrid(deadlines: DashboardDeadline[]): void {
   const grid = document.getElementById('calendar-grid')!;
@@ -1854,11 +1919,16 @@ function renderCalendarGrid(deadlines: DashboardDeadline[]): void {
     const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
     const dayDeadlines = byDate.get(key) ?? [];
     for (const deadline of dayDeadlines.slice(0, CALENDAR_MAX_CHIPS_PER_DAY)) {
+      const color = courseAvatarColor(deadline.course_id);
       const chip = document.createElement('div');
       chip.className = 'calendar-deadline-chip';
-      chip.style.borderLeftColor = courseAvatarColor(deadline.course_id);
-      chip.textContent = deadline.title;
+      chip.style.borderLeftColor = color;
+      chip.style.backgroundColor = `${color}26`; // ~15% opacity tint, so the block itself reads as "this course's color", not just a thin accent line
       chip.title = `${deadline.course_name}: ${deadline.title}`;
+      chip.innerHTML = `
+        <span class="calendar-deadline-chip-title">${escapeHtml(deadline.title)}</span>
+        <span class="calendar-deadline-chip-course">${escapeHtml(deadline.course_name)}</span>
+      `;
       chip.addEventListener('click', () => void openDashboardDeadline(deadline));
       cell.appendChild(chip);
     }
@@ -1962,45 +2032,68 @@ function renderDashboardDeadlineRows(): void {
     li.className = 'upcoming-row';
     li.style.borderLeftColor = courseAvatarColor(deadline.course_id);
 
+    // Three-line stacked date block (month / day / weekday), matching the
+    // shared screenshot's layout, rather than the earlier two-line
+    // month-over-day block.
     const dateBlock = document.createElement('div');
     dateBlock.className = 'upcoming-date-block';
+    let diffDays: number | null = null;
     if (deadline.due_at) {
       const { year, month, day } = splitDueAt(deadline.due_at);
       const date = new Date(year, month - 1, day);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      diffDays = Math.round((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+      const monthEl = document.createElement('span');
+      monthEl.className = 'upcoming-date-month';
+      monthEl.textContent = date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
       const dayEl = document.createElement('span');
       dayEl.className = 'upcoming-date-day';
       dayEl.textContent = String(date.getDate());
-      const monthEl = document.createElement('span');
-      monthEl.className = 'upcoming-date-month';
-      monthEl.textContent = date.toLocaleDateString(undefined, { month: 'short' });
-      dateBlock.append(monthEl, dayEl);
+      const weekdayEl = document.createElement('span');
+      weekdayEl.className = 'upcoming-date-weekday';
+      weekdayEl.textContent = date.toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
+      dateBlock.append(monthEl, dayEl, weekdayEl);
     }
     li.appendChild(dateBlock);
 
     const content = document.createElement('div');
     content.className = 'upcoming-content';
-    const titleRow = document.createElement('div');
-    titleRow.className = 'upcoming-title-row';
     const titleEl = document.createElement('span');
     titleEl.className = 'upcoming-title';
     titleEl.textContent = deadline.title;
-    const badge = document.createElement('span');
-    badge.className = 'upcoming-kind-badge';
-    badge.textContent = DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
-    titleRow.append(titleEl, badge);
-
     const metaRow = document.createElement('div');
     metaRow.className = 'upcoming-meta-row';
     const courseEl = document.createElement('span');
     courseEl.className = 'upcoming-course';
     courseEl.textContent = deadline.course_name;
-    const dueEl = document.createElement('span');
-    dueEl.className = 'upcoming-due';
-    dueEl.textContent = formatDueInLabel(deadline.due_at);
-    metaRow.append(courseEl, dueEl);
-
-    content.append(titleRow, metaRow);
+    const badge = document.createElement('span');
+    badge.className = 'upcoming-kind-badge';
+    badge.textContent = DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
+    metaRow.append(courseEl, badge);
+    content.append(titleEl, metaRow);
     li.appendChild(content);
+
+    // Right-aligned "Due in" block — urgent (2 days or less, including
+    // Today/Tomorrow/Overdue) gets a warning color so what needs attention
+    // soonest stands out at a glance, same idea as the screenshot's red text.
+    const dueBlock = document.createElement('div');
+    dueBlock.className = 'upcoming-due-block';
+    if (diffDays !== null) {
+      const dueLabelEl = document.createElement('span');
+      dueLabelEl.className = 'upcoming-due-label';
+      // "Due in" reads naturally before a day count ("Due in 2 days"), but
+      // not before Today/Tomorrow/Overdue — those already say the whole
+      // thing on their own, so the label stays generic for them.
+      dueLabelEl.textContent = diffDays > 1 ? 'Due in' : 'Due';
+      const dueValueEl = document.createElement('span');
+      dueValueEl.className = 'upcoming-due-value';
+      if (diffDays <= 2) dueValueEl.classList.add('urgent');
+      dueValueEl.textContent = formatDueInLabel(deadline.due_at);
+      dueBlock.append(dueLabelEl, dueValueEl);
+    }
+    li.appendChild(dueBlock);
 
     li.addEventListener('click', () => openDashboardDeadline(deadline));
     li.addEventListener('contextmenu', (e) => {
@@ -2026,7 +2119,7 @@ async function renderDashboardResources(): Promise<void> {
 
   for (const resource of resources) {
     const li = document.createElement('li');
-    li.appendChild(buildDashboardItemRows(KIND_ICON[resource.kind] ?? '📁', resource.title, resource.course_name));
+    li.appendChild(buildDashboardItemRows(resourceDisplayIcon(resource), resource.title, resource.course_name));
     li.addEventListener('click', () => openDashboardResource(resource));
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -2513,6 +2606,23 @@ function showCourseDetailView(): void {
   document.getElementById('courses-detail-view')!.hidden = false;
 }
 
+// Course detail's tabbed layout (replaces the old single long-scroll page,
+// per the user's explicit request — "too much scrolling", same instinct as
+// Google Classroom's own tabs). Announcements/Assignments/Classwork tabs are
+// hidden entirely (not just their content) for a course that isn't
+// Classroom-linked — see renderCourseClassroomSection.
+let courseDetailTab = 'overview';
+
+function setCourseDetailTab(tab: string): void {
+  courseDetailTab = tab;
+  document.querySelectorAll<HTMLElement>('.course-detail-tab').forEach((button) => {
+    button.classList.toggle('active', button.dataset.courseTab === tab);
+  });
+  document.querySelectorAll<HTMLElement>('.course-detail-tab-panel').forEach((panel) => {
+    panel.hidden = panel.dataset.courseTabPanel !== tab;
+  });
+}
+
 function backToCourseList(): void {
   selectedCourse = null;
   showCourseListView();
@@ -2526,6 +2636,7 @@ function backToCourseList(): void {
 async function selectCourse(course: Course): Promise<void> {
   selectedCourse = course;
   showCourseDetailView();
+  setCourseDetailTab('overview'); // always land on Overview for a freshly-opened course, never a tab left selected from a previous one
   void renderCourses(); // updates the grid's .selected highlight for when the user goes back
 
   document.getElementById('course-detail-heading')!.textContent = course.name;
@@ -2549,49 +2660,90 @@ async function selectCourse(course: Course): Promise<void> {
 }
 
 // Shows either "Connect to Classroom…" or "Connected to <name>" + Disconnect,
-// and shows/populates the three content sections only when actually linked —
-// an unlinked course has nothing to show there, so the sections stay hidden
-// rather than showing empty placeholders (matches deadlines/resources'
-// existing "no items yet" pattern only where there's a real list to browse).
+// and shows/populates the Announcements/Assignments/Classwork *tabs* only
+// once actually linked — an unlinked course has nothing to show there. If
+// the currently-active tab is one of those and the course just got
+// disconnected, falls back to Overview rather than leaving a hidden tab
+// showing as "selected" with no button left to reach it.
 async function renderCourseClassroomSection(course: Course): Promise<void> {
   const connectedBox = document.getElementById('course-classroom-connected')!;
   const connectButton = document.getElementById('course-classroom-connect') as HTMLButtonElement;
-  const announcementsSection = document.getElementById('course-announcements-section')!;
-  const assignmentsSection = document.getElementById('course-assignments-section')!;
-  const classworkSection = document.getElementById('course-classwork-section')!;
+  const announcementsTab = document.getElementById('course-tab-announcements')!;
+  const assignmentsTab = document.getElementById('course-tab-assignments')!;
+  const classworkTab = document.getElementById('course-tab-classwork')!;
 
   if (!course.classroom_course_id) {
     connectedBox.hidden = true;
     connectButton.hidden = false;
-    announcementsSection.hidden = true;
-    assignmentsSection.hidden = true;
-    classworkSection.hidden = true;
+    announcementsTab.hidden = true;
+    assignmentsTab.hidden = true;
+    classworkTab.hidden = true;
+    if (['announcements', 'assignments', 'classwork'].includes(courseDetailTab)) {
+      setCourseDetailTab('overview');
+    }
     return;
   }
 
   connectedBox.hidden = false;
   connectButton.hidden = true;
+  announcementsTab.hidden = false;
+  assignmentsTab.hidden = false;
+  classworkTab.hidden = false;
   document.getElementById('course-classroom-name')!.textContent = course.name;
 
   const content = await atlasApi.getClassroomCourseContent(course.id);
-  renderClassroomLinkList(announcementsSection, 'course-announcements-list', content.announcements, (a) => ({
-    title: a.title,
-    meta: formatIsoTimestamp(a.posted_at),
-    body: a.body,
-    links: [],
-  }));
-  renderClassroomLinkList(assignmentsSection, 'course-assignments-list', content.assignments, (a) => ({
-    title: a.title,
-    meta: a.due_at ? `Due ${formatDueDate(a.due_at)}` : 'No due date',
-    body: a.description,
-    links: a.links,
-  }));
-  renderClassroomLinkList(classworkSection, 'course-classwork-list', content.classwork, (c) => ({
-    title: c.title,
-    meta: c.posted_at ? formatIsoTimestamp(c.posted_at) : '',
-    body: c.description,
-    links: c.links,
-  }));
+  renderClassroomLinkList(
+    'course-announcements-list',
+    'No announcements yet.',
+    content.announcements,
+    (a) => ({ title: a.title, meta: formatIsoTimestamp(a.posted_at), body: a.body, links: [] }),
+    (a) => openClassroomItemDetail('Announcement', a.title, formatIsoTimestamp(a.posted_at), a.body, [])
+  );
+  renderClassroomLinkList(
+    'course-assignments-list',
+    'No assignments yet.',
+    content.assignments,
+    (a) => ({
+      title: a.title,
+      meta: a.due_at ? `Due ${formatDueDate(a.due_at)}` : 'No due date',
+      body: a.description,
+      links: a.links,
+    }),
+    (a) => void openAssignmentDetail(a, course.id)
+  );
+  renderClassroomLinkList(
+    'course-classwork-list',
+    'No classwork yet.',
+    content.classwork,
+    (c) => ({ title: c.title, meta: c.posted_at ? formatIsoTimestamp(c.posted_at) : '', body: c.description, links: c.links }),
+    (c) => openClassroomItemDetail('Classwork', c.title, c.posted_at ? formatIsoTimestamp(c.posted_at) : '', c.description, c.links)
+  );
+}
+
+// Clicking an assignment jumps to its mirrored deadline (existing viewer,
+// with real editing) rather than a separate read-only detail view — since
+// every synced assignment already has a corresponding `deadlines` row
+// (see googleClassroom.ts), that's the more useful destination. Falls back
+// to the generic detail overlay only if no match is found (shouldn't
+// normally happen, but a manually-deleted deadline shouldn't dead-end the
+// click).
+async function openAssignmentDetail(
+  assignment: ClassroomCourseContent['assignments'][number],
+  courseId: number
+): Promise<void> {
+  const deadlines = await atlasApi.listDeadlines(courseId);
+  const match = deadlines.find((d) => d.classroom_coursework_id === assignment.classroom_coursework_id);
+  if (match) {
+    await openDeadlineViewer(match);
+    return;
+  }
+  openClassroomItemDetail(
+    'Assignment',
+    assignment.title,
+    assignment.due_at ? `Due ${formatDueDate(assignment.due_at)}` : 'No due date',
+    assignment.description,
+    assignment.links
+  );
 }
 
 // Announcements/classwork posted_at is a raw ISO timestamp straight from the
@@ -2605,17 +2757,27 @@ function formatIsoTimestamp(iso: string): string {
 }
 
 function renderClassroomLinkList<T>(
-  section: HTMLElement,
   listId: string,
+  emptyText: string,
   items: T[],
-  toRow: (item: T) => { title: string; meta: string; body: string | null; links: ClassroomContentLink[] }
+  toRow: (item: T) => { title: string; meta: string; body: string | null; links: ClassroomContentLink[] },
+  onRowClick: (item: T) => void
 ): void {
-  section.hidden = items.length === 0;
   const list = document.getElementById(listId)!;
   list.innerHTML = '';
+
+  if (items.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = emptyText;
+    list.appendChild(li);
+    return;
+  }
+
   for (const item of items) {
     const row = toRow(item);
     const li = document.createElement('li');
+    li.className = 'classroom-item-row';
     li.innerHTML = `
       <span class="classroom-item-title">${escapeHtml(row.title)}</span>
       <span class="classroom-item-meta">${escapeHtml(row.meta)}</span>
@@ -2628,14 +2790,57 @@ function renderClassroomLinkList<T>(
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'link-button';
-        button.textContent = `🔗 ${link.title}`;
-        button.addEventListener('click', () => void atlasApi.openExternalUrl(link.file_path));
+        button.textContent = `${resourceDisplayIcon({ kind: 'link', title: link.title })} ${link.title}`;
+        // Stops the click from also bubbling up to the row's own click
+        // handler (which would open the detail overlay right behind the
+        // link the user actually meant to open).
+        button.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void atlasApi.openExternalUrl(link.file_path);
+        });
         linksDiv.appendChild(button);
       }
       li.appendChild(linksDiv);
     }
+    li.addEventListener('click', () => onRowClick(item));
     list.appendChild(li);
   }
+}
+
+// Shared read-only detail view for an announcement/classwork item (and the
+// fallback for an assignment with no matching deadline) — a modal rather
+// than expanding the row in place, since the row's body is already fully
+// shown inline and a modal gives a consistent, larger reading surface plus
+// a real Escape-to-close affordance for something that otherwise had none.
+function openClassroomItemDetail(
+  kindLabel: string,
+  title: string,
+  meta: string,
+  body: string | null,
+  links: ClassroomContentLink[]
+): void {
+  document.getElementById('classroom-item-detail-title')!.textContent = title;
+  document.getElementById('classroom-item-detail-meta')!.textContent = `${kindLabel} · ${meta}`;
+  const bodyEl = document.getElementById('classroom-item-detail-body')!;
+  bodyEl.textContent = body ?? '';
+  bodyEl.hidden = !body;
+
+  const linksDiv = document.getElementById('classroom-item-detail-links')!;
+  linksDiv.innerHTML = '';
+  for (const link of links) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'link-button';
+    button.textContent = `${resourceDisplayIcon({ kind: 'link', title: link.title })} ${link.title}`;
+    button.addEventListener('click', () => void atlasApi.openExternalUrl(link.file_path));
+    linksDiv.appendChild(button);
+  }
+
+  document.getElementById('classroom-item-detail-overlay')!.hidden = false;
+}
+
+function closeClassroomItemDetail(): void {
+  document.getElementById('classroom-item-detail-overlay')!.hidden = true;
 }
 
 async function openClassroomConnectPicker(): Promise<void> {
@@ -3299,6 +3504,51 @@ function applyTheme(theme: 'light' | 'dark'): void {
   const button = document.getElementById('theme-toggle') as HTMLButtonElement;
   button.textContent = theme === 'light' ? '🌙' : '☀️';
   button.title = theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+  document.getElementById('settings-theme-dark')!.classList.toggle('active', theme === 'dark');
+  document.getElementById('settings-theme-light')!.classList.toggle('active', theme === 'light');
+}
+
+// Shared by the top-bar quick-toggle and Settings > General's explicit
+// Dark/Light buttons — both control the same persisted preference, just
+// from two different reachable places (a quick one-click toggle for the
+// common case, a real choice in Settings for discoverability).
+function setTheme(theme: 'light' | 'dark'): void {
+  applyTheme(theme);
+  atlasApi.setSetting('theme', theme);
+}
+
+// Accent color — a user-chosen override of --color-accent (styles.css :root),
+// which already drives active states/buttons/highlights throughout the app,
+// so changing this one CSS custom property recolors all of them at once
+// rather than needing per-component theming.
+const ACCENT_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899'];
+const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
+
+function applyAccentColor(color: string): void {
+  document.documentElement.style.setProperty('--color-accent', color);
+  document.querySelectorAll<HTMLElement>('.settings-accent-swatch').forEach((swatch) => {
+    swatch.classList.toggle('active', swatch.dataset.accentColor === color);
+  });
+}
+
+function setAccentColor(color: string): void {
+  applyAccentColor(color);
+  atlasApi.setSetting('accentColor', color);
+}
+
+function renderAccentSwatches(): void {
+  const container = document.getElementById('settings-accent-swatches')!;
+  container.innerHTML = '';
+  for (const color of ACCENT_COLORS) {
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.className = 'settings-accent-swatch';
+    swatch.dataset.accentColor = color;
+    swatch.style.backgroundColor = color;
+    swatch.setAttribute('aria-label', `Accent color ${color}`);
+    swatch.addEventListener('click', () => setAccentColor(color));
+    container.appendChild(swatch);
+  }
 }
 
 function focusSearch(): void {
@@ -3321,6 +3571,10 @@ function setSidebarCollapsed(collapsed: boolean, persist = true): void {
 async function init(): Promise<void> {
   const savedTheme = await atlasApi.getSetting('theme');
   applyTheme(savedTheme === 'light' ? 'light' : 'dark');
+
+  renderAccentSwatches();
+  const savedAccentColor = await atlasApi.getSetting('accentColor');
+  applyAccentColor(savedAccentColor && ACCENT_COLORS.includes(savedAccentColor) ? savedAccentColor : DEFAULT_ACCENT_COLOR);
 
   const savedSidebarCollapsed = await atlasApi.getSetting('sidebarCollapsed');
   if (savedSidebarCollapsed === '1') setSidebarCollapsed(true, false);
@@ -3384,10 +3638,18 @@ async function init(): Promise<void> {
 
   document.getElementById('upload-button')!.addEventListener('click', () => openCoursePicker('upload'));
 
+  document.querySelectorAll<HTMLButtonElement>('.course-detail-tab').forEach((button) => {
+    button.addEventListener('click', () => setCourseDetailTab(button.dataset.courseTab!));
+  });
+
   document.getElementById('course-classroom-connect')!.addEventListener('click', () => void openClassroomConnectPicker());
   document.getElementById('course-classroom-disconnect')!.addEventListener('click', () => void disconnectCourseClassroomClicked());
   document.getElementById('classroom-connect-close')!.addEventListener('click', closeClassroomConnectPicker);
   document.getElementById('classroom-connect-confirm')!.addEventListener('click', () => void confirmClassroomConnect());
+  document.getElementById('classroom-item-detail-close')!.addEventListener('click', closeClassroomItemDetail);
+  document.getElementById('classroom-item-detail-overlay')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeClassroomItemDetail();
+  });
 
   const addWatchFolderButton = document.getElementById('add-watch-folder') as HTMLButtonElement;
   addWatchFolderButton.addEventListener('click', async () => {
@@ -3429,9 +3691,13 @@ async function init(): Promise<void> {
 
   document.getElementById('theme-toggle')!.addEventListener('click', () => {
     const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    const next = current === 'light' ? 'dark' : 'light';
-    applyTheme(next);
-    atlasApi.setSetting('theme', next);
+    setTheme(current === 'light' ? 'dark' : 'light');
+  });
+  document.getElementById('settings-theme-dark')!.addEventListener('click', () => setTheme('dark'));
+  document.getElementById('settings-theme-light')!.addEventListener('click', () => setTheme('light'));
+
+  document.querySelectorAll<HTMLButtonElement>('.settings-nav-item').forEach((button) => {
+    button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab!));
   });
 
   // Sidebar nav: genuine page switching (see showPage()) — exactly one
@@ -3611,9 +3877,33 @@ async function init(): Promise<void> {
       return;
     }
 
-    if (isTyping) return;
-    if (!(document.getElementById('preview-overlay') as HTMLElement).hidden) {
-      closePreview();
+    // Every other overlay/modal closes on Escape too, in preference order
+    // (innermost/most-recently-opened first, e.g. the Classroom connect
+    // picker over the course detail page it's layered on top of) — closing
+    // whichever one is actually visible rather than requiring the user to
+    // reach for its × button. Deliberately not gated on `isTyping`: unlike
+    // the note editor above, none of these need a "first Escape blurs, second
+    // closes" distinction — a mention-suggestions dropdown or the course
+    // picker's own search field already stopPropagation/handle Escape
+    // themselves before it would reach here, so this only ever runs when
+    // nothing more specific already claimed the keypress.
+    const overlayCloseHandlers: [string, () => void][] = [
+      ['classroom-item-detail-overlay', closeClassroomItemDetail],
+      ['classroom-connect-overlay', closeClassroomConnectPicker],
+      ['classroom-review-overlay', closeClassroomReviewPanel],
+      ['drive-review-overlay', closeDriveReviewPanel],
+      ['ashoka-review-overlay', closeAshokaImportPanel],
+      ['deadline-editor-overlay', closeDeadlineEditor],
+      ['course-picker-overlay', closeCoursePicker],
+      ['preview-overlay', closePreview],
+      ['confirm-overlay', () => resolveConfirm(false)],
+    ];
+    for (const [id, close] of overlayCloseHandlers) {
+      const el = document.getElementById(id) as HTMLElement | null;
+      if (el && !el.hidden) {
+        close();
+        return;
+      }
     }
   });
 

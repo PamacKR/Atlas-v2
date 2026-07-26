@@ -15,6 +15,7 @@
       <button class="sidebar-nav-item" type="button" data-page="resources"><span class="nav-icon">🗂️</span><span class="nav-label">Resources</span></button>
       <button class="sidebar-nav-item" type="button" data-page="notes"><span class="nav-icon">📝</span><span class="nav-label">Notes</span></button>
       <button class="sidebar-nav-item" type="button" data-page="calendar"><span class="nav-icon">📅</span><span class="nav-label">Calendar</span></button>
+      <button class="sidebar-nav-item" type="button" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></button>
       <button id="sidebar-collapse-toggle" class="sidebar-nav-item" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">
         <span class="nav-icon" id="sidebar-collapse-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -60,36 +61,6 @@
             <button id="manage-courses-button" type="button">Manage courses</button>
           </div>
           <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
-        </div>
-
-        <div class="dashboard-widget" id="dashboard-drive-widget">
-          <div class="resources-header">
-            <h3>Google Drive</h3>
-          </div>
-          <p id="drive-status" class="muted">Not connected.</p>
-          <button id="drive-connect-button" type="button">Connect Google Drive</button>
-          <button id="drive-disconnect-button" type="button" hidden>Disconnect</button>
-          <div id="drive-folder-form" hidden>
-            <label for="drive-folder-input">Drive folder to watch</label>
-            <div id="drive-folder-row">
-              <input id="drive-folder-input" type="text" placeholder="Paste your Drive folder link" />
-              <button id="drive-folder-save" type="button">Save</button>
-            </div>
-          </div>
-          <p id="drive-pending-status" class="muted" hidden></p>
-          <button id="drive-review-button" type="button" hidden>Review new files</button>
-        </div>
-
-        <div class="dashboard-widget" id="dashboard-classroom-widget">
-          <div class="resources-header">
-            <h3>Google Classroom</h3>
-          </div>
-          <p id="classroom-status" class="muted">Not connected.</p>
-          <button id="classroom-connect-button" type="button">Connect Google Classroom</button>
-          <button id="classroom-disconnect-button" type="button" hidden>Disconnect</button>
-          <button id="classroom-sync-button" type="button" hidden>Sync now</button>
-          <p id="classroom-pending-status" class="muted" hidden></p>
-          <button id="classroom-review-button" type="button" hidden>Review new courses</button>
         </div>
 
         <div id="dashboard-widgets">
@@ -187,69 +158,94 @@
             </div>
           </div>
 
-          <div class="course-detail-widgets">
-            <div class="dashboard-widget">
-              <div class="resources-header">
-                <h3>📄 Resources (<span id="course-detail-resource-count">0</span>)</h3>
-                <button id="course-detail-view-resources" type="button" class="link-button">View all →</button>
-              </div>
-              <ul id="course-detail-resources-preview"></ul>
-            </div>
-            <div class="dashboard-widget">
-              <div class="resources-header">
-                <h3>📝 Notes (<span id="course-detail-note-count">0</span>)</h3>
-                <button id="course-detail-view-notes" type="button" class="link-button">View all →</button>
-              </div>
-              <ul id="course-detail-notes-preview"></ul>
-            </div>
+          <!-- Tabbed layout (replaces the old single long-scroll page) —
+               Overview/Deadlines/Files always shown; Announcements/
+               Assignments/Classwork tabs only appear once the course is
+               connected to Classroom (toggled in renderer.ts). -->
+          <div id="course-detail-tabs">
+            <button class="course-detail-tab active" type="button" data-course-tab="overview">Overview</button>
+            <button class="course-detail-tab" type="button" data-course-tab="deadlines">Deadlines</button>
+            <button class="course-detail-tab" type="button" data-course-tab="announcements" id="course-tab-announcements" hidden>Announcements</button>
+            <button class="course-detail-tab" type="button" data-course-tab="assignments" id="course-tab-assignments" hidden>Assignments</button>
+            <button class="course-detail-tab" type="button" data-course-tab="classwork" id="course-tab-classwork" hidden>Classwork</button>
+            <button class="course-detail-tab" type="button" data-course-tab="files">Files</button>
           </div>
 
-          <section id="deadlines-section">
-            <div class="resources-header">
-              <h4 id="deadlines-heading">Deadlines</h4>
-              <div class="view-toggle">
-                <button id="deadline-view-grid-toggle" type="button" title="Grid view" aria-label="Grid view">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                </button>
-                <button id="deadline-view-list-toggle" type="button" class="active" title="List view" aria-label="List view">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                </button>
+          <div class="course-detail-tab-panel" data-course-tab-panel="overview">
+            <div class="course-detail-widgets">
+              <div class="dashboard-widget">
+                <div class="resources-header">
+                  <h3>📄 Resources (<span id="course-detail-resource-count">0</span>)</h3>
+                  <button id="course-detail-view-resources" type="button" class="link-button">View all →</button>
+                </div>
+                <ul id="course-detail-resources-preview"></ul>
+              </div>
+              <div class="dashboard-widget">
+                <div class="resources-header">
+                  <h3>📝 Notes (<span id="course-detail-note-count">0</span>)</h3>
+                  <button id="course-detail-view-notes" type="button" class="link-button">View all →</button>
+                </div>
+                <ul id="course-detail-notes-preview"></ul>
               </div>
             </div>
-            <ul id="deadline-list" class="view-list"></ul>
-            <button id="new-deadline-button" type="button">Add deadline</button>
-          </section>
 
-          <section id="course-classroom-section">
-            <h4>Classroom</h4>
-            <div id="course-classroom-connected" hidden>
-              <p class="muted">Connected to <span id="course-classroom-name"></span></p>
-              <button id="course-classroom-disconnect" type="button" class="link-button">Disconnect</button>
-            </div>
-            <button id="course-classroom-connect" type="button">Connect to Classroom…</button>
-          </section>
+            <section id="course-classroom-section">
+              <h4>Classroom</h4>
+              <div id="course-classroom-connected" hidden>
+                <p class="muted">Connected to <span id="course-classroom-name"></span></p>
+                <button id="course-classroom-disconnect" type="button" class="link-button">Disconnect</button>
+              </div>
+              <button id="course-classroom-connect" type="button">Connect to Classroom…</button>
+            </section>
+          </div>
 
-          <section id="course-announcements-section" hidden>
-            <h4>Announcements</h4>
-            <ul id="course-announcements-list"></ul>
-          </section>
+          <div class="course-detail-tab-panel" data-course-tab-panel="deadlines" hidden>
+            <section id="deadlines-section">
+              <div class="resources-header">
+                <h4 id="deadlines-heading">Deadlines</h4>
+                <div class="view-toggle">
+                  <button id="deadline-view-grid-toggle" type="button" title="Grid view" aria-label="Grid view">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  </button>
+                  <button id="deadline-view-list-toggle" type="button" class="active" title="List view" aria-label="List view">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
+              <ul id="deadline-list" class="view-list"></ul>
+              <button id="new-deadline-button" type="button">Add deadline</button>
+            </section>
+          </div>
 
-          <section id="course-assignments-section" hidden>
-            <h4>Assignments</h4>
-            <ul id="course-assignments-list"></ul>
-          </section>
+          <div class="course-detail-tab-panel" data-course-tab-panel="announcements" hidden>
+            <section id="course-announcements-section">
+              <h4>Announcements</h4>
+              <ul id="course-announcements-list"></ul>
+            </section>
+          </div>
 
-          <section id="course-classwork-section" hidden>
-            <h4>Classwork</h4>
-            <ul id="course-classwork-list"></ul>
-          </section>
+          <div class="course-detail-tab-panel" data-course-tab-panel="assignments" hidden>
+            <section id="course-assignments-section">
+              <h4>Assignments</h4>
+              <ul id="course-assignments-list"></ul>
+            </section>
+          </div>
 
-          <section id="watched-folders-section">
-            <h4>Watched folders</h4>
-            <p class="muted">Files added to a watched folder are copied in automatically.</p>
-            <ul id="watched-folder-list"></ul>
-            <button id="add-watch-folder" type="button">Watch a folder…</button>
-          </section>
+          <div class="course-detail-tab-panel" data-course-tab-panel="classwork" hidden>
+            <section id="course-classwork-section">
+              <h4>Classwork</h4>
+              <ul id="course-classwork-list"></ul>
+            </section>
+          </div>
+
+          <div class="course-detail-tab-panel" data-course-tab-panel="files" hidden>
+            <section id="watched-folders-section">
+              <h4>Watched folders</h4>
+              <p class="muted">Files added to a watched folder are copied in automatically.</p>
+              <ul id="watched-folder-list"></ul>
+              <button id="add-watch-folder" type="button">Watch a folder…</button>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -354,6 +350,81 @@
             <h4>Upcoming</h4>
             <div id="calendar-upcoming-list"></div>
           </aside>
+        </div>
+      </section>
+
+      <section id="page-settings" class="app-page" hidden>
+        <div class="page-header">
+          <div>
+            <h2>Settings</h2>
+            <p class="muted">Customize Atlas to fit your workflow.</p>
+          </div>
+        </div>
+
+        <div id="settings-layout">
+          <nav id="settings-nav">
+            <button class="settings-nav-item active" type="button" data-settings-tab="general">General</button>
+            <button class="settings-nav-item" type="button" data-settings-tab="sources">Sources</button>
+            <button class="settings-nav-item" type="button" data-settings-tab="about">About</button>
+          </nav>
+
+          <div class="settings-panel" data-settings-panel="general">
+            <section class="settings-section">
+              <h3>Appearance</h3>
+              <div class="settings-row">
+                <div>
+                  <div class="settings-row-label">Theme</div>
+                  <div class="settings-row-hint">Choose your preferred theme</div>
+                </div>
+                <div class="settings-theme-buttons">
+                  <button id="settings-theme-dark" type="button" class="chip">Dark</button>
+                  <button id="settings-theme-light" type="button" class="chip">Light</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <div>
+                  <div class="settings-row-label">Accent color</div>
+                  <div class="settings-row-hint">Used for highlights, active states, and buttons throughout Atlas</div>
+                </div>
+                <div id="settings-accent-swatches"></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="settings-panel" data-settings-panel="sources" hidden>
+            <section class="settings-section">
+              <h3>Google Drive</h3>
+              <p id="drive-status" class="muted">Not connected.</p>
+              <button id="drive-connect-button" type="button">Connect Google Drive</button>
+              <button id="drive-disconnect-button" type="button" hidden>Disconnect</button>
+              <div id="drive-folder-form" hidden>
+                <label for="drive-folder-input">Drive folder to watch</label>
+                <div id="drive-folder-row">
+                  <input id="drive-folder-input" type="text" placeholder="Paste your Drive folder link" />
+                  <button id="drive-folder-save" type="button">Save</button>
+                </div>
+              </div>
+              <p id="drive-pending-status" class="muted" hidden></p>
+              <button id="drive-review-button" type="button" hidden>Review new files</button>
+            </section>
+
+            <section class="settings-section">
+              <h3>Google Classroom</h3>
+              <p id="classroom-status" class="muted">Not connected.</p>
+              <button id="classroom-connect-button" type="button">Connect Google Classroom</button>
+              <button id="classroom-disconnect-button" type="button" hidden>Disconnect</button>
+              <button id="classroom-sync-button" type="button" hidden>Sync now</button>
+              <p id="classroom-pending-status" class="muted" hidden></p>
+              <button id="classroom-review-button" type="button" hidden>Review new courses</button>
+            </section>
+          </div>
+
+          <div class="settings-panel" data-settings-panel="about" hidden>
+            <section class="settings-section">
+              <h3>About Atlas</h3>
+              <p id="settings-about-version" class="muted"></p>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -561,6 +632,20 @@
       <select id="classroom-connect-select"></select>
       <p id="classroom-connect-empty" class="muted" hidden>No unconnected Classroom classes found. Try Sync now on the dashboard first.</p>
       <button id="classroom-connect-confirm" type="button">Connect</button>
+    </div>
+  </div>
+
+  <div id="classroom-item-detail-overlay" hidden>
+    <div id="classroom-item-detail-panel">
+      <div class="modal-header">
+        <h3 id="classroom-item-detail-title"></h3>
+        <button id="classroom-item-detail-close" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p id="classroom-item-detail-meta" class="muted"></p>
+      <p id="classroom-item-detail-body"></p>
+      <div id="classroom-item-detail-links"></div>
     </div>
   </div>
 

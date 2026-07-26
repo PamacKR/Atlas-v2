@@ -4,6 +4,19 @@ Living snapshot of where the project actually is. This is the first thing to rea
 
 **Last updated:** 2026-07-27 (session 46)
 
+## Session 46 (continued) — UI polish batch: tabs, Settings page, Escape-to-close, clickable Classroom content
+
+A follow-up batch of 8 user-requested items after the Classroom bug-fixing above, done in one pass, verified with `npm run build` after each chunk and a single full `npm run verify` at the end (per the user's instruction not to re-run the whole suite after every edit).
+
+- **Link-resource icons**: a `kind='link'` resource showed a generic 🔗 for everything. `resourceDisplayIcon()` now guesses a real PDF/DOCX/PPTX/etc icon from the linked file's own name/extension (display-only — the stored `kind` stays `'link'`, that's what drives the external-open behavior).
+- **Global Escape-to-close**: every remaining overlay/modal (Classroom connect picker, review panels, deadline editor, course picker, the new Classroom item detail modal, the confirm dialog) now closes on Escape, not just the note editor/resource preview that already had it. Confirm-overlay's Escape resolves as Cancel.
+- **Clickable Announcements/Assignments/Classwork rows**: clicking an assignment opens its mirrored deadline (real editing, not just a read-only view) via a lookup by `classroom_coursework_id`; clicking an announcement/classwork item opens a new shared read-only `#classroom-item-detail-overlay`.
+- **Dashboard "Upcoming" widget reformat**: three-line stacked date block (month/day/weekday), right-aligned "Due in" block with a red "urgent" color when 2 days or less away — matching the shared screenshot more closely than the original two-line version.
+- **Calendar day-cell chips enlarged**: two-line (title + course name), background-tinted with the course color (not just a thin left border), row height increased — max chips per day dropped from 3 to 2 since the taller chips no longer fit 3.
+- **Course detail page rebuilt as tabs** (Overview/Deadlines/Announcements/Assignments/Classwork/Files) — replaces the old single long-scroll page, the user's main complaint ("too much scrolling"). The Classroom-specific tabs only appear once a course is actually linked; `selectCourse()` always resets to Overview for a freshly-opened course. `scripts/verify-app.js` updated to click the right tab before interacting with Deadlines/Files content (`selectCourse()` resets to Overview every time the course is reselected, so several spots needed a tab click re-added).
+- **New Settings page** (sidebar entry) — Google Drive/Classroom connect widgets moved here wholesale from the Dashboard (`Settings > Sources`, same element IDs, no duplication), plus a real `Settings > General` with a Dark/Light theme picker (mirrors the existing top-bar toggle, both drive the same persisted `theme` setting) and 5 accent-color swatches that override `--color-accent` (persisted as `accentColor`) — since that one CSS variable already drives active states/buttons/highlights app-wide, picking a swatch recolors all of them at once. `Settings > About` shows the app version via a new `app:getVersion` IPC call.
+- Docs updated in the same pass: `docs/open-questions.md` #22 (new), `ARCHITECTURE.md`/`ROADMAP.md` touched where relevant.
+
 ## Session 46 — Classroom sync fix, Drive-link attachments, Classwork, Connect button, Dashboard/Calendar
 
 Executed the plan approved at the end of session 45 (see `docs/open-questions.md` #21 for the full writeup). Built in one pass, verified with `npm run build` after each chunk rather than a full `npm run verify` run per change (per the user's explicit instruction this session not to re-run the whole test suite after every edit) — one `npm run verify` pass still happens before the final commit.

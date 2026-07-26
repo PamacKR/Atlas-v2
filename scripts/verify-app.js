@@ -1066,6 +1066,12 @@ const fs = require('fs');
   // manual), sorted incomplete-first then soonest-due-first, with completed
   // items struck through. No separate "Assignments" tab was built — see
   // docs/open-questions.md #13 for why that's deferred.
+  // Course detail is a tabbed layout now (session 46 — see
+  // docs/open-questions.md) — Deadlines is its own tab, not visible on the
+  // default Overview tab.
+  await window.click('.course-detail-tab[data-course-tab="deadlines"]');
+  await window.waitForTimeout(150);
+
   async function fillDeadlineForm({ title, kind, date, time, description }) {
     await window.fill('#deadline-edit-title', title);
     if (kind) await window.selectOption('#deadline-edit-kind', kind);
@@ -1257,6 +1263,8 @@ const fs = require('fs');
   await goToPage('courses');
   await window.click('#course-list li.course-card');
   await window.waitForTimeout(200);
+  await window.click('.course-detail-tab[data-course-tab="deadlines"]'); // selectCourse() always resets to Overview
+  await window.waitForTimeout(150);
 
   // Editing: title/kind changes on an existing deadline should persist, not
   // create a duplicate.
@@ -1311,6 +1319,7 @@ const fs = require('fs');
   await window.click('#course-detail-back');
   await window.waitForTimeout(150);
   await window.click('#course-list li.course-card');
+  await window.click('.course-detail-tab[data-course-tab="deadlines"]'); // selectCourse() always resets to Overview
   await window.waitForTimeout(300);
   const deadlineTitlesAfterDelete = await window.$$eval(
     '#deadline-list li.deadline-item .deadline-title',
@@ -1519,6 +1528,7 @@ const fs = require('fs');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
   await window.click('#course-list li.course-card');
+  await window.click('.course-detail-tab[data-course-tab="files"]'); // Watched folders is its own tab now, not visible on the default Overview tab
   await window.waitForTimeout(200);
 
   const watchFolderDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-watch-'));

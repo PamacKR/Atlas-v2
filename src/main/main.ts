@@ -1077,6 +1077,8 @@ ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidat
   return { created, skipped };
 });
 
+ipcMain.handle('app:getVersion', () => app.getVersion());
+
 ipcMain.handle('app:getSetting', (_event, key: string) => {
   const db = getDb();
   const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
