@@ -14,7 +14,7 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 - How frequently should Classroom and Gmail sync?
 - Should synchronization be manual, automatic, or configurable?
 
-**Status:** Open. Deferred to Phase 3 (`ROADMAP.md`) — likely answer is "configurable, defaulting to automatic on an interval," but needs to account for API rate limits on both services before committing to a default.
+**Status:** Partially resolved for Classroom (2026-07-26) — no background polling interval, unlike Drive's ~20s. Classroom syncs once on app launch plus an explicit "Sync now" button. Classroom content (new assignments, announcements, courses) changes far less often than a Drive inbox, so continuous polling against the college Workspace account isn't worth the extra API load — see `ARCHITECTURE.md` §4b. Gmail's half of this question is still open, deferred to when the Gmail adapter is built.
 
 ## 3. Offline behavior
 
@@ -166,3 +166,15 @@ The user will primarily take typed notes on a tablet and scan handwritten notes 
 **Status:** Resolved — built and manually verified against the user's real Google account and Drive folder (not covered by the automated `scripts/verify-app.js` suite, which has no way to supply a live OAuth token).
 
 **Status:** Open — leans toward keeping the current order (Phase 2 = handwritten notes, Phase 3 = sync) for the lower-risk/self-contained reasons above, but this is a value-sequencing call for the user to make, not a technical blocker either way; both orders are equally buildable. `ROADMAP.md` stays unchanged until the user decides.
+
+### 20. Google Classroom adapter — course mapping, attachments, and coursework auto-import
+
+Built 2026-07-26, right after the Drive adapter. Unlike Drive (flat files, no course concept), Classroom has real course objects that need to map onto Atlas's own `courses` table. Three decisions were made with the user up front, plus one judgment call made during implementation:
+
+- **Course mapping**: a name-match suggestion pre-fills the course-mapping review panel's picker, but the user always confirms (map to existing course, or create new) before anything is created or linked — same "explicit mapping only" precedent as question #11.
+- **Attachments**: reuse the existing `resources` table (`source='classroom'` + `classroom_attachment_id`) rather than a new dedicated table, consistent with the "Unified Resource Library" principle. Only Drive-file coursework materials are imported (and only when Drive is also connected, since fetching content requires it) — link/YouTube/Forms materials have nothing downloadable to store as a `resources` row (`file_path` is required) and are skipped for now.
+- **Sync frequency**: resolved as part of question #2 above — launch + manual "Sync now," no polling interval.
+- **Judgment call**: once a Classroom course is mapped, new assignments/announcements within it import automatically — no per-item review step like Drive's. The ambiguity Drive's review panel exists to resolve (which course? which type?) doesn't apply here, since Classroom's API already returns typed, course-scoped data; only which Atlas course a Classroom course maps to is gated.
+- Assignments mirror into the existing `deadlines` table (already has real Dashboard UI) so they're visible immediately — a dedicated Assignments/Announcements screen (`assignments`/`announcements` tables now have real synced data, unlike when question #13 deferred building that UI) remains a fast-follow, not built in this pass. **Announcements currently have no UI surface at all** (no due date, so nothing to mirror into Deadlines) — they're stored and deduplicated correctly but invisible to the user until that screen exists.
+
+**Status:** Resolved/built — see `ARCHITECTURE.md` §4b. Not covered by the automated `scripts/verify-app.js` suite (same reason as the Drive adapter, question #19 — needs a live OAuth token and real Classroom course data); verified manually against the user's college account instead. The announcements-UI gap above is logged as an explicit fast-follow, not a silent omission.

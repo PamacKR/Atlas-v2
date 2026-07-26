@@ -133,6 +133,15 @@ export interface DrivePendingFile {
   detected_at: string;
 }
 
+export interface ClassroomPendingCourse {
+  id: number;
+  classroom_course_id: string;
+  name: string;
+  section: string | null;
+  suggested_course_id: number | null;
+  detected_at: string;
+}
+
 contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
@@ -157,6 +166,27 @@ contextBridge.exposeInMainWorld('atlas', {
   ignoreDriveFile: (driveFileId: string): Promise<void> => ipcRenderer.invoke('google:ignoreDriveFile', driveFileId),
   onDriveChanged: (handler: () => void): void => {
     ipcRenderer.on('google:driveChanged', () => handler());
+  },
+  isClassroomConnected: (): Promise<boolean> => ipcRenderer.invoke('classroom:isConnected'),
+  connectClassroom: (): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('classroom:connect'),
+  disconnectClassroom: (): Promise<void> => ipcRenderer.invoke('classroom:disconnect'),
+  syncClassroomNow: (): Promise<{ ok: boolean; changed?: boolean; error?: string }> =>
+    ipcRenderer.invoke('classroom:syncNow'),
+  listPendingClassroomCourses: (): Promise<ClassroomPendingCourse[]> =>
+    ipcRenderer.invoke('classroom:listPendingCourses'),
+  ignorePendingClassroomCourse: (classroomCourseId: string): Promise<void> =>
+    ipcRenderer.invoke('classroom:ignorePendingCourse', classroomCourseId),
+  mapClassroomCourseToExisting: (classroomCourseId: string, atlasCourseId: number): Promise<void> =>
+    ipcRenderer.invoke('classroom:mapCourseToExisting', classroomCourseId, atlasCourseId),
+  mapClassroomCourseToNew: (
+    classroomCourseId: string,
+    name: string,
+    code: string | null,
+    term: string | null
+  ): Promise<Course> => ipcRenderer.invoke('classroom:mapCourseToNew', classroomCourseId, name, code, term),
+  onClassroomChanged: (handler: () => void): void => {
+    ipcRenderer.on('classroom:changed', () => handler());
   },
   getResourceBrowserUrl: (resourceId: number): Promise<string> =>
     ipcRenderer.invoke('resources:browserUrl', resourceId),

@@ -7,7 +7,14 @@ import { getDb, closeDb } from './db/database';
 import { getFilesDir, getNoteImagesDir, getScanImagesDir } from './paths';
 import { getPreview } from './preview';
 import { extractTextFromScan, endOcrBatch } from './ocr';
-import { isGoogleDriveConnected, authorizeGoogleDrive, disconnectGoogleDrive } from './googleAuth';
+import {
+  isGoogleDriveConnected,
+  authorizeGoogleDrive,
+  disconnectGoogleDrive,
+  isGoogleClassroomConnected,
+  authorizeGoogleClassroom,
+  disconnectGoogleClassroom,
+} from './googleAuth';
 import {
   getDriveFolder,
   setDriveFolder,
@@ -17,6 +24,14 @@ import {
   removePendingDriveFile,
   ignoreDrivePendingFile,
 } from './googleDrive';
+import {
+  scanClassroom,
+  listPendingClassroomCourses,
+  ignorePendingClassroomCourse,
+  removePendingClassroomCourse,
+  linkClassroomCourseToExisting,
+  registerAttachmentSaver,
+} from './googleClassroom';
 import {
   startLocalServer,
   stopLocalServer,
@@ -242,6 +257,24 @@ function importBufferIntoCourse(
   rebuildSearchIndex();
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 }
+
+// Copies a downloaded Classroom attachment into the mapped course's managed
+// storage, same on-disk layout/collision handling as importBufferIntoCourse.
+// Registered with googleClassroom.ts rather than imported there directly, to
+// avoid a circular dependency (googleClassroom.ts has no reason to know
+// about main.ts's file-path helpers otherwise).
+registerAttachmentSaver(async (courseId, filename, buffer) => {
+  const db = getDb();
+  const course = db.prepare('SELECT folder_name FROM courses WHERE id = ?').get(courseId) as
+    | { folder_name: string }
+    | undefined;
+  if (!course) throw new Error(`Course ${courseId} not found`);
+  const courseFilesDir = path.join(getFilesDir(), course.folder_name);
+  fs.mkdirSync(courseFilesDir, { recursive: true });
+  const destPath = uniqueDestPath(courseFilesDir, filename);
+  fs.writeFileSync(destPath, buffer);
+  return destPath;
+});
 
 // One chokidar watcher per watched folder, keyed by watched_folders.id, so a
 // single folder can be stopped/started independently of the others.
@@ -535,6 +568,11 @@ app.whenReady().then(async () => {
   void scanDriveAndNotify();
   setInterval(() => void scanDriveAndNotify(), 20_000);
 
+  // Google Classroom sync (Phase 3, ARCHITECTURE.md §4b): once on launch,
+  // plus the explicit "Sync now" button — deliberately no polling interval,
+  // unlike Drive. No-ops quietly if Classroom isn't connected yet.
+  void scanClassroomAndNotify();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -817,6 +855,88 @@ ipcMain.handle(
 ipcMain.handle('google:ignoreDriveFile', (_event, driveFileId: string) => {
   ignoreDrivePendingFile(driveFileId);
 });
+
+// --- Google Classroom connection (Phase 3, ARCHITECTURE.md §4b) ---
+// Separate connection from Drive's — expected to be the user's college
+// Workspace account rather than the personal account Drive uses
+// (docs/open-questions.md #8). No folder-config step (Classroom has no
+// folder concept) and no background polling interval, unlike Drive — see
+// scanClassroomAndNotify below.
+ipcMain.handle('classroom:isConnected', () => isGoogleClassroomConnected());
+
+ipcMain.handle('classroom:connect', async () => {
+  try {
+    await authorizeGoogleClassroom();
+    void scanClassroomAndNotify();
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('classroom:disconnect', () => {
+  disconnectGoogleClassroom();
+});
+
+// Runs a full scan (new/unmapped courses, plus coursework/announcements for
+// already-mapped courses) and tells the renderer if anything changed — same
+// push-event pattern as scanDriveAndNotify. Called once at launch and from
+// an explicit "Sync now" button; deliberately no setInterval (see
+// ARCHITECTURE.md §4b for why Classroom doesn't poll like Drive does).
+async function scanClassroomAndNotify(): Promise<boolean> {
+  try {
+    const changed = await scanClassroom();
+    if (changed && mainWindow) mainWindow.webContents.send('classroom:changed');
+    return changed;
+  } catch (err) {
+    console.error('Google Classroom scan failed:', err);
+    return false;
+  }
+}
+
+ipcMain.handle('classroom:syncNow', async () => {
+  try {
+    const changed = await scanClassroomAndNotify();
+    return { ok: true as const, changed };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('classroom:listPendingCourses', () => listPendingClassroomCourses());
+
+ipcMain.handle('classroom:ignorePendingCourse', (_event, classroomCourseId: string) => {
+  ignorePendingClassroomCourse(classroomCourseId);
+});
+
+ipcMain.handle(
+  'classroom:mapCourseToExisting',
+  (_event, classroomCourseId: string, atlasCourseId: number) => {
+    linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
+  }
+);
+
+// Creates a brand-new Atlas course for a Classroom course, same steps as
+// courses:create, then links it — reuses the exact folder-naming helpers
+// courses:create does rather than duplicating course-creation logic in
+// googleClassroom.ts, which has no reason to know about on-disk file layout.
+ipcMain.handle(
+  'classroom:mapCourseToNew',
+  (_event, classroomCourseId: string, name: string, code: string | null, term: string | null) => {
+    const db = getDb();
+    const insertResult = db
+      .prepare('INSERT INTO courses (name, code, term, folder_name, source, classroom_course_id) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(name, code, term, '', 'classroom', classroomCourseId);
+    const courseId = insertResult.lastInsertRowid;
+
+    const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
+    db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
+    startWatchingCourseStorage(Number(courseId), folderName);
+
+    removePendingClassroomCourse(classroomCourseId);
+    return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  }
+);
 
 ipcMain.handle('app:getSetting', (_event, key: string) => {
   const db = getDb();

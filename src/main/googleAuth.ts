@@ -19,6 +19,21 @@ const REFRESH_TOKEN_SETTING_KEY = 'google_drive_refresh_token';
 // storage (docs/open-questions.md #19), it never writes back to Drive.
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
+// Separate refresh token from Drive's — Classroom is expected to be
+// connected against the user's college Workspace account, not the personal
+// account used for Drive (docs/open-questions.md #8), so the two
+// connections are tracked and can be connected/disconnected independently.
+const CLASSROOM_REFRESH_TOKEN_SETTING_KEY = 'google_classroom_refresh_token';
+
+// `.me` scopes ("coursework assigned to me") rather than `.students`, which
+// requires teacher/domain-admin-level access — this is a student account
+// (docs/open-questions.md #8).
+const CLASSROOM_SCOPES = [
+  'https://www.googleapis.com/auth/classroom.courses.readonly',
+  'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
+  'https://www.googleapis.com/auth/classroom.announcements.readonly',
+];
+
 interface GoogleClientCredentials {
   client_id: string;
   client_secret: string;
@@ -38,23 +53,23 @@ function loadClientCredentials(): GoogleClientCredentials {
   return { client_id: section.client_id, client_secret: section.client_secret };
 }
 
-function getStoredRefreshToken(): string | null {
+function getStoredRefreshToken(settingKey: string): string | null {
   const db = getDb();
-  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(REFRESH_TOKEN_SETTING_KEY) as
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(settingKey) as
     | { value: string }
     | undefined;
   return row?.value ?? null;
 }
 
-function storeRefreshToken(token: string): void {
+function storeRefreshToken(settingKey: string, token: string): void {
   const db = getDb();
   db.prepare(
     'INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?'
-  ).run(REFRESH_TOKEN_SETTING_KEY, token, token);
+  ).run(settingKey, token, token);
 }
 
 export function isGoogleDriveConnected(): boolean {
-  return getStoredRefreshToken() !== null;
+  return getStoredRefreshToken(REFRESH_TOKEN_SETTING_KEY) !== null;
 }
 
 export function disconnectGoogleDrive(): void {
@@ -62,11 +77,29 @@ export function disconnectGoogleDrive(): void {
   db.prepare('DELETE FROM app_settings WHERE key = ?').run(REFRESH_TOKEN_SETTING_KEY);
 }
 
+export function isGoogleClassroomConnected(): boolean {
+  return getStoredRefreshToken(CLASSROOM_REFRESH_TOKEN_SETTING_KEY) !== null;
+}
+
+export function disconnectGoogleClassroom(): void {
+  const db = getDb();
+  db.prepare('DELETE FROM app_settings WHERE key = ?').run(CLASSROOM_REFRESH_TOKEN_SETTING_KEY);
+}
+
 // google.auth.OAuth2 refreshes the short-lived access token from the stored
 // refresh token automatically on each API call — callers never touch access
 // tokens directly. Returns null if the user hasn't connected yet.
 export function getDriveClient(): OAuth2Client | null {
-  const refreshToken = getStoredRefreshToken();
+  const refreshToken = getStoredRefreshToken(REFRESH_TOKEN_SETTING_KEY);
+  if (!refreshToken) return null;
+  const { client_id, client_secret } = loadClientCredentials();
+  const client = new google.auth.OAuth2(client_id, client_secret);
+  client.setCredentials({ refresh_token: refreshToken });
+  return client;
+}
+
+export function getClassroomClient(): OAuth2Client | null {
+  const refreshToken = getStoredRefreshToken(CLASSROOM_REFRESH_TOKEN_SETTING_KEY);
   if (!refreshToken) return null;
   const { client_id, client_secret } = loadClientCredentials();
   const client = new google.auth.OAuth2(client_id, client_secret);
@@ -89,7 +122,7 @@ export function getDriveClient(): OAuth2Client | null {
 // sensitive/restricted scopes expire after about 7 days. The user just
 // reconnects (one click through the consent screen again) rather than
 // needing any re-setup.
-export function authorizeGoogleDrive(): Promise<void> {
+function authorize(settingKey: string, scopes: string[], connectedLabel: string): Promise<void> {
   const { client_id, client_secret } = loadClientCredentials();
 
   return new Promise((resolve, reject) => {
@@ -104,7 +137,7 @@ export function authorizeGoogleDrive(): Promise<void> {
       res.end(
         error
           ? '<p>Google sign-in failed. You can close this tab and try again in Atlas.</p>'
-          : '<p>Google Drive connected. You can close this tab and return to Atlas.</p>'
+          : `<p>${connectedLabel} connected. You can close this tab and return to Atlas.</p>`
       );
       server.close();
 
@@ -130,7 +163,7 @@ export function authorizeGoogleDrive(): Promise<void> {
             );
             return;
           }
-          storeRefreshToken(tokens.refresh_token);
+          storeRefreshToken(settingKey, tokens.refresh_token);
           resolve();
         })
         .catch(reject);
@@ -142,7 +175,7 @@ export function authorizeGoogleDrive(): Promise<void> {
       const client = new google.auth.OAuth2(client_id, client_secret, redirectUri);
       const authUrl = client.generateAuthUrl({
         access_type: 'offline',
-        scope: DRIVE_SCOPES,
+        scope: scopes,
         prompt: 'consent', // always issue a fresh refresh token, even on re-auth
       });
       void shell.openExternal(authUrl);
@@ -150,4 +183,16 @@ export function authorizeGoogleDrive(): Promise<void> {
 
     server.on('error', reject);
   });
+}
+
+export function authorizeGoogleDrive(): Promise<void> {
+  return authorize(REFRESH_TOKEN_SETTING_KEY, DRIVE_SCOPES, 'Google Drive');
+}
+
+// Uses the same bring-your-own OAuth client as Drive (docs/open-questions.md
+// #7) but a separate consent/token, since this is expected to be connected
+// against the college Workspace account rather than the personal account
+// used for Drive (docs/open-questions.md #8).
+export function authorizeGoogleClassroom(): Promise<void> {
+  return authorize(CLASSROOM_REFRESH_TOKEN_SETTING_KEY, CLASSROOM_SCOPES, 'Google Classroom');
 }

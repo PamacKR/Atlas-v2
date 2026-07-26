@@ -11,7 +11,12 @@ CREATE TABLE IF NOT EXISTS courses (
   -- later, so file paths already stored in `resources` never break.
   folder_name TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  source TEXT NOT NULL DEFAULT 'manual', -- manual, classroom
+  -- Classroom course ID this course was mapped to via the course-mapping
+  -- review panel (see classroom_pending_courses below). NULL for a course
+  -- never linked to Classroom.
+  classroom_course_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS resources (
@@ -41,7 +46,12 @@ CREATE TABLE IF NOT EXISTS resources (
   -- Drive file ID this resource was imported from (see drive_pending_files
   -- below) — used to detect "already imported" across scans. NULL for
   -- anything not sourced from Drive.
-  drive_file_id TEXT
+  drive_file_id TEXT,
+  -- Classroom coursework/announcement attachment ID this resource was
+  -- imported from — used to detect "already imported" across Classroom
+  -- syncs, same role as drive_file_id. NULL for anything not sourced from
+  -- Classroom.
+  classroom_attachment_id TEXT
 );
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to
@@ -95,7 +105,12 @@ CREATE TABLE IF NOT EXISTS deadlines (
   -- form @[Title](resource:<id>) or @[Title](note:<id>) — inserted via the
   -- description field's @ autocomplete, rendered as clickable links back to
   -- that resource/note (see renderDeadlineDescription in renderer.ts).
-  description TEXT
+  description TEXT,
+  -- Set when this deadline mirrors a Classroom assignment (see assignments
+  -- below) — gives a stable upsert/reconcile key independent of title
+  -- changes, so re-syncing an edited assignment updates the same row rather
+  -- than creating a duplicate. NULL for manually-created deadlines.
+  classroom_coursework_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS announcements (
@@ -104,7 +119,10 @@ CREATE TABLE IF NOT EXISTS announcements (
   source TEXT NOT NULL DEFAULT 'manual', -- classroom, gmail, manual
   title TEXT NOT NULL,
   body TEXT,
-  posted_at TEXT NOT NULL DEFAULT (datetime('now'))
+  posted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- External Classroom announcement ID, used to detect "already imported"
+  -- across syncs. NULL for anything not sourced from Classroom.
+  classroom_announcement_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS assignments (
@@ -114,7 +132,14 @@ CREATE TABLE IF NOT EXISTS assignments (
   description TEXT,
   due_at TEXT,
   source TEXT NOT NULL DEFAULT 'manual',
-  status TEXT NOT NULL DEFAULT 'open' -- open, submitted, graded
+  status TEXT NOT NULL DEFAULT 'open', -- open, submitted, graded
+  -- External Classroom courseWork ID, used to detect "already imported" and
+  -- to find the existing row to update on re-sync. NULL for anything not
+  -- sourced from Classroom.
+  classroom_coursework_id TEXT,
+  -- Classroom's own updateTime for this courseWork item — lets a re-sync
+  -- skip re-writing rows that haven't actually changed since last seen.
+  updated_at TEXT
 );
 
 -- Files seen in the user's designated Google Drive "inbox" folder
@@ -137,6 +162,29 @@ CREATE TABLE IF NOT EXISTS drive_pending_files (
   -- the row stays (so a future scan's UNIQUE constraint keeps it from
   -- reappearing as "new"), it's just excluded from the pending count/review
   -- list. Not the same as importing: nothing is copied into local storage.
+  ignored INTEGER NOT NULL DEFAULT 0
+);
+
+-- Classroom courses seen via the Classroom API that aren't yet mapped to an
+-- Atlas course. A row lives here from the moment a scan first detects it
+-- until the user resolves it in the course-mapping review panel (map to an
+-- existing Atlas course, or create a new one) — at which point
+-- courses.classroom_course_id is set on the resolved course and this row is
+-- deleted. Deliberately not auto-resolved: which Atlas course a Classroom
+-- course maps to is a user decision, same reasoning as watched_folders and
+-- drive_pending_files (docs/open-questions.md #11) and "Atlas owns the
+-- data" (CLAUDE.md). suggested_course_id is a name-match suggestion only,
+-- pre-filled in the review panel's picker but never auto-applied.
+CREATE TABLE IF NOT EXISTS classroom_pending_courses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  classroom_course_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  section TEXT,
+  suggested_course_id INTEGER REFERENCES courses(id) ON DELETE SET NULL,
+  detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Same soft-hide semantics as drive_pending_files.ignored — the row stays
+  -- (so the UNIQUE constraint keeps it from reappearing as "new"), just
+  -- excluded from the pending list/count. Nothing is created or linked.
   ignored INTEGER NOT NULL DEFAULT 0
 );
 

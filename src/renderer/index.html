@@ -79,6 +79,18 @@
           <button id="drive-review-button" type="button" hidden>Review new files</button>
         </div>
 
+        <div class="dashboard-widget" id="dashboard-classroom-widget">
+          <div class="resources-header">
+            <h3>Google Classroom</h3>
+          </div>
+          <p id="classroom-status" class="muted">Not connected.</p>
+          <button id="classroom-connect-button" type="button">Connect Google Classroom</button>
+          <button id="classroom-disconnect-button" type="button" hidden>Disconnect</button>
+          <button id="classroom-sync-button" type="button" hidden>Sync now</button>
+          <p id="classroom-pending-status" class="muted" hidden></p>
+          <button id="classroom-review-button" type="button" hidden>Review new courses</button>
+        </div>
+
         <div id="dashboard-widgets">
           <div class="dashboard-widget">
             <h3>Upcoming deadlines</h3>
@@ -443,6 +455,26 @@
         <button id="drive-review-bulk-ignore" type="button">Ignore</button>
       </div>
       <ul id="drive-review-list"></ul>
+    </div>
+  </div>
+
+  <div id="classroom-review-overlay" hidden>
+    <div id="classroom-review-panel">
+      <div class="split-preview-header">
+        <span>New courses from Google Classroom</span>
+        <div class="split-preview-actions">
+          <button id="classroom-review-close" type="button" title="Later" aria-label="Later">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="classroom-review-bulk">
+        <label><input type="checkbox" id="classroom-review-select-all" /> Select all</label>
+        <select id="classroom-review-bulk-course"></select>
+        <button id="classroom-review-bulk-confirm" type="button">Confirm</button>
+        <button id="classroom-review-bulk-ignore" type="button">Ignore</button>
+      </div>
+      <ul id="classroom-review-list"></ul>
     </div>
   </div>
 

@@ -86,6 +86,15 @@ interface DrivePendingFile {
   detected_at: string;
 }
 
+interface ClassroomPendingCourse {
+  id: number;
+  classroom_course_id: string;
+  name: string;
+  section: string | null;
+  suggested_course_id: number | null;
+  detected_at: string;
+}
+
 interface SearchResult {
   entityType: 'note' | 'resource' | 'announcement' | 'assignment';
   entityId: number;
@@ -160,6 +169,20 @@ interface AtlasApi {
   ) => Promise<unknown>;
   ignoreDriveFile: (driveFileId: string) => Promise<void>;
   onDriveChanged: (handler: () => void) => void;
+  isClassroomConnected: () => Promise<boolean>;
+  connectClassroom: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  disconnectClassroom: () => Promise<void>;
+  syncClassroomNow: () => Promise<{ ok: boolean; changed?: boolean; error?: string }>;
+  listPendingClassroomCourses: () => Promise<ClassroomPendingCourse[]>;
+  ignorePendingClassroomCourse: (classroomCourseId: string) => Promise<void>;
+  mapClassroomCourseToExisting: (classroomCourseId: string, atlasCourseId: number) => Promise<void>;
+  mapClassroomCourseToNew: (
+    classroomCourseId: string,
+    name: string,
+    code: string | null,
+    term: string | null
+  ) => Promise<Course>;
+  onClassroomChanged: (handler: () => void) => void;
   listResources: (courseId: number) => Promise<Resource[]>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
@@ -1038,6 +1061,7 @@ async function renderDashboard(): Promise<void> {
     renderDashboardResources(),
     renderDashboardActivity(),
     renderDriveStatus(),
+    renderClassroomStatus(),
   ]);
 }
 
@@ -1236,6 +1260,196 @@ async function ignoreSelectedDriveFiles(): Promise<void> {
 function toggleDriveReviewSelectAll(): void {
   const selectAll = document.getElementById('drive-review-select-all') as HTMLInputElement;
   document.querySelectorAll('.drive-review-row-check').forEach((el) => {
+    (el as HTMLInputElement).checked = selectAll.checked;
+  });
+}
+
+// Google Classroom: connect/disconnect (a separate connection from Drive's —
+// expected to be the college Workspace account, docs/open-questions.md #8),
+// an explicit "Sync now" (no background polling, ARCHITECTURE.md §4b), and
+// a course-mapping review panel. Once a Classroom course is mapped to an
+// Atlas course, its coursework/announcements import automatically on future
+// syncs — only which course a Classroom course maps to is gated here.
+async function renderClassroomStatus(): Promise<void> {
+  const connected = await atlasApi.isClassroomConnected();
+  document.getElementById('classroom-status')!.textContent = connected ? 'Connected.' : 'Not connected.';
+  (document.getElementById('classroom-connect-button') as HTMLButtonElement).hidden = connected;
+  (document.getElementById('classroom-disconnect-button') as HTMLButtonElement).hidden = !connected;
+  (document.getElementById('classroom-sync-button') as HTMLButtonElement).hidden = !connected;
+
+  await renderClassroomPendingStatus();
+}
+
+async function renderClassroomPendingStatus(): Promise<void> {
+  const connected = await atlasApi.isClassroomConnected();
+  const pendingStatus = document.getElementById('classroom-pending-status') as HTMLElement;
+  const reviewButton = document.getElementById('classroom-review-button') as HTMLButtonElement;
+
+  if (!connected) {
+    pendingStatus.hidden = true;
+    reviewButton.hidden = true;
+    return;
+  }
+
+  const pending = await atlasApi.listPendingClassroomCourses();
+  pendingStatus.hidden = false;
+  pendingStatus.textContent =
+    pending.length === 0
+      ? 'No new courses.'
+      : `${pending.length} new course${pending.length === 1 ? '' : 's'} found.`;
+  reviewButton.hidden = pending.length === 0;
+}
+
+async function connectClassroom(): Promise<void> {
+  const button = document.getElementById('classroom-connect-button') as HTMLButtonElement;
+  const status = document.getElementById('classroom-status')!;
+  button.disabled = true;
+  status.textContent = 'Opening your browser to sign in…';
+  const result = await atlasApi.connectClassroom();
+  button.disabled = false;
+  if (!result.ok) {
+    status.textContent = `Connection failed: ${result.error}`;
+    return;
+  }
+  await renderClassroomStatus();
+}
+
+async function disconnectClassroom(): Promise<void> {
+  await atlasApi.disconnectClassroom();
+  await renderClassroomStatus();
+}
+
+async function syncClassroomNowClicked(): Promise<void> {
+  const button = document.getElementById('classroom-sync-button') as HTMLButtonElement;
+  button.disabled = true;
+  button.textContent = 'Syncing…';
+  await atlasApi.syncClassroomNow();
+  button.disabled = false;
+  button.textContent = 'Sync now';
+  await renderClassroomPendingStatus();
+}
+
+// One row per pending Classroom course — a course picker (existing courses,
+// pre-selected to a name-match suggestion if one exists, or "Create new
+// course") confirmed individually or via the bulk controls. "Later" (the
+// close button) just hides the panel; nothing is dismissed, the pending list
+// is exactly what a fresh scan would find again.
+async function openClassroomReviewPanel(): Promise<void> {
+  const overlay = document.getElementById('classroom-review-overlay')!;
+  const bulkCourseSelect = document.getElementById('classroom-review-bulk-course') as HTMLSelectElement;
+
+  const courses = await atlasApi.listCourses();
+  const courseOptionsHtml =
+    '<option value="__new__">Create new course</option>' +
+    courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  bulkCourseSelect.innerHTML = courseOptionsHtml;
+
+  overlay.hidden = false;
+  await renderClassroomReviewList(courseOptionsHtml);
+}
+
+function closeClassroomReviewPanel(): void {
+  document.getElementById('classroom-review-overlay')!.hidden = true;
+}
+
+async function renderClassroomReviewList(courseOptionsHtml: string): Promise<void> {
+  const list = document.getElementById('classroom-review-list')!;
+  const pending = await atlasApi.listPendingClassroomCourses();
+  list.innerHTML = '';
+
+  for (const course of pending) {
+    const li = document.createElement('li');
+    li.className = 'classroom-review-row';
+    li.dataset.classroomCourseId = course.classroom_course_id;
+    li.dataset.courseName = course.name;
+    li.innerHTML = `
+      <input type="checkbox" class="classroom-review-row-check" />
+      <span class="classroom-review-row-name">
+        <span class="classroom-review-row-title">${escapeHtml(course.name)}</span>
+        ${course.section ? `<span class="classroom-review-row-section">${escapeHtml(course.section)}</span>` : ''}
+      </span>
+      <select class="classroom-review-row-course">${courseOptionsHtml}</select>
+      <button type="button" class="classroom-review-row-confirm">Confirm</button>
+      <button type="button" class="classroom-review-row-ignore">Ignore</button>
+    `;
+    const select = li.querySelector('.classroom-review-row-course') as HTMLSelectElement;
+    if (course.suggested_course_id !== null) select.value = String(course.suggested_course_id);
+    li.querySelector('.classroom-review-row-confirm')!.addEventListener('click', () => confirmOneClassroomCourse(li));
+    li.querySelector('.classroom-review-row-ignore')!.addEventListener('click', () => ignoreOneClassroomCourse(li));
+    list.appendChild(li);
+  }
+
+  if (pending.length === 0) {
+    list.innerHTML = '<li class="muted">No new courses.</li>';
+  }
+}
+
+// Shared cleanup after a row is resolved (mapped or ignored) — refresh
+// whatever page could now show a new course, and restore the "No new
+// courses." placeholder once the list is actually empty.
+async function afterClassroomRowResolved(): Promise<void> {
+  await renderClassroomPendingStatus();
+  if (currentPage === 'courses') await renderCourses();
+  else if (currentPage === 'dashboard') await renderDashboard();
+
+  if (!document.getElementById('classroom-review-list')!.hasChildNodes()) {
+    document.getElementById('classroom-review-list')!.innerHTML = '<li class="muted">No new courses.</li>';
+  }
+}
+
+async function confirmOneClassroomCourse(row: HTMLElement): Promise<void> {
+  const classroomCourseId = row.dataset.classroomCourseId!;
+  const name = row.dataset.courseName!;
+  const select = row.querySelector('.classroom-review-row-course') as HTMLSelectElement;
+  const button = row.querySelector('.classroom-review-row-confirm') as HTMLButtonElement;
+
+  button.disabled = true;
+  button.textContent = 'Confirming…';
+  if (select.value === '__new__') {
+    await atlasApi.mapClassroomCourseToNew(classroomCourseId, name, null, null);
+  } else {
+    await atlasApi.mapClassroomCourseToExisting(classroomCourseId, Number(select.value));
+  }
+  row.remove();
+  await afterClassroomRowResolved();
+}
+
+// The opposite of confirm — nothing is created or linked, the course just
+// stops counting as "new" (see ignorePendingClassroomCourse in
+// googleClassroom.ts for why the record stays instead of being deleted).
+async function ignoreOneClassroomCourse(row: HTMLElement): Promise<void> {
+  const classroomCourseId = row.dataset.classroomCourseId!;
+  const button = row.querySelector('.classroom-review-row-ignore') as HTMLButtonElement;
+  button.disabled = true;
+  await atlasApi.ignorePendingClassroomCourse(classroomCourseId);
+  row.remove();
+  await afterClassroomRowResolved();
+}
+
+async function confirmSelectedClassroomCourses(): Promise<void> {
+  const bulkCourseSelect = document.getElementById('classroom-review-bulk-course') as HTMLSelectElement;
+  const rows = Array.from(document.querySelectorAll('.classroom-review-row')) as HTMLElement[];
+
+  for (const row of rows) {
+    const checkbox = row.querySelector('.classroom-review-row-check') as HTMLInputElement;
+    if (!checkbox.checked) continue;
+    (row.querySelector('.classroom-review-row-course') as HTMLSelectElement).value = bulkCourseSelect.value;
+    await confirmOneClassroomCourse(row);
+  }
+}
+
+async function ignoreSelectedClassroomCourses(): Promise<void> {
+  const rows = Array.from(document.querySelectorAll('.classroom-review-row')) as HTMLElement[];
+  for (const row of rows) {
+    const checkbox = row.querySelector('.classroom-review-row-check') as HTMLInputElement;
+    if (!checkbox.checked) continue;
+    await ignoreOneClassroomCourse(row);
+  }
+}
+
+function toggleClassroomReviewSelectAll(): void {
+  const selectAll = document.getElementById('classroom-review-select-all') as HTMLInputElement;
+  document.querySelectorAll('.classroom-review-row-check').forEach((el) => {
     (el as HTMLInputElement).checked = selectAll.checked;
   });
 }
@@ -2606,6 +2820,22 @@ async function init(): Promise<void> {
   document.getElementById('drive-review-bulk-import')!.addEventListener('click', importSelectedDriveFiles);
   document.getElementById('drive-review-bulk-ignore')!.addEventListener('click', ignoreSelectedDriveFiles);
   atlasApi.onDriveChanged(() => void renderDrivePendingStatus());
+
+  document.getElementById('classroom-connect-button')!.addEventListener('click', connectClassroom);
+  document.getElementById('classroom-disconnect-button')!.addEventListener('click', disconnectClassroom);
+  document.getElementById('classroom-sync-button')!.addEventListener('click', syncClassroomNowClicked);
+  document.getElementById('classroom-review-button')!.addEventListener('click', openClassroomReviewPanel);
+  document.getElementById('classroom-review-close')!.addEventListener('click', closeClassroomReviewPanel);
+  document
+    .getElementById('classroom-review-select-all')!
+    .addEventListener('click', toggleClassroomReviewSelectAll);
+  document
+    .getElementById('classroom-review-bulk-confirm')!
+    .addEventListener('click', confirmSelectedClassroomCourses);
+  document
+    .getElementById('classroom-review-bulk-ignore')!
+    .addEventListener('click', ignoreSelectedClassroomCourses);
+  atlasApi.onClassroomChanged(() => void renderClassroomPendingStatus());
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
     const isCollapsed = document.getElementById('sidebar')!.classList.contains('collapsed');
     setSidebarCollapsed(!isCollapsed);
