@@ -220,3 +220,14 @@ Built 2026-07-27, same session as #22, after the user looked at the just-shipped
 - **Still open**: the user wants to expand the Settings page further (more of what's in the reference screenshot's Settings mockup) but said they'd give more detail in a future session — don't build ahead of that, no shape decided yet.
 
 **Status:** Resolved/built except the last bullet, which stays open until the user gives more detail. Same manual-verification limitation as #20-#22 for anything Drive/Classroom-related (none touched this round). No automated coverage yet for the `stale_import` filter specifically (would need a `scripts/verify-app.js` case that creates a deadline with a past due date and asserts it's excluded from `dashboard:upcomingDeadlines` — worth adding if this area gets touched again).
+
+### 24. Dashboard column-height mismatch round 3, plus two deferred items (Resources source filter, Settings revamp)
+
+Raised 2026-07-27 against the user's real data (5 real courses, 15 real upcoming deadlines) rather than the reference screenshot — round 2 (#23) fixed the flex-direction/stretch bugs but left a real gap: "My courses" (5 short rows) visibly didn't fill the same height as "Recently added" + "What changed" combined, because Upcoming's list had `max-height: none` and grew to fit all of its (often 8+) rows, making it — and therefore the whole stretched grid row — taller than the right column's two independently-capped widgets.
+
+- Gave `#dashboard-courses-widget > ul` / `#dashboard-upcoming-widget > ul` the same `max-height` + `overflow-y: auto` pattern the right column's widgets already use (was `max-height: none` for these two), so all three columns settle near the same natural height instead of Upcoming dragging the row taller than everyone else.
+- Enlarged "My courses" row sizing (padding, avatar, text) scoped to `#dashboard-course-list` only (not the shared `.course-avatar` used on the Courses page/course detail header), so 5 courses fill more of that now-shorter target height instead of leaving dead space below them.
+- **Deferred, not built**: a Resources-page filter to show only local vs. Classroom (vs. eventually Drive/Gmail) resources. Recommended waiting until the Gmail adapter lands (`ROADMAP.md` Phase 3) — with only two real sources today it's a thin win; once Gmail adds a third, the filter earns its place as real navigation rather than a two-way toggle. User hasn't confirmed either way yet.
+- Settings-page revamp (see #23's last bullet) — still nothing new; still waiting on the user's detail.
+
+**Status:** Column-height/row-size fix resolved/built, verified via `npm run verify` (screenshot only shows the 1-course test fixture, so the multi-course real-height fix couldn't be visually confirmed in that run — worth a look at the user's own launch). The two deferred items are open, not scheduled.
