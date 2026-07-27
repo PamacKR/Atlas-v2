@@ -550,7 +550,7 @@ app.whenReady().then(async () => {
   // enough at this app's scale to just do unconditionally on every launch.
   rebuildSearchIndex();
 
-  // Google Drive "inbox folder" scan (Phase 3, docs/open-questions.md #19):
+  // Google Drive "inbox folder" scan (Phase 3, open-questions.md #19):
   // once on launch, then every ~20s while the app stays open. True push
   // (Drive's changes.watch webhook) needs a public HTTPS endpoint, which
   // doesn't fit a local desktop app — polling is the accepted near-real-time
@@ -623,7 +623,7 @@ ipcMain.handle('search:query', (_event, query: string) => {
 // the dashboard's whole point is a homepage overview, so "per course" would
 // defeat the purpose. v1 covers the three ROADMAP.md-scoped widgets;
 // announcements/assignments widgets are v2, once those have real data
-// behind them (see docs/open-questions.md #13).
+// behind them (see open-questions.md #13).
 
 // A small stat-tile row shown above the four dashboard widgets — the user
 // felt the dashboard "looks so empty" even with real data behind it; the
@@ -780,7 +780,7 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
   return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
 
-// --- Google Drive connection (Phase 3, docs/open-questions.md #19) ---
+// --- Google Drive connection (Phase 3, open-questions.md #19) ---
 // This is deliberately just the connect/disconnect handshake for now — the
 // folder-scanning/review-panel work is a separate, not-yet-built step.
 ipcMain.handle('google:isDriveConnected', () => isGoogleDriveConnected());
@@ -857,7 +857,7 @@ ipcMain.handle('google:ignoreDriveFile', (_event, driveFileId: string) => {
 // --- Google Classroom connection (Phase 3, ARCHITECTURE.md §4b) ---
 // Separate connection from Drive's — expected to be the user's college
 // Workspace account rather than the personal account Drive uses
-// (docs/open-questions.md #8). No folder-config step (Classroom has no
+// (open-questions.md #8). No folder-config step (Classroom has no
 // folder concept) and no background polling interval, unlike Drive — see
 // scanClassroomAndNotify below.
 ipcMain.handle('classroom:isConnected', () => isGoogleClassroomConnected());
@@ -1031,7 +1031,7 @@ ipcMain.handle('classroom:getCourseContent', (_event, courseId: number) => {
   return { announcements, assignments: assignmentsWithLinks, classwork };
 });
 
-// --- Ashoka Planner course import (docs/open-questions.md #15) ---
+// --- Ashoka Planner course import (open-questions.md #15) ---
 // A one-shot, user-invoked import (never automatic, never polled) that reads
 // the user's separate ashoka-planner app's own SQLite file directly —
 // there's no network/OAuth involved, it's a local-file-to-local-file read.
@@ -1148,7 +1148,7 @@ ipcMain.handle('resources:getPreview', async (_event, resourceId: number) => {
 });
 
 // On-demand OCR for PDFs Atlas can't already read as text (e.g. a scanned
-// book with no text layer) — docs/open-questions.md #18. Same "never
+// book with no text layer) — open-questions.md #18. Same "never
 // silently trusted" shape as notes:runOcr: returns extracted text only, the
 // renderer shows it for review, and it's only written to the DB (and made
 // searchable) if the user explicitly saves it via resources:saveOcrText.
@@ -1324,7 +1324,7 @@ ipcMain.on('resources:courseContextMenu', (event, courseId: number) => {
 // Flat per-course list (no folders/subfolders — the user's own workflow was
 // "course > session-titled notes", e.g. W1L1/W1L2; Atlas already provides
 // the course-level grouping, so a second manual folder layer isn't needed).
-// Content is stored as markdown (docs/open-questions.md #1), edited live via
+// Content is stored as markdown (open-questions.md #1), edited live via
 // the bundled Toast UI Editor in WYSIWYG mode.
 
 ipcMain.handle('notes:listByCourse', (_event, courseId: number) => {
@@ -1710,7 +1710,7 @@ ipcMain.handle('notes:runOcr', async (event, noteId: number) => {
 // purpose is holding synced Google Classroom data (title/description/
 // submission status) in Phase 3 — building a second, overlapping manual-entry
 // UI for it now would just be busywork today with no sync to populate the
-// status field it exists for. Deferred; see docs/open-questions.md #13.
+// status field it exists for. Deferred; see open-questions.md #13.
 
 // Backs the Calendar page — unlike dashboard:upcomingDeadlines (future-only,
 // limited to 8 for the dashboard widget), the Calendar needs every deadline

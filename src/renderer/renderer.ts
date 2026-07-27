@@ -1197,7 +1197,7 @@ async function renderDashboard(): Promise<void> {
 }
 
 // Google Drive: connect/disconnect, pick the one "inbox" folder to scan, and
-// review new files it finds (Phase 3, docs/open-questions.md #19). Files
+// review new files it finds (Phase 3, open-questions.md #19). Files
 // aren't imported automatically — the user assigns a course and a
 // Resource/Note type per file (or in bulk) before anything gets copied into
 // local managed storage; "Atlas owns the data" (AGENTS.md) still holds once
@@ -1396,7 +1396,7 @@ function toggleDriveReviewSelectAll(): void {
 }
 
 // Google Classroom: connect/disconnect (a separate connection from Drive's —
-// expected to be the college Workspace account, docs/open-questions.md #8),
+// expected to be the college Workspace account, open-questions.md #8),
 // an explicit "Sync now" (no background polling, ARCHITECTURE.md §4b), and
 // a course-mapping review panel. Once a Classroom course is mapped to an
 // Atlas course, its coursework/announcements import automatically on future
@@ -1595,7 +1595,7 @@ function toggleClassroomReviewSelectAll(): void {
   });
 }
 
-// Ashoka Planner course import (docs/open-questions.md #15) — a one-shot,
+// Ashoka Planner course import (open-questions.md #15) — a one-shot,
 // user-invoked action (a button, never automatic/polled): reads the user's
 // separate ashoka-planner app's own database for currently-secured courses
 // and lets them pick which to create as real Atlas courses. planner.db has
@@ -1834,7 +1834,7 @@ function formatDueInLabel(dueAt: string | null): string {
 // --- Calendar page (v1 — month grid + Upcoming sidebar only) ---
 // Day/Week view toggle, a mini date-picker, and per-kind/course filter
 // checkboxes (all present in the shared screenshot's "Filters" panel) are
-// deliberate fast-follows, not silently cut — see docs/open-questions.md.
+// deliberate fast-follows, not silently cut — see open-questions.md.
 let calendarViewDate = new Date();
 
 async function renderCalendarPage(): Promise<void> {
@@ -3006,7 +3006,7 @@ function applyImageZoom(): void {
 
 // Remembered per-resource (courses.zoom_level in the DB), since some
 // images (e.g. a densely-packed diagram) are only readable zoomed in,
-// while most are fine at 100% — see docs/open-questions.md.
+// while most are fine at 100% — see open-questions.md.
 function setImageZoom(zoom: number): void {
   imageZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
   applyImageZoom();
@@ -3041,7 +3041,7 @@ async function openPreview(resource: Resource): Promise<void> {
   currentPreviewResourceId = resource.id;
 
   // Run OCR only makes sense for a PDF — same on-demand, reviewed-before-
-  // saving shape as handwritten notes (docs/open-questions.md #18), for
+  // saving shape as handwritten notes (open-questions.md #18), for
   // text-layer-less PDFs like a scanned book. Resets on every open, even if
   // left showing on whatever resource was previewed last.
   ocrButton.hidden = resource.kind !== 'pdf';
@@ -3118,7 +3118,7 @@ function closePreview(): void {
 }
 
 // OCR for a Resources PDF is opt-in and reviewed, same shape as handwritten
-// notes (docs/open-questions.md #18) — this is for PDFs Atlas can't already
+// notes (open-questions.md #18) — this is for PDFs Atlas can't already
 // read as text (e.g. a scanned book with no text layer). Running it never
 // touches the resource on its own; the extracted text is only a candidate
 // the user reviews and explicitly saves (saveResourceOcr) or discards.

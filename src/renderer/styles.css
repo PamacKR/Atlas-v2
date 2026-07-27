@@ -504,7 +504,7 @@ ul#search-results li.search-empty:hover {
 
 /* Dashboard "Upcoming" widget rows — date block + course-colored left
    border + title/badge + course/due-in rows (screenshot-driven design,
-   see docs/open-questions.md and STATUS.md). Distinct from
+   see open-questions.md and STATUS.md). Distinct from
    .dashboard-item-row (used elsewhere on the dashboard) since this widget's
    row layout is denser and carries a course-color accent. */
 #dashboard-deadlines li.upcoming-row {
@@ -967,7 +967,7 @@ ul#course-list.view-list li.course-card .course-card-counts {
 }
 
 /* Tabbed course-detail layout (replaces the old single long-scroll page —
-   see docs/open-questions.md). Underlined-tab style, same idea as Google
+   see open-questions.md). Underlined-tab style, same idea as Google
    Classroom's own course tabs, rather than a segmented-button/chip look —
    this is real page-section navigation, not a filter. */
 #course-detail-tabs {

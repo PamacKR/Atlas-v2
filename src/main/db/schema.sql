@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS courses (
   -- never linked to Classroom.
   classroom_course_id TEXT,
   -- Course description, populated when a course is created via the Ashoka
-  -- Planner import (docs/open-questions.md #15) from that app's own
+  -- Planner import (open-questions.md #15) from that app's own
   -- course_description data. NULL for manually-created/Classroom-mapped
   -- courses, which have no description source.
   description TEXT
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS resources (
   -- with no text layer (e.g. a scanned book) — mirrors notes.ocr_text. NULL
   -- until the user runs OCR and explicitly saves the result; only then does
   -- it get indexed into search_index, same "never silently trusted" rule as
-  -- handwritten notes (docs/open-questions.md #18).
+  -- handwritten notes (open-questions.md #18).
   ocr_text TEXT,
   -- Drive file ID this resource was imported from (see drive_pending_files
   -- below) — used to detect "already imported" across scans. NULL for
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS resources (
 );
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to
--- one course each (deliberately not auto-guessed — see docs/open-questions.md
+-- one course each (deliberately not auto-guessed — see open-questions.md
 -- #11 and the "Atlas owns the data" principle in AGENTS.md: which course a
 -- file belongs to is a user decision, not an inference Atlas makes for them).
 CREATE TABLE IF NOT EXISTS watched_folders (
@@ -162,13 +162,13 @@ CREATE TABLE IF NOT EXISTS assignments (
 );
 
 -- Files seen in the user's designated Google Drive "inbox" folder
--- (docs/open-questions.md #19) that haven't been assigned a course/type yet.
+-- (open-questions.md #19) that haven't been assigned a course/type yet.
 -- A file lives here from the moment a scan first detects it until the user
 -- tags it (course + Resource/handwritten-Note/typed-Note) via the review
 -- panel — at which point it's downloaded into local managed storage as a
 -- real resource/note (drive_file_id set there too) and this row is deleted.
 -- Deliberately not auto-resolved: which course/type a file belongs to is a
--- user decision, same reasoning as watched_folders (docs/open-questions.md
+-- user decision, same reasoning as watched_folders (open-questions.md
 -- #11) and "Atlas owns the data" (AGENTS.md).
 CREATE TABLE IF NOT EXISTS drive_pending_files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS drive_pending_files (
 -- courses.classroom_course_id is set on the resolved course and this row is
 -- deleted. Deliberately not auto-resolved: which Atlas course a Classroom
 -- course maps to is a user decision, same reasoning as watched_folders and
--- drive_pending_files (docs/open-questions.md #11) and "Atlas owns the
+-- drive_pending_files (open-questions.md #11) and "Atlas owns the
 -- data" (AGENTS.md). suggested_course_id is a name-match suggestion only,
 -- pre-filled in the review panel's picker but never auto-applied.
 CREATE TABLE IF NOT EXISTS classroom_pending_courses (

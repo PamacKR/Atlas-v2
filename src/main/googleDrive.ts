@@ -8,7 +8,7 @@ const FOLDER_NAME_SETTING_KEY = 'google_drive_folder_name';
 // Google's own native file types (Docs/Sheets/Slides/...) can't be fetched
 // via `alt: 'media'` — that only works for regular binary/text files, which
 // is all the phone-scan/tablet-note workflow this is built for actually
-// produces (docs/open-questions.md #19). Skipped at scan time rather than
+// produces (open-questions.md #19). Skipped at scan time rather than
 // surfaced as an importable-then-failing item.
 const GOOGLE_NATIVE_MIME_PREFIX = 'application/vnd.google-apps.';
 
@@ -141,7 +141,7 @@ async function listDriveFilesRecursively(
 // Drive before ever being reviewed. Called once on launch and on a ~20s
 // interval while the app is open (see main.ts) — true push would need a
 // public HTTPS endpoint, which doesn't fit a local desktop app
-// (docs/open-questions.md #19). Returns whether the pending list actually
+// (open-questions.md #19). Returns whether the pending list actually
 // changed, so the caller only needs to notify the renderer when it did.
 export async function scanDriveFolder(): Promise<boolean> {
   const client = getDriveClient();

@@ -16,21 +16,21 @@ import { getDb } from './db/database';
 const REFRESH_TOKEN_SETTING_KEY = 'google_drive_refresh_token';
 
 // Read-only is enough — Atlas only ever downloads a copy into local managed
-// storage (docs/open-questions.md #19), it never writes back to Drive.
+// storage (open-questions.md #19), it never writes back to Drive.
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
 // Separate refresh token from Drive's — Classroom is expected to be
 // connected against the user's college Workspace account, not the personal
-// account used for Drive (docs/open-questions.md #8), so the two
+// account used for Drive (open-questions.md #8), so the two
 // connections are tracked and can be connected/disconnected independently.
 const CLASSROOM_REFRESH_TOKEN_SETTING_KEY = 'google_classroom_refresh_token';
 
 // `.me` scopes ("coursework assigned to me") rather than `.students`, which
 // requires teacher/domain-admin-level access — this is a student account
-// (docs/open-questions.md #8). classroom.courseworkmaterials.readonly has no
+// (open-questions.md #8). classroom.courseworkmaterials.readonly has no
 // `.me` variant (unlike coursework) — it's the same scope for both teacher
 // and student contexts — needed once courseWorkMaterials.list (the
-// ungraded "Classwork" tab, docs/open-questions.md #21) was added.
+// ungraded "Classwork" tab, open-questions.md #21) was added.
 const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
@@ -43,7 +43,7 @@ interface GoogleClientCredentials {
   client_secret: string;
 }
 
-// The user's own bring-your-own OAuth client (docs/open-questions.md #7) —
+// The user's own bring-your-own OAuth client (open-questions.md #7) —
 // downloaded once from Google Cloud Console as a "Desktop app" credential and
 // copied into Atlas-Storage/config/ (never the git repo, it's tied to the
 // user's own Cloud project).
@@ -119,7 +119,7 @@ export function getClassroomClient(): OAuth2Client | null {
 // with no port, which Google matches against any port chosen at runtime for
 // this client type.
 //
-// Testing-mode caveat (accepted — see docs/open-questions.md #19): since this
+// Testing-mode caveat (accepted — see open-questions.md #19): since this
 // app isn't submitted for Google's verification review (would need a live
 // privacy policy and, for a scope like Drive, a security assessment — real
 // overkill for a personal single-user tool), refresh tokens for
@@ -193,10 +193,10 @@ export function authorizeGoogleDrive(): Promise<void> {
   return authorize(REFRESH_TOKEN_SETTING_KEY, DRIVE_SCOPES, 'Google Drive');
 }
 
-// Uses the same bring-your-own OAuth client as Drive (docs/open-questions.md
+// Uses the same bring-your-own OAuth client as Drive (open-questions.md
 // #7) but a separate consent/token, since this is expected to be connected
 // against the college Workspace account rather than the personal account
-// used for Drive (docs/open-questions.md #8).
+// used for Drive (open-questions.md #8).
 export function authorizeGoogleClassroom(): Promise<void> {
   return authorize(CLASSROOM_REFRESH_TOKEN_SETTING_KEY, CLASSROOM_SCOPES, 'Google Classroom');
 }

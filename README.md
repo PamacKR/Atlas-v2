@@ -18,7 +18,7 @@ Atlas never tries to become an AI assistant. No AI agent ever becomes responsibl
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — technical architecture and the reasoning behind each stack decision.
 - [`ROADMAP.md`](ROADMAP.md) — phased development plan for V1.
 - [`AGENTS.md`](AGENTS.md) — how an AI coding agent (any of them) should behave, decide, and communicate while building Atlas. `CLAUDE.md` is a thin stub pointing here, kept only because Claude Code looks for that exact filename.
-- [`docs/open-questions.md`](docs/open-questions.md) — open product questions from the PRD, with current recommendations/decisions and their status.
+- [`open-questions.md`](open-questions.md) — open product questions from the PRD, with current recommendations/decisions and their status.
 
 ## Status
 

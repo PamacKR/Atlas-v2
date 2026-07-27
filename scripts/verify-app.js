@@ -908,7 +908,7 @@ const fs = require('fs');
   }
 
   // --- On-demand OCR for regular (non-handwritten) Resources PDFs ---
-  // docs/open-questions.md #18: OCR is also useful for a typed/printed PDF
+  // open-questions.md #18: OCR is also useful for a typed/printed PDF
   // with no text layer (e.g. a scanned book) — a separate, on-demand action
   // on the Resources preview, reusing the same fixture and the same
   // opt-in/reviewed shape as the Notes OCR flow above (never silently
@@ -1068,9 +1068,9 @@ const fs = require('fs');
   // course. One unified per-course timeline (assignment/reading/quiz/.../
   // manual), sorted incomplete-first then soonest-due-first, with completed
   // items struck through. No separate "Assignments" tab was built — see
-  // docs/open-questions.md #13 for why that's deferred.
+  // open-questions.md #13 for why that's deferred.
   // Course detail is a tabbed layout now (session 46 — see
-  // docs/open-questions.md) — Deadlines is its own tab, not visible on the
+  // open-questions.md) — Deadlines is its own tab, not visible on the
   // default Overview tab.
   await window.click('.course-detail-tab[data-course-tab="deadlines"]');
   await window.waitForTimeout(150);

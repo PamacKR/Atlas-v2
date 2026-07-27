@@ -30,7 +30,7 @@ function classroomApi(): classroom_v1.Classroom {
 
 // A name-match suggestion only — pre-fills the review panel's picker but is
 // never applied on its own. Which Atlas course a Classroom course maps to is
-// always a user decision (docs/open-questions.md #11, "Atlas owns the data").
+// always a user decision (open-questions.md #11, "Atlas owns the data").
 function suggestExistingCourse(classroomName: string): number | null {
   const db = getDb();
   const courses = db.prepare('SELECT id, name FROM courses WHERE archived = 0').all() as {
@@ -313,7 +313,7 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
 // no background polling interval (unlike Drive's 20s), see ARCHITECTURE.md
 // §4b: Classroom content changes far less often than a Drive inbox, and this
 // avoids unnecessary API load against the college account while
-// docs/open-questions.md #2's general sync-frequency policy stays open.
+// open-questions.md #2's general sync-frequency policy stays open.
 export async function scanClassroom(): Promise<ClassroomSyncResult> {
   const coursesChanged = await scanClassroomCourses();
   const courseworkResult = await syncClassroomCourseworkForMappedCourses();

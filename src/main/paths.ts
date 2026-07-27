@@ -6,7 +6,7 @@ import * as os from 'os';
 // hidden app-data path, so the user can browse/add/remove files by hand.
 // Deliberately a *separate* folder from the Atlas source repo (which also
 // happens to live under Downloads) so dev/git operations never touch real
-// user data. See ARCHITECTURE.md §2 and docs/open-questions.md #6.
+// user data. See ARCHITECTURE.md §2 and open-questions.md #6.
 export function getDataDir(): string {
   // Override for automated verification (scripts/verify-app.js), so test
   // runs never touch the user's real Downloads/Atlas-Storage data.
@@ -25,9 +25,9 @@ export function getFilesDir(): string {
 }
 
 // App config that isn't per-course data — currently just the user's own
-// bring-your-own Google OAuth client credentials (docs/open-questions.md
+// bring-your-own Google OAuth client credentials (open-questions.md
 // #7). Lives alongside the DB/files per the data-directory decision
-// (docs/open-questions.md #6), never in the git repo — this is the user's
+// (open-questions.md #6), never in the git repo — this is the user's
 // own credential, tied to their own Google Cloud project.
 export function getConfigDir(): string {
   return path.join(getDataDir(), 'config');

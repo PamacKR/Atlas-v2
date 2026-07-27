@@ -37,7 +37,7 @@ export function getAshokaPlannerDbPath(): string | null {
 // immediately with a clear reason, not silently produce an empty course list
 // later. Opened read-only throughout this module: Atlas never writes back
 // to planner.db, this is a one-shot, user-invoked import, not a live sync
-// (docs/open-questions.md #15).
+// (open-questions.md #15).
 export function setAshokaPlannerDbPath(dbPath: string): { ok: true } | { ok: false; error: string } {
   if (!fs.existsSync(dbPath)) {
     return { ok: false, error: 'That file does not exist.' };
@@ -92,7 +92,7 @@ export function getAshokaSemesterHint(): string | null {
 
 // Reads every currently-secured course (status === 'secured') from the
 // user's ashoka-planner database — the "finalized courses" concept
-// docs/open-questions.md #15 identified — joined against that course's
+// open-questions.md #15 identified — joined against that course's
 // description (by section code). Read-only, one-shot: called only when the
 // user explicitly presses the import button, never automatically. Which
 // term these land under isn't decided here — see getAshokaSemesterHint and

@@ -2,7 +2,7 @@
 
 This document describes how an AI coding agent (as an engineering collaborator, not as a feature of the product) should operate while building Atlas. It's project-specific guidance layered on top of whatever general defaults the agent already has — read it before making architectural calls or writing product-facing copy in this repo. It applies regardless of which tool is doing the work (Claude Code, Pi coding agent, or anything else) and regardless of which model is behind it.
 
-**Starting a fresh session (new chat, new agent, or after context compaction)?** Read, in order: this file, then [`STATUS.md`](STATUS.md) (what's actually been decided/built and what's pending), then [`docs/open-questions.md`](docs/open-questions.md). Don't re-derive decisions already recorded in those files or in `ARCHITECTURE.md`/`ROADMAP.md` — treat them as settled unless the user says otherwise. `STATUS.md` is the one document expected to go stale fastest; update it whenever real progress happens, not just at the end of a session.
+**Starting a fresh session (new chat, new agent, or after context compaction)?** Read, in order: this file, then [`STATUS.md`](STATUS.md) (what's actually been decided/built and what's pending), then [`open-questions.md`](open-questions.md). Don't re-derive decisions already recorded in those files or in `ARCHITECTURE.md`/`ROADMAP.md` — treat them as settled unless the user says otherwise. `STATUS.md` is the one document expected to go stale fastest; update it whenever real progress happens, not just at the end of a session.
 
 ## Identity in this repo
 
@@ -26,14 +26,14 @@ Any time a design choice is ambiguous, resolve it against this line. Concretely:
 
 ## Decision-making boundaries
 
-- **Product decisions** (what a feature does, how data is modeled, what's in vs. out of scope) — check `prd.md` and `docs/open-questions.md` first. If a question is already answered there, don't re-litigate it in code review or in passing; if it's genuinely still open, add it to `docs/open-questions.md` rather than silently picking an answer.
+- **Product decisions** (what a feature does, how data is modeled, what's in vs. out of scope) — check `prd.md` and `open-questions.md` first. If a question is already answered there, don't re-litigate it in code review or in passing; if it's genuinely still open, add it to `open-questions.md` rather than silently picking an answer.
 - **Architecture decisions** (stack, libraries, schema shape) — check `ARCHITECTURE.md`. If a change would contradict a documented decision there, flag it and update the doc in the same change — don't let code and docs drift.
 - **Implementation details** (function names, file layout within a module, internal helpers) — normal engineering judgment, no need to check in.
 
 ## How to work in this repo
 
-- Keep `ARCHITECTURE.md`, `ROADMAP.md`, and `docs/open-questions.md` current as living documents — when a decision changes, update the doc in the same commit as the code that changes it, not as an afterthought later.
-- Prefer resolving an open question explicitly (move it from `docs/open-questions.md` into the relevant doc with a decision recorded) over quietly working around it.
+- Keep `ARCHITECTURE.md`, `ROADMAP.md`, and `open-questions.md` current as living documents — when a decision changes, update the doc in the same commit as the code that changes it, not as an afterthought later.
+- Prefer resolving an open question explicitly (move it from `open-questions.md` into the relevant doc with a decision recorded) over quietly working around it.
 - Don't build ahead of the current roadmap phase (see `ROADMAP.md`) — e.g. don't start wiring Gmail sync while Phase 1 (local-only workflow) isn't done. Each phase should be a genuinely usable checkpoint on its own.
 - Follow good general engineering defaults on top of this: no speculative abstraction, no unused config/feature flags, comments only where the *why* isn't obvious from the code, and don't add error handling for cases that can't occur.
 
@@ -44,14 +44,14 @@ The user (2026-07-23) asked for this to be trackable so they can audit whether a
 | Document | Update trigger | How the user can spot a miss |
 |---|---|---|
 | `STATUS.md` | Every session with real progress — features built, bugs found/fixed, decisions made. | Check the "Last updated" line matches the session just done. |
-| `docs/open-questions.md` | A question gets resolved, or a new one surfaces. | Any `**Status:** Open` item that was clearly decided in conversation but not closed out here. |
+| `open-questions.md` | A question gets resolved, or a new one surfaces. | Any `**Status:** Open` item that was clearly decided in conversation but not closed out here. |
 | `ARCHITECTURE.md` | A technical/stack decision changes or a new one is made. | Code does something the doc doesn't describe (schema shape, new library, changed data flow). |
 | `ROADMAP.md` | Phases get reordered, descoped, or a milestone is completed (tick the checkbox). | `STATUS.md` says a phase item is done but its `ROADMAP.md` checkbox is unticked. |
 | `AGENTS.md` | The user gives a new standing instruction about how the AI agent should work (rare). | The agent visibly behaves differently from what's written here, without the file changing. |
 | `README.md` | Setup/run instructions change (new dependency, new required step). | Following "Running it" from a clean checkout doesn't match reality. |
 | `prd.md` | Never touched by the AI agent — it's the user's original source document. | N/A. |
 
-Rule of thumb: `STATUS.md` and `docs/open-questions.md` should get touched almost every session; `ARCHITECTURE.md`/`ROADMAP.md` only on structural changes; `AGENTS.md`/`README.md` only on workflow or setup changes.
+Rule of thumb: `STATUS.md` and `open-questions.md` should get touched almost every session; `ARCHITECTURE.md`/`ROADMAP.md` only on structural changes; `AGENTS.md`/`README.md` only on workflow or setup changes.
 
 ## Testing UI changes yourself, don't just ask the user
 
@@ -85,4 +85,4 @@ Atlas's own UI copy (empty states, dashboard labels, settings) should be plain a
 
 ## When in doubt
 
-Ask. This project is still being actively shaped — the PRD explicitly leaves several product questions open (`docs/open-questions.md`), and getting the data/reasoning split right matters more than moving fast on any individual feature.
+Ask. This project is still being actively shaped — the PRD explicitly leaves several product questions open (`open-questions.md`), and getting the data/reasoning split right matters more than moving fast on any individual feature.
