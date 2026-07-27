@@ -336,28 +336,46 @@ ul#search-results li.search-empty:hover {
   gap: 1rem;
 }
 
-/* My Courses / Upcoming widgets grow to fill their stretched grid cell and
-   pin their footer action ("Manage courses" / "View full calendar") to the
-   bottom via the list's flex: 1 below, rather than the button floating
-   directly under whatever height the list content happens to need. */
+/* All three dashboard-main-grid columns get one shared, explicit height
+   rather than letting each column's own content dictate the row height —
+   the previous approach (capping each list at a guessed pixel value) kept
+   producing a whack-a-mole: whichever widget's real content was shortest
+   ended up with grey space either inside its list or below its footer
+   button, and the "right" cap depended on how much of each course's/
+   deadline's real data happened to exist. With the height fixed here,
+   every list's flex: 1 + min-height: 0 + overflow-y: auto below just fills
+   whatever's left after that widget's own header/tabs/button — so the
+   footer button always lands flush at the bottom, and content beyond what
+   fits scrolls instead of stretching the box. #dashboard-right-column
+   doesn't need this declared explicitly — as a grid item it's stretched to
+   match by align-items: stretch automatically. */
 .dashboard-widget-stretch {
   display: flex;
   flex-direction: column;
+  height: 560px;
 }
 
-/* A fixed cap (same idea as the generic .dashboard-widget ul rule the
-   Recently-added/What-changed widgets already use) rather than max-height:
-   none — letting Upcoming grow to fit every one of its (often 8+) rows made
-   it taller than the right column's two capped widgets combined, so the
-   grid stretched My Courses/Upcoming down to match Upcoming's own
-   oversized height, well past what 5-ish courses/deadlines actually need.
-   Capping both at the same height keeps all three columns close to the
-   same natural size, with scroll for whatever doesn't fit. */
 #dashboard-courses-widget > ul,
 #dashboard-upcoming-widget > ul {
   flex: 1;
   min-height: 0;
-  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* Recently-added/What-changed split the stretched right column's height
+   evenly (flex: 1 each) instead of each independently capping at a fixed
+   220px regardless of the column's actual (now explicit) total height. */
+#dashboard-right-column > .dashboard-widget {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+#dashboard-right-column > .dashboard-widget > ul {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
 }
 
@@ -828,6 +846,8 @@ li.course-card {
   padding: 1rem;
   cursor: pointer;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 li.course-card.selected {
@@ -875,6 +895,12 @@ li.course-card.selected {
   background: var(--color-hover-bg);
 }
 
+/* margin-top: auto pins this to the bottom of the card regardless of how
+   tall .course-card-top happens to be — a course with several codes
+   (e.g. "FIN-3563/ ECO-3563/ FIN-4563/ECO-4563-2") wraps to two lines while
+   a single-code course stays on one, and without this the counts row just
+   sat wherever that variable-height content ended, misaligning across a
+   row of cards of otherwise-equal (grid-stretched) height. */
 .course-card-counts {
   display: flex;
   flex-wrap: wrap;
@@ -883,6 +909,7 @@ li.course-card.selected {
   font-size: 0.8rem;
   border-top: 1px solid var(--color-border-soft);
   padding-top: 0.7rem;
+  margin-top: auto;
 }
 
 /* Flat-row alternative to the card grid (view-list toggle) */
@@ -894,6 +921,7 @@ ul#course-list.view-list {
 
 ul#course-list.view-list li.course-card {
   display: flex;
+  flex-direction: row; /* .course-card is flex-direction: column by default (grid view) — must be restated here, or this row layout would silently inherit column and stack instead (see CLAUDE.md's per-property cascade note) */
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 0.4rem;
@@ -909,6 +937,7 @@ ul#course-list.view-list li.course-card .course-card-top {
 ul#course-list.view-list li.course-card .course-card-counts {
   border-top: none;
   padding-top: 0;
+  margin-top: 0; /* the grid view's margin-top: auto (bottom-pinning) has no place in this row layout */
   flex-shrink: 0;
 }
 
