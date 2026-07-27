@@ -1553,7 +1553,7 @@ ipcMain.on('notes:contextMenu', (event, noteId: number) => {
 // OCR is deliberately NOT run automatically at import. It was at first, but
 // the user found local Tesseract's accuracy on their actual handwriting too
 // poor to be worth it automatically — and pointed out that reading a scan
-// via Claude Code's vision (already possible today, no Atlas feature needed)
+// via the connected AI agent's vision (already possible today, no Atlas feature needed)
 // is a better fit for handwriting anyway. OCR is now an explicit per-note
 // action (notes:runOcr below) the user opts into and reviews before
 // accepting, rather than something that runs and gets silently trusted.

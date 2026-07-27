@@ -155,13 +155,13 @@ Not a sync adapter in the OAuth/API sense — this is a **local-file-to-local-fi
 
 The Context Builder (PRD section 16) is a query layer over the canonical database: given a task (assignment help, exam revision, lecture summary, etc.) and a current course, it retrieves the relevant subset of resources, notes, assignments, and the course's AI profile (section 19) — it does not dump everything, and it never writes AI-inferred data back into the canonical store as fact (section 17).
 
-## 6. Claude Code integration: local MCP server
+## 6. Runtime AI integration: local MCP server
 
-Atlas exposes its Context Builder to Claude Code via a **local MCP (Model Context Protocol) server** bundled with the app, rather than only generating static context files.
+Atlas exposes its Context Builder to whichever AI coding agent the user is running via a **local MCP (Model Context Protocol) server** bundled with the app, rather than only generating static context files. MCP is itself a model/vendor-agnostic protocol — any MCP-capable client (Claude Code, Pi coding agent, or others) can connect to the same server without Atlas needing to know or care which one it is.
 
 Why MCP over static file export:
 
-- The PRD's own goal (section 21) is that a user can start a *fresh* Claude Code conversation without manually re-explaining project structure — that calls for Claude being able to query live ("what's due this week in COMP301", "pull my notes on lecture 4"), not just receive a fixed snapshot made at export time.
+- The PRD's own goal (section 21) is that a user can start a *fresh* AI agent conversation without manually re-explaining project structure — that calls for the agent being able to query live ("what's due this week in COMP301", "pull my notes on lecture 4"), not just receive a fixed snapshot made at export time.
 - The query/context-builder logic (section 16) has to exist regardless of transport. MCP is a thin protocol layer on top of that logic, not a parallel implementation.
 - A static "export context to file" mode is still kept as a secondary path (same underlying query layer) for use with AI tools that don't support MCP, satisfying the PRD's AI-provider-independence goal (open question 5).
 
@@ -195,7 +195,7 @@ This deliberately replaces what used to be "Open in default app" (`shell.openPat
 
 Format and organization are both resolved — see `docs/open-questions.md` #1 for the full reasoning. Summary:
 
-- **Format: Markdown**, not rich text. The deciding factor was Claude Code integration, not editing convenience: rich text (HTML or a JSON doc tree) would just get flattened to something markdown-like before Claude could use it anyway, so storing markdown from the start avoids a lossy round-trip and keeps notes trivially indexable by the existing FTS5 `search_index` table. `notes.content_markdown` (schema already had this column from Phase 0).
+- **Format: Markdown**, not rich text. The deciding factor was AI-agent integration, not editing convenience: rich text (HTML or a JSON doc tree) would just get flattened to something markdown-like before an AI agent could use it anyway, so storing markdown from the start avoids a lossy round-trip and keeps notes trivially indexable by the existing FTS5 `search_index` table. `notes.content_markdown` (schema already had this column from Phase 0).
 - **Organization: flat per course, no folders/subfolders.** The user's prior Notion workflow was structurally "semester > course > session-titled note" (e.g. "W1L1", "W1L2") — Atlas already provides the semester (see below) and course layers, so a note just needs a user-given title, not a second manually-maintained folder tree inside each course.
 - **Editor: Milkdown, via the `@milkdown/crepe` preset** (MIT) — typing `#`, `-`/`*`, `1.`, `---`, etc. converts live to real headings/lists/dividers, matching the Notion/Obsidian feel the user asked for. **Toast UI Editor was tried first and replaced** after the user reported it felt "raw and unpolished": its WYSIWYG mode doesn't actually support typing markdown shortcuts to create lists (typing `- ` just inserted the literal characters), and its toolbar never shows an active/highlighted state for the current selection (pressing Ctrl+B bolded text but gave no visual feedback that Bold was now active). Both were confirmed as real gaps via hands-on browser testing, not assumed — and both are core to how the user actually works (bullet-heavy notes, frequent formatting). Crepe was verified to handle all of them correctly (live list/heading/divider shortcuts, Tab/Shift+Tab nesting, a floating selection toolbar with correct active-state highlighting) before switching, plus it bundles KaTeX math rendering out of the box, which Toast UI Editor has no equivalent for and the user needs for academic notes (formulas, complexity notation). Uses the official `frame-dark` theme to match Atlas's UI. Content autosaves 600ms after the last edit via Crepe's `markdownUpdated` listener (debounced) and flushes immediately on close.
 - Milkdown's own dependencies (ProseMirror, CodeMirror for code blocks, KaTeX for math, a small internal Vue instance for its math/table block editors) are resolved and bundled by esbuild along with their CSS/webfont assets (`scripts/build-renderer.js` — needs `file` loaders for KaTeX's `.woff`/`.woff2`/`.ttf`, and emits a sibling `renderer.css` that `index.html` links directly).
@@ -375,7 +375,7 @@ A third, smaller feedback round (5 items) refined details from the previous two 
 ├─────────────────────────────────────────────┤
 │  Context Builder (query layer)               │
 ├─────────────────────────────────────────────┤
-│  MCP server  ──────────────►  Claude Code    │
+│  MCP server  ──────────────►  AI agent       │
 │  (+ file export fallback)     (reasoning)    │
 └─────────────────────────────────────────────┘
 ```

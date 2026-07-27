@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS resources (
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to
 -- one course each (deliberately not auto-guessed — see docs/open-questions.md
--- #11 and the "Atlas owns the data" principle in CLAUDE.md: which course a
+-- #11 and the "Atlas owns the data" principle in AGENTS.md: which course a
 -- file belongs to is a user decision, not an inference Atlas makes for them).
 CREATE TABLE IF NOT EXISTS watched_folders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS assignments (
 -- real resource/note (drive_file_id set there too) and this row is deleted.
 -- Deliberately not auto-resolved: which course/type a file belongs to is a
 -- user decision, same reasoning as watched_folders (docs/open-questions.md
--- #11) and "Atlas owns the data" (CLAUDE.md).
+-- #11) and "Atlas owns the data" (AGENTS.md).
 CREATE TABLE IF NOT EXISTS drive_pending_files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   drive_file_id TEXT NOT NULL UNIQUE,
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS drive_pending_files (
 -- deleted. Deliberately not auto-resolved: which Atlas course a Classroom
 -- course maps to is a user decision, same reasoning as watched_folders and
 -- drive_pending_files (docs/open-questions.md #11) and "Atlas owns the
--- data" (CLAUDE.md). suggested_course_id is a name-match suggestion only,
+-- data" (AGENTS.md). suggested_course_id is a name-match suggestion only,
 -- pre-filled in the review panel's picker but never auto-applied.
 CREATE TABLE IF NOT EXISTS classroom_pending_courses (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

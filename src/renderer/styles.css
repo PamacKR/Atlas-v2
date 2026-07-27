@@ -903,7 +903,7 @@ ul#course-list.view-list {
 
 ul#course-list.view-list li.course-card {
   display: flex;
-  flex-direction: row; /* .course-card is flex-direction: column by default (grid view) — must be restated here, or this row layout would silently inherit column and stack instead (see CLAUDE.md's per-property cascade note) */
+  flex-direction: row; /* .course-card is flex-direction: column by default (grid view) — must be restated here, or this row layout would silently inherit column and stack instead (see AGENTS.md's per-property cascade note) */
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 0.4rem;
@@ -1157,7 +1157,7 @@ ul#course-list.view-list li.course-card .course-card-counts {
   flex-shrink: 0;
 }
 
-/* Same [hidden]-vs-own-selector trap documented in CLAUDE.md — this rule
+/* Same [hidden]-vs-own-selector trap documented in AGENTS.md — this rule
    used to be safe (every button in .split-preview-actions was always
    visible), until #note-view-scan became the first one conditionally
    hidden via the `hidden` attribute. An unconditional `display: flex` here
@@ -1313,7 +1313,7 @@ ul#course-list.view-list li.course-card .course-card-counts {
    pane tried before this left too little width for the Resources list next
    to it for what the content actually needed. Same overlay pattern as
    #deadline-editor-overlay/#confirm-overlay below, including the same
-   [hidden]-vs-own-selector fix (CLAUDE.md) for the same reason. */
+   [hidden]-vs-own-selector fix (AGENTS.md) for the same reason. */
 #preview-overlay {
   position: fixed;
   inset: 0;
@@ -1409,7 +1409,7 @@ ul#course-list.view-list li.course-card .course-card-counts {
    earlier small anchored popup that cut off past the screen edge once there
    were more than a couple of courses. Same overlay pattern as
    #confirm-overlay/#deadline-editor-overlay, including the same
-   [hidden]-vs-own-selector fix (CLAUDE.md). */
+   [hidden]-vs-own-selector fix (AGENTS.md). */
 #course-picker-overlay {
   position: fixed;
   inset: 0;
@@ -1806,7 +1806,7 @@ button#add-watch-folder {
   margin: 0 0 0.6rem 0;
 }
 
-/* Same [hidden]-vs-own-selector trap documented elsewhere (CLAUDE.md) —
+/* Same [hidden]-vs-own-selector trap documented elsewhere (AGENTS.md) —
    #drive-connect-button/#drive-disconnect-button toggle via the `hidden`
    attribute depending on connection state, so `display` must be scoped to
    :not([hidden]) rather than set unconditionally. */
@@ -1913,7 +1913,7 @@ button#drive-review-button:hover:not([hidden]) {
   margin: 0 0 0.6rem 0;
 }
 
-/* Same [hidden]-vs-own-selector trap documented elsewhere (CLAUDE.md) —
+/* Same [hidden]-vs-own-selector trap documented elsewhere (AGENTS.md) —
    these three buttons toggle via the `hidden` attribute depending on
    connection state, so `display` must be scoped to :not([hidden]) rather
    than set unconditionally. */
@@ -1956,7 +1956,7 @@ button#classroom-review-button:hover:not([hidden]) {
 }
 
 /* Same [hidden]-vs-own-ID-selector trap as documented elsewhere in this
-   file (CLAUDE.md) — #course-form is now toggled via the `hidden`
+   file (AGENTS.md) — #course-form is now toggled via the `hidden`
    attribute (the "+ Add course" button), so `display` must be conditioned
    on :not([hidden]) rather than set unconditionally here. */
 form#course-form:not([hidden]) {
@@ -2130,7 +2130,7 @@ form#course-form button {
 }
 
 /* Google Drive review panel — same overlay pattern as #confirm-overlay
-   above, including the same [hidden]-vs-own-selector fix (CLAUDE.md). */
+   above, including the same [hidden]-vs-own-selector fix (AGENTS.md). */
 #drive-review-overlay {
   position: fixed;
   inset: 0;

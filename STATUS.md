@@ -1,8 +1,18 @@
 # Atlas — Status
 
-Living snapshot of where the project actually is. This is the first thing to read (after `CLAUDE.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
+Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-27 (session 46)
+**Last updated:** 2026-07-27 (Atlas-v2 fork)
+
+## Atlas-v2 fork — project generalized away from being Claude-Code-specific
+
+This repo is a clone of `PamacKR/Atlas`, forked 2026-07-27 so the user could try Pi coding agent (with NVIDIA NIM API models) against the project without touching the original repo, which stays Claude-Code-only. Forking it surfaced a real gap: the project's own operating instructions and several docs assumed Claude Code specifically, rather than describing a model/tool-agnostic contract — so this fork also generalizes that, as a one-time change made only here (not backported to the original `Atlas`, which the user wants left alone).
+
+- **`CLAUDE.md` trimmed to a 5-line stub**, pointing to a new **`AGENTS.md`** — the real, full operating doc going forward, adapted line-for-line from `CLAUDE.md`'s content with "Claude"/"Claude Code" generalized to "the AI agent"/"whichever AI coding tool is being used." All the substantive rules carry over unchanged (both hard guardrails, the doc map, both recurring-CSS-bug writeups, the git-workflow autonomy grant, the `npm run verify` self-testing instruction). The one policy reworded rather than just renamed: git identity — instead of mandating one literal string, `AGENTS.md` states the principle (a clearly-attributed, tool-specific local git identity per clone) so a Pi+NIM session and a Claude Code session can each use their own without contradicting the doc.
+- `ARCHITECTURE.md` §6 ("Claude Code integration: local MCP server") renamed "Runtime AI integration: local MCP server" and reworded — MCP is a vendor-neutral protocol, not tied to one client; the ASCII layer diagram's `Claude Code (reasoning)` box now reads `AI agent (reasoning)`. `ROADMAP.md` Phase 4's heading/bullets reworded the same way. `README.md`'s intro and doc links updated to point at `AGENTS.md` and describe "external AI coding agents" generally. `docs/open-questions.md` #5 (AI provider independence) reworded to drop the "initial target is Claude Code" framing, plus a couple of forward-referencing `` `CLAUDE.md` `` citations elsewhere in that file repointed to `` `AGENTS.md` ``.
+- A handful of source comments (`renderer.ts`, `main.ts`, a few in `styles.css`/`schema.sql`) that pointed back to "CLAUDE.md" as the doc-of-record were repointed to `AGENTS.md`; no logic changed anywhere in this pass.
+- **Not touched**: `prd.md` (the user's original source document — off-limits per the standing rule, carried into `AGENTS.md` unchanged) still uses "Claude Code"/"Claude" throughout its own sections (18, 20, 21); those are historical/original text, conceptually superseded by the generalized framing elsewhere but not edited. Every existing dated entry below this one is left exactly as originally written — they're an accurate record of what was true in each session, not retroactively rewritten to match the new tool-agnostic language.
+- Phase 4 (Context Builder/MCP server) is still **unbuilt** — this was a documentation-only pass, no functional code changed.
 
 ## Session 46 (continued yet again) — Dashboard stretch/equal-width polish, theme toggle moved to Settings-only, real "upcoming deadlines" fix
 

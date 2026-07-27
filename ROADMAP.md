@@ -43,13 +43,13 @@ Reordered 2026-07-26 (user decision) to build the **Google Drive adapter first**
 - [ ] Sync configuration: manual vs. automatic, frequency (see `docs/open-questions.md`)
 - [ ] Conflict handling for data that changed both locally and at the source
 
-## Phase 4 — Context Builder & Claude Code integration
+## Phase 4 — Context Builder & AI agent integration
 
 - Context Builder query layer: relevance-based retrieval per task type (assignment help, exam revision, lecture summary, concept explanation)
 - Course AI profiles (section 19): explanation style, detail level, reasoning depth, formatting, math derivation use, citation preferences
-- Local MCP server exposing the Context Builder to Claude Code
+- Local MCP server exposing the Context Builder to any MCP-compatible AI agent
 - Static context-file export as a fallback path for non-MCP AI tools
-- "Fresh conversation" flow: Claude Code can pick up full course context with no manual explanation from the user
+- "Fresh conversation" flow: any connected AI agent can pick up full course context with no manual explanation from the user
 
 ## Phase 5 — Lifecycle & polish
 

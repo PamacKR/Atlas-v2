@@ -1200,7 +1200,7 @@ async function renderDashboard(): Promise<void> {
 // review new files it finds (Phase 3, docs/open-questions.md #19). Files
 // aren't imported automatically — the user assigns a course and a
 // Resource/Note type per file (or in bulk) before anything gets copied into
-// local managed storage; "Atlas owns the data" (CLAUDE.md) still holds once
+// local managed storage; "Atlas owns the data" (AGENTS.md) still holds once
 // something's tagged, Drive is just the inbox.
 async function renderDriveStatus(): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
@@ -3410,8 +3410,8 @@ function closeDeadlineEditor(): void {
   currentEditingDeadlineId = null;
 }
 
-// @-mention autocomplete in the description textarea — matches Claude Code's
-// own @-file-reference convention the user pointed to, scoped to the current
+// @-mention autocomplete in the description textarea — matches the common
+// @-file-reference convention several AI coding tools use, scoped to the current
 // course's resources/notes (mentionCandidates, loaded when the editor opens)
 // rather than the whole filesystem, since those are the things Atlas already
 // knows about and can navigate to.
