@@ -336,46 +336,28 @@ ul#search-results li.search-empty:hover {
   gap: 1rem;
 }
 
-/* All three dashboard-main-grid columns get one shared, explicit height
-   rather than letting each column's own content dictate the row height —
-   the previous approach (capping each list at a guessed pixel value) kept
-   producing a whack-a-mole: whichever widget's real content was shortest
-   ended up with grey space either inside its list or below its footer
-   button, and the "right" cap depended on how much of each course's/
-   deadline's real data happened to exist. With the height fixed here,
-   every list's flex: 1 + min-height: 0 + overflow-y: auto below just fills
-   whatever's left after that widget's own header/tabs/button — so the
-   footer button always lands flush at the bottom, and content beyond what
-   fits scrolls instead of stretching the box. #dashboard-right-column
-   doesn't need this declared explicitly — as a grid item it's stretched to
-   match by align-items: stretch automatically. */
+/* My Courses / Upcoming widgets grow to fill their stretched grid cell and
+   pin their footer action ("Manage courses" / "View full calendar") to the
+   bottom via the list's flex: 1 below, rather than the button floating
+   directly under whatever height the list content happens to need. */
 .dashboard-widget-stretch {
   display: flex;
   flex-direction: column;
-  height: 560px;
 }
 
+/* A fixed cap (same idea as the generic .dashboard-widget ul rule the
+   Recently-added/What-changed widgets already use) rather than max-height:
+   none — letting Upcoming grow to fit every one of its (often 8+) rows made
+   it taller than the right column's two capped widgets combined, so the
+   grid stretched My Courses/Upcoming down to match Upcoming's own
+   oversized height, well past what 5-ish courses/deadlines actually need.
+   Capping both at the same height keeps all three columns close to the
+   same natural size, with scroll for whatever doesn't fit. */
 #dashboard-courses-widget > ul,
 #dashboard-upcoming-widget > ul {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-}
-
-/* Recently-added/What-changed split the stretched right column's height
-   evenly (flex: 1 each) instead of each independently capping at a fixed
-   220px regardless of the column's actual (now explicit) total height. */
-#dashboard-right-column > .dashboard-widget {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-#dashboard-right-column > .dashboard-widget > ul {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
+  max-height: 360px;
   overflow-y: auto;
 }
 
