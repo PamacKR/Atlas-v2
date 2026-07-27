@@ -120,7 +120,16 @@ CREATE TABLE IF NOT EXISTS deadlines (
   -- below) — gives a stable upsert/reconcile key independent of title
   -- changes, so re-syncing an edited assignment updates the same row rather
   -- than creating a duplicate. NULL for manually-created deadlines.
-  classroom_coursework_id TEXT
+  classroom_coursework_id TEXT,
+  -- Set at insert time when due_at was already in the past at that moment
+  -- (e.g. importing an old Classroom course whose assignments are long
+  -- overdue). Excluded from the Dashboard "Upcoming" widget/count, which
+  -- would otherwise be dominated by stale imported items, but still shown
+  -- on the full Calendar page. A deadline that was future when created and
+  -- has since become overdue (the normal case) keeps stale_import = 0, so
+  -- it still surfaces as "Overdue" in Upcoming — only already-dead-on-
+  -- arrival rows are hidden.
+  stale_import INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS announcements (

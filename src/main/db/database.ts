@@ -87,6 +87,14 @@ function migrate(db: Database.Database): void {
   if (!deadlineColumns.includes('classroom_coursework_id')) {
     db.exec('ALTER TABLE deadlines ADD COLUMN classroom_coursework_id TEXT');
   }
+  if (!deadlineColumns.includes('stale_import')) {
+    db.exec('ALTER TABLE deadlines ADD COLUMN stale_import INTEGER NOT NULL DEFAULT 0');
+    // Backfill: any deadline already overdue at the moment this column is
+    // introduced was necessarily synced/entered before stale_import existed
+    // to flag it (e.g. an old Classroom import) — treat it the same as a
+    // freshly-inserted stale row so it stops flooding the Upcoming widget.
+    db.exec("UPDATE deadlines SET stale_import = 1 WHERE due_at IS NOT NULL AND due_at < datetime('now')");
+  }
 
   const drivePendingColumns = (
     db.prepare('PRAGMA table_info(drive_pending_files)').all() as { name: string }[]

@@ -181,11 +181,18 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
       due_at = excluded.due_at, updated_at = excluded.updated_at
   `);
   const upsertDeadline = db.prepare(`
-    INSERT INTO deadlines (course_id, title, kind, due_at, source, classroom_coursework_id)
-    VALUES (?, ?, 'assignment', ?, 'classroom', ?)
+    INSERT INTO deadlines (course_id, title, kind, due_at, source, classroom_coursework_id, stale_import)
+    VALUES (?, ?, 'assignment', ?, 'classroom', ?, ?)
     ON CONFLICT (classroom_coursework_id) WHERE classroom_coursework_id IS NOT NULL DO UPDATE SET
       title = excluded.title, due_at = excluded.due_at
   `);
+  // Today's date (YYYY-MM-DD), computed once per sync — due_at is either a
+  // bare date or date+time in that same format, so a lexical compare against
+  // this is enough to tell "already overdue as of this sync" without a full
+  // date-parse. Only used to set stale_import on first insert (see schema.sql);
+  // ON CONFLICT above deliberately never touches it, so a course re-synced
+  // after this ships doesn't retroactively unflag rows imported before it.
+  const todayStr = new Date().toISOString().slice(0, 10);
   const upsertAnnouncement = db.prepare(`
     INSERT INTO announcements (course_id, source, title, body, posted_at, classroom_announcement_id)
     VALUES (?, 'classroom', ?, ?, ?, ?)
@@ -236,7 +243,13 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
           work.updateTime ?? null
         );
         if (insertResult.changes > 0) changed = true;
-        const deadlineResult = upsertDeadline.run(course.id, work.title, dueAt, work.id);
+        const deadlineResult = upsertDeadline.run(
+          course.id,
+          work.title,
+          dueAt,
+          work.id,
+          dueAt && dueAt.slice(0, 10) < todayStr ? 1 : 0
+        );
         if (deadlineResult.changes > 0) changed = true;
 
         if (saveLinkResources(course.id, work.id, extractMaterialLinks(work.materials), null)) changed = true;

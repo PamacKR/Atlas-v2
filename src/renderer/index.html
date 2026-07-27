@@ -30,7 +30,6 @@
           <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
           <ul id="search-results" hidden></ul>
         </div>
-        <button id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">🌙</button>
       </header>
 
       <section id="page-dashboard" class="app-page">
@@ -59,18 +58,17 @@
              per the shared screenshot — replaces the earlier stacked-full-
              width-widgets arrangement. -->
         <div id="dashboard-main-grid">
-          <div class="dashboard-widget" id="dashboard-courses-widget">
+          <div class="dashboard-widget dashboard-widget-stretch" id="dashboard-courses-widget">
             <div class="resources-header">
               <h3>My courses</h3>
-              <button id="manage-courses-button" type="button">Manage courses</button>
             </div>
             <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
+            <button id="manage-courses-button" type="button" class="dashboard-widget-footer-btn">⚙️ Manage courses</button>
           </div>
 
-          <div class="dashboard-widget" id="dashboard-upcoming-widget">
+          <div class="dashboard-widget dashboard-widget-stretch" id="dashboard-upcoming-widget">
             <div class="resources-header">
               <h3>Upcoming</h3>
-              <button id="dashboard-view-calendar" type="button" class="link-button">View full calendar →</button>
             </div>
             <div class="chip-row" id="dashboard-upcoming-tabs">
               <button class="chip active" type="button" data-upcoming-filter="">All</button>
@@ -80,6 +78,7 @@
               <button class="chip" type="button" data-upcoming-filter="other">Other</button>
             </div>
             <ul id="dashboard-deadlines"></ul>
+            <button id="dashboard-view-calendar" type="button" class="dashboard-widget-footer-btn">View full calendar →</button>
           </div>
 
           <div id="dashboard-right-column">

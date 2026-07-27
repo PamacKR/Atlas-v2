@@ -187,25 +187,6 @@ body {
   margin-bottom: 1.5rem;
 }
 
-#theme-toggle {
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
-  color: var(--color-text);
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-#theme-toggle:hover {
-  background: var(--color-hover-bg);
-}
-
 h1 {
   margin: 0 0 0.25rem 0;
 }
@@ -337,21 +318,59 @@ ul#search-results li.search-empty:hover {
 }
 
 /* Three columns (My Courses | Upcoming | Recent activity), per the shared
-   screenshot. `align-items: start` is the important part — without it, CSS
-   Grid stretches every column to match the tallest one by default, which is
-   exactly what made the shorter "Recently added"/"What changed" cards show
-   a huge slab of empty space whenever "Upcoming" happened to be taller. */
+   screenshot. Back to the Grid default (align-items: stretch, so no need to
+   state it) so all three columns share a flat bottom edge — the earlier
+   align-items: start was only needed because #dashboard-deadlines rows were
+   stacking/centering from a separate flex-direction bug (see
+   .upcoming-row below); now that's fixed at the source, stretching is safe
+   and matches the reference layout. */
 #dashboard-main-grid {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.3fr) minmax(240px, 1fr);
   gap: 1rem;
-  align-items: start;
 }
 
 #dashboard-right-column {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+/* My Courses / Upcoming widgets grow to fill their stretched grid cell and
+   pin their footer action ("Manage courses" / "View full calendar") to the
+   bottom via the list's flex: 1 below, rather than the button floating
+   directly under whatever height the list content happens to need. */
+.dashboard-widget-stretch {
+  display: flex;
+  flex-direction: column;
+}
+
+#dashboard-courses-widget > ul,
+#dashboard-upcoming-widget > ul {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+/* Shared by "Manage courses" and "View full calendar" — previously styled
+   differently (a plain header button vs. a .link-button), which read as
+   inconsistent since both are the same kind of action (a widget-level
+   footer action, not part of the header). */
+.dashboard-widget-footer-btn {
+  margin-top: 0.9rem;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated-2);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.dashboard-widget-footer-btn:hover {
+  background: var(--color-hover-bg);
 }
 
 .dashboard-widget {
@@ -592,15 +611,15 @@ ul#search-results li.search-empty:hover {
   font-size: 0.85rem;
 }
 
-/* Chip cards in a wrapping row rather than a vertical list of text rows —
-   the colored avatars give this widget actual visual presence instead of
-   reading as another plain list, and it's the one widget most naturally
-   suited to a compact card per item (a course has an identity — name,
-   code, color — a resource/deadline/activity row doesn't). */
+/* Full-width divided rows rather than wrapping chip cards — chips varied in
+   width per course name length (a short name's card was visibly narrower
+   than a long name's), which read as uneven; a flat list where every row
+   spans the same container width fixes that and matches the reference
+   layout. The colored avatar still gives each row identity. */
 ul#dashboard-course-list.dashboard-course-chips {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0;
   max-height: none;
   overflow: visible;
 }
@@ -609,13 +628,18 @@ ul#dashboard-course-list.dashboard-course-chips {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.7rem;
+  padding: 0.6rem 0.1rem;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--color-border-soft);
+  border-radius: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+#dashboard-course-list.dashboard-course-chips li:first-child {
   border-top: none;
-  padding: 0.6rem 0.9rem;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  min-width: 180px;
 }
 
 #dashboard-course-list.dashboard-course-chips li.muted {
@@ -645,20 +669,6 @@ ul#dashboard-course-list.dashboard-course-chips {
   color: var(--color-text-muted);
   font-size: 0.8rem;
   flex-shrink: 0;
-}
-
-button#manage-courses-button {
-  padding: 0.4rem 0.9rem;
-  border-radius: 4px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text);
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-button#manage-courses-button:hover {
-  background: var(--color-hover-bg);
 }
 
 #semester-filter {

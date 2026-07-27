@@ -146,13 +146,15 @@ const fs = require('fs');
     throw new Error('FAIL: course list view toggle back to "grid" did not apply');
   }
 
-  // Theme toggle: dark by default, switches to light on click, and persists
-  // across a reload (via the same app_settings mechanism as viewMode/
-  // semesterFilter).
+  // Theme toggle: dark by default, switches to light via Settings > General
+  // (the top-bar quick-toggle was removed — theme switching now lives only
+  // in Settings), and persists across a reload (via the same app_settings
+  // mechanism as viewMode/semesterFilter).
   const themeBeforeToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
   console.log('theme before toggle:', themeBeforeToggle);
   if (themeBeforeToggle !== 'dark') throw new Error(`FAIL: expected dark theme by default, got "${themeBeforeToggle}"`);
-  await window.click('#theme-toggle');
+  await goToPage('settings');
+  await window.click('#settings-theme-light');
   await window.waitForTimeout(200);
   let themeAfterToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
   console.log('theme after toggle:', themeAfterToggle);
@@ -162,7 +164,8 @@ const fs = require('fs');
   themeAfterToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
   console.log('theme after reload (should stay light):', themeAfterToggle);
   if (themeAfterToggle !== 'light') throw new Error('FAIL: theme did not persist across a reload');
-  await window.click('#theme-toggle'); // back to dark for the rest of the run
+  await goToPage('settings');
+  await window.click('#settings-theme-dark'); // back to dark for the rest of the run
   await window.waitForTimeout(200);
 
   // Sidebar collapse: icon-only rail, persists across a reload the same way.

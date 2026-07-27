@@ -3501,17 +3501,12 @@ function insertMention(textarea: HTMLTextAreaElement, atIndex: number, candidate
 // set) falls back to dark.
 function applyTheme(theme: 'light' | 'dark'): void {
   document.documentElement.setAttribute('data-theme', theme);
-  const button = document.getElementById('theme-toggle') as HTMLButtonElement;
-  button.textContent = theme === 'light' ? '🌙' : '☀️';
-  button.title = theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
   document.getElementById('settings-theme-dark')!.classList.toggle('active', theme === 'dark');
   document.getElementById('settings-theme-light')!.classList.toggle('active', theme === 'light');
 }
 
-// Shared by the top-bar quick-toggle and Settings > General's explicit
-// Dark/Light buttons — both control the same persisted preference, just
-// from two different reachable places (a quick one-click toggle for the
-// common case, a real choice in Settings for discoverability).
+// Only reachable from Settings > General now — the top-bar quick-toggle was
+// removed per the user's request to keep theme switching in one place.
 function setTheme(theme: 'light' | 'dark'): void {
   applyTheme(theme);
   atlasApi.setSetting('theme', theme);
@@ -3689,10 +3684,6 @@ async function init(): Promise<void> {
   document.getElementById('calendar-next-month')!.addEventListener('click', () => changeCalendarMonth(1));
   document.getElementById('calendar-today')!.addEventListener('click', goToCalendarToday);
 
-  document.getElementById('theme-toggle')!.addEventListener('click', () => {
-    const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    setTheme(current === 'light' ? 'dark' : 'light');
-  });
   document.getElementById('settings-theme-dark')!.addEventListener('click', () => setTheme('dark'));
   document.getElementById('settings-theme-light')!.addEventListener('click', () => setTheme('light'));
 

@@ -640,7 +640,9 @@ ipcMain.handle('dashboard:stats', () => {
   const noteCount = (db.prepare('SELECT COUNT(*) AS count FROM notes').get() as { count: number }).count;
   const upcomingDeadlineCount = (
     db
-      .prepare('SELECT COUNT(*) AS count FROM deadlines WHERE completed = 0 AND due_at IS NOT NULL')
+      .prepare(
+        'SELECT COUNT(*) AS count FROM deadlines WHERE completed = 0 AND due_at IS NOT NULL AND stale_import = 0'
+      )
       .get() as { count: number }
   ).count;
   return { courseCount, resourceCount, noteCount, upcomingDeadlineCount };
@@ -651,13 +653,19 @@ ipcMain.handle('dashboard:upcomingDeadlines', () => {
   // Only deadlines with an actual due date — an "upcoming" list is
   // inherently about a timeline, so a no-due-date entry (which the
   // per-course Deadlines list happily shows, sorted last) has nothing
-  // meaningful to contribute here.
+  // meaningful to contribute here. stale_import = 0 excludes rows that were
+  // already overdue at the moment they were synced/created (e.g. importing
+  // an old Classroom course) — those aren't "upcoming" in any real sense,
+  // but a deadline that was future when created and has since lapsed still
+  // has stale_import = 0 and correctly shows up here as overdue. The full
+  // Calendar page (deadlines:listAllWithCourse) intentionally has no such
+  // filter, since past deadlines still belong there.
   return db
     .prepare(
       `SELECT deadlines.*, courses.name AS course_name
        FROM deadlines
        JOIN courses ON courses.id = deadlines.course_id
-       WHERE deadlines.completed = 0 AND deadlines.due_at IS NOT NULL
+       WHERE deadlines.completed = 0 AND deadlines.due_at IS NOT NULL AND deadlines.stale_import = 0
        ORDER BY deadlines.due_at ASC
        LIMIT 8`
     )
@@ -1743,9 +1751,12 @@ ipcMain.handle(
     description: string | null
   ) => {
     const db = getDb();
+    const staleImport = dueAt && dueAt.slice(0, 10) < new Date().toISOString().slice(0, 10) ? 1 : 0;
     const insertResult = db
-      .prepare('INSERT INTO deadlines (course_id, title, kind, due_at, description) VALUES (?, ?, ?, ?, ?)')
-      .run(courseId, title, kind, dueAt, description);
+      .prepare(
+        'INSERT INTO deadlines (course_id, title, kind, due_at, description, stale_import) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(courseId, title, kind, dueAt, description, staleImport);
     return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(insertResult.lastInsertRowid);
   }
 );
