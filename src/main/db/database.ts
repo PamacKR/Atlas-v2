@@ -42,6 +42,16 @@ function migrate(db: Database.Database): void {
   if (!courseColumns.includes('description')) {
     db.exec('ALTER TABLE courses ADD COLUMN description TEXT');
   }
+  // The Drive folder ID for this course's own subfolder inside Atlas's
+  // "Atlas Previews" folder (open-questions.md #12, ARCHITECTURE.md §7) —
+  // keeps uploaded Office-file preview copies organized by course instead
+  // of dumped flat into one folder, where several courses' files sharing
+  // the same original filename (e.g. every course's own "lecture-slides.pptx")
+  // would otherwise be indistinguishable from each other. NULL until the
+  // first Drive preview upload for that course.
+  if (!courseColumns.includes('drive_preview_folder_id')) {
+    db.exec('ALTER TABLE courses ADD COLUMN drive_preview_folder_id TEXT');
+  }
 
   const resourceColumns = (
     db.prepare('PRAGMA table_info(resources)').all() as { name: string }[]

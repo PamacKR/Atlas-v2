@@ -21,7 +21,11 @@ CREATE TABLE IF NOT EXISTS courses (
   -- Planner import (open-questions.md #15) from that app's own
   -- course_description data. NULL for manually-created/Classroom-mapped
   -- courses, which have no description source.
-  description TEXT
+  description TEXT,
+  -- Drive folder ID for this course's own subfolder inside Atlas's "Atlas
+  -- Previews" folder (open-questions.md #12) — keeps uploaded Office-file
+  -- preview copies organized by course. NULL until the first upload.
+  drive_preview_folder_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS resources (

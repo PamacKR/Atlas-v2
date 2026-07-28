@@ -239,14 +239,18 @@ function driveViewUrl(fileId: string): string {
   return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
-// Created once, on first use — named and owned entirely by Atlas, unlike
-// the inbox folder (which the user points at by pasting a link). Verifies
-// the remembered folder still exists (the user could delete it by hand in
-// Drive) rather than trusting a stale ID forever, since a stale parent ID
-// would make every upload fail with a confusing "not found" error instead
-// of just quietly recreating the folder.
-async function ensurePreviewFolder(drive: ReturnType<typeof google.drive>): Promise<string> {
-  const existingId = getSetting(PREVIEW_FOLDER_ID_SETTING_KEY);
+// Shared by the root "Atlas Previews" folder and each course's subfolder
+// inside it (see ensureCoursePreviewSubfolder) — verifies a remembered
+// folder ID still exists and isn't trashed before reusing it (the user
+// could delete it by hand in Drive), creating a fresh one otherwise rather
+// than every later upload failing with a confusing "not found" against a
+// stale parent ID.
+async function ensureFolder(
+  drive: ReturnType<typeof google.drive>,
+  name: string,
+  parentId: string | null,
+  existingId: string | null
+): Promise<string> {
   if (existingId) {
     try {
       const res = await drive.files.get({ fileId: existingId, fields: 'id, trashed' });
@@ -258,11 +262,46 @@ async function ensurePreviewFolder(drive: ReturnType<typeof google.drive>): Prom
   }
 
   const created = await drive.files.create({
-    requestBody: { name: PREVIEW_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' },
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      ...(parentId ? { parents: [parentId] } : {}),
+    },
     fields: 'id',
   });
-  const folderId = created.data.id!;
+  return created.data.id!;
+}
+
+// Created once, on first use — named and owned entirely by Atlas, unlike
+// the inbox folder (which the user points at by pasting a link).
+async function ensurePreviewFolder(drive: ReturnType<typeof google.drive>): Promise<string> {
+  const folderId = await ensureFolder(drive, PREVIEW_FOLDER_NAME, null, getSetting(PREVIEW_FOLDER_ID_SETTING_KEY));
   setSetting(PREVIEW_FOLDER_ID_SETTING_KEY, folderId);
+  return folderId;
+}
+
+// One subfolder per course inside the root preview folder, named after the
+// course — otherwise every uploaded file lands in one flat folder under
+// just its original filename, and several courses' files sharing an
+// identical name (e.g. every course's own "lecture-slides.pptx") would be
+// indistinguishable from each other if the user ever looks in Drive
+// directly. Folder ID is remembered on the course row itself
+// (courses.drive_preview_folder_id), same pattern as the root folder.
+async function ensureCoursePreviewSubfolder(
+  drive: ReturnType<typeof google.drive>,
+  rootFolderId: string,
+  courseId: number
+): Promise<string> {
+  const db = getDb();
+  const course = db.prepare('SELECT name, drive_preview_folder_id FROM courses WHERE id = ?').get(courseId) as
+    | { name: string; drive_preview_folder_id: string | null }
+    | undefined;
+  if (!course) throw new Error('Course not found.');
+
+  const folderId = await ensureFolder(drive, course.name, rootFolderId, course.drive_preview_folder_id);
+  if (folderId !== course.drive_preview_folder_id) {
+    db.prepare('UPDATE courses SET drive_preview_folder_id = ? WHERE id = ?').run(folderId, courseId);
+  }
   return folderId;
 }
 
@@ -289,10 +328,11 @@ export async function uploadResourceForPreview(resourceId: number): Promise<Driv
   const db = getDb();
   const resource = db
     .prepare(
-      'SELECT file_path, kind, drive_preview_file_id, drive_preview_synced_size, drive_preview_synced_mtime_ms FROM resources WHERE id = ?'
+      'SELECT course_id, file_path, kind, drive_preview_file_id, drive_preview_synced_size, drive_preview_synced_mtime_ms FROM resources WHERE id = ?'
     )
     .get(resourceId) as
     | {
+        course_id: number;
         file_path: string;
         kind: string;
         drive_preview_file_id: string | null;
@@ -317,7 +357,8 @@ export async function uploadResourceForPreview(resourceId: number): Promise<Driv
   }
 
   const drive = google.drive({ version: 'v3', auth: client });
-  const folderId = await ensurePreviewFolder(drive);
+  const rootFolderId = await ensurePreviewFolder(drive);
+  const folderId = await ensureCoursePreviewSubfolder(drive, rootFolderId, resource.course_id);
 
   // A stream, not a Buffer — googleapis/gaxios switches to a resumable
   // upload automatically once the body is large enough to need it, so a

@@ -1831,7 +1831,8 @@ button#add-watch-folder {
    attribute depending on connection state, so `display` must be scoped to
    :not([hidden]) rather than set unconditionally. */
 button#drive-connect-button:not([hidden]),
-button#drive-disconnect-button:not([hidden]) {
+button#drive-disconnect-button:not([hidden]),
+button#drive-clear-preview-cache-button {
   padding: 0.4rem 0.9rem;
   border-radius: 4px;
   border: 1px solid var(--color-border);
@@ -1842,7 +1843,8 @@ button#drive-disconnect-button:not([hidden]) {
 }
 
 button#drive-connect-button:hover:not([hidden]),
-button#drive-disconnect-button:hover:not([hidden]) {
+button#drive-disconnect-button:hover:not([hidden]),
+button#drive-clear-preview-cache-button:hover {
   background: var(--color-hover-bg);
 }
 
