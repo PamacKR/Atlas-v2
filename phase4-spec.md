@@ -14,7 +14,10 @@ Target interactions, in the user's own words:
 
 - *"Summarise chapters 5 to 8 of Microeconomics for my exam."*
 - *"Help me with this worksheet"* — agent finds the related notes and textbook sections itself.
-- The agent already knows **how this particular course's material should be handled**, without being told again in every new chat.
+- *"Exam is day after, prof said chapters X/Y/Z plus maybe G — what should I study first?"* — agent probes what the user already knows, then proposes an order.
+- *"Prof uploaded one practice doc and said use the textbook, but the textbook has no answers — give me practice questions."* — agent reads both, notices the gap, and writes its own.
+
+**Note-making is one task among many.** The user has explicitly not finished imagining the use cases, having never had this capability before. The tools below are therefore deliberately **primitives — find, read, remember, save — not features shaped around particular tasks.** Every example above resolves into the same nine calls; that generality is the design goal, not a coincidence.
 
 Anything beyond Atlas's own data — web search, general knowledge, actually doing the reasoning — is the agent's job and needs nothing from us.
 
@@ -141,7 +144,27 @@ ALTER TABLE notes ADD COLUMN generated_by_agent INTEGER NOT NULL DEFAULT 0;
 
 ---
 
-## 5. Part C — Course profiles as files
+## 5. Part C — Persistent memory as files
+
+### 5.0 Scope — deliberately wider than PRD §19
+
+PRD §19 describes course profiles in terms of *presentation* (explanation style, detail level, formatting, citations). **That is too narrow.** The agent is a general-purpose assistant, not a note generator, and the use cases the user described need it to remember things §19 never contemplated:
+
+- *Familiarity and weak spots* — "shaky on general equilibrium, comfortable with elasticity," learned by the agent probing in conversation and needed weeks later when planning revision.
+- *How this course actually runs* — the professor's habits, exam format, what gets emphasised, whether practice material comes with answers.
+- *What has already been done* — topics revised, practice attempted, plans made, so a fresh chat doesn't restart from zero.
+- *Anything else the agent finds worth keeping.*
+
+These files are therefore **whatever the agent has learned**, not a fixed form. Since Atlas never parses them (§5.2), widening the content costs nothing structurally — but building as if §19 were the whole story would produce the wrong thing.
+
+**Two scopes:**
+
+```
+Atlas-Storage/course-profiles/<Course Name>.md   -- per course
+Atlas-Storage/course-profiles/_general.md        -- across all courses
+```
+
+The general file holds what isn't course-specific: how the user likes to work, how they revise, recurring preferences. Without it, the agent relearns the same things in every course.
 
 ### 5.1 Location and shape
 
@@ -163,7 +186,7 @@ Atlas keeps these files renamed in step with the course, reusing the same logic 
 
 Atlas **stores and serves this text without parsing, validating, or acting on it.** The content is the agent's to structure. This keeps the guardrail intact: Atlas is not reasoning, it is holding a file.
 
-A new profile is seeded with a comment listing suggested topics (explanation style, detail level, reasoning depth, formatting, use of derivations, citation preferences — PRD §19) purely as a hint.
+A new profile is seeded with a comment listing suggested topics — presentation preferences (PRD §19), plus familiarity and weak areas, how the course is run, and work already done (§5.0) — purely as a hint. The agent is free to ignore the structure entirely.
 
 ### 5.3 Writes are silent
 
@@ -197,8 +220,8 @@ Nine, deliberately. Fewer and the agent can't work; more and it picks wrongly.
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `atlas_overview` | — | Current semester, active courses (id, name, code), counts of resources/notes/upcoming deadlines. The fresh-conversation bootstrap (PRD §18) — the first call in any new chat. |
-| `atlas_course_briefing` | `course` | That course's profile text, upcoming deadlines, recent announcements, and an inventory summary (counts by kind + most recent 20 titles with IDs). Enough to orient without dumping content. |
+| `atlas_overview` | — | Current semester, active courses (id, name, code), counts of resources/notes/upcoming deadlines, **and the general memory file (§5.0)**. The fresh-conversation bootstrap (PRD §18) — the first call in any new chat, and what makes the agent start out already knowing the user. |
+| `atlas_course_briefing` | `course` | That course's memory file, upcoming deadlines, recent announcements, and an inventory summary (counts by kind + most recent 20 titles with IDs). Enough to orient without dumping content. |
 
 **Finding**
 
@@ -219,7 +242,7 @@ Nine, deliberately. Fewer and the agent can't work; more and it picks wrongly.
 
 | Tool | Arguments | Effect |
 |---|---|---|
-| `atlas_write_course_profile` | `course`, `content` | Replaces the profile file. Silent, per §5.3. |
+| `atlas_write_memory` | `course?`, `content` | Replaces the memory file — the course's, or the general one when `course` is omitted (§5.0). Silent, per §5.3. |
 | `atlas_create_note` | `course`, `title`, `content_markdown` | Creates a note with `generated_by_agent = 1`. Cannot modify existing notes. |
 
 ### 6.4 Response size limits
@@ -264,7 +287,7 @@ Extraction gets its own fixtures — a real multi-page PDF, a deck, a DOCX, and 
 | # | Piece | Size | Why here |
 |---|---|---|---|
 | 1 | Page-aware extraction + backfill (§3) | **Large** | Everything else is hollow without it. Riskiest, so first — including proving `pdfjs-dist` runs under plain Node on day one. |
-| 2 | Course profiles as files (§5) | Small | Self-contained; the query layer needs it. |
+| 2 | Memory files, course + general (§5) | Small | Self-contained; the query layer needs it. |
 | 3 | Agent-note flag, badge, filter (§4) | Small | Self-contained UI + one column. |
 | 4 | Query layer (§6.3 logic, no MCP yet) | Medium | Plain functions over SQLite, shared by the server and the export. |
 | 5 | MCP server + `verify:mcp` (§6) | Medium | The bridge. |
@@ -276,3 +299,4 @@ Extraction gets its own fixtures — a real multi-page PDF, a deck, a DOCX, and 
 - **`pdfjs-dist` under plain Node** — to be proven immediately, not assumed.
 - **DOCX/TXT have no true pages**, so their part boundaries are Atlas's invention. Acceptable, but labels must not imply a precision that isn't there.
 - **Extraction time on a large library** during backfill — needs visible progress.
+- **Should the agent be able to create deadlines?** Not currently in the tool set. If the user mentions "exam is on the 14th" and Atlas doesn't know about it, the agent can't record it. Arguably fine (the user stated it, so it isn't AI inference), but deadlines are academic data and writing them touches the Classroom conflict-handling rules from Phase 3. Left out of v1 deliberately; easy to add later if it proves annoying.
