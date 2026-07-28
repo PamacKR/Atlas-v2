@@ -2660,6 +2660,24 @@ li.deadline-item.classroom-removed {
   margin-left: 0.4rem;
 }
 
+/* Visible without opening the deadline (open-questions.md #3) — the user
+   explicitly asked for this after finding the "edited" state was only ever
+   shown inside the viewer. Shown everywhere a deadline is listed (course
+   detail list/icon views, Dashboard's Upcoming widget, Calendar's upcoming
+   sidebar — the month-grid chips use a compact "✎" prefix instead, since
+   they're too small for a full text badge). Accent-colored (not muted, like
+   the "removed" badge above) since this is informational/reversible, not a
+   de-emphasized state. */
+.deadline-edited-badge {
+  font-size: 0.7rem;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  margin-left: 0.4rem;
+  white-space: nowrap;
+}
+
 /* Conflict-handling notices in the deadline viewer (open-questions.md #3) —
    the "removed at source" notice and the "you've edited this" + reset
    action share the same box treatment, distinguished only by their text. */

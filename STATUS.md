@@ -2,7 +2,17 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-28 (Atlas-v2, configurable sync settings built — Phase 3 items 1 and 2 of 3 now done)
+**Last updated:** 2026-07-28 (Atlas-v2, "Reset to Classroom version" investigated and fixed; edited deadlines now visible without opening them)
+
+## Session 2026-07-28 (continued) — investigated a "Reset to Classroom version" bug report, fixed the real cause
+
+The user reported the reset button felt buggy after trying it. Rather than guessing from the description, built a scripted end-to-end reproduction (real Electron app via Playwright, a simulated Classroom-linked deadline via direct DB writes) to actually verify what happens.
+
+- **The reset mechanism was never broken** — confirmed the DB update, viewer refresh, and list refresh all worked correctly and immediately in the scripted test.
+- **Real cause found**: saving an edited deadline closed the entire window with zero visible confirmation (pre-existing behavior, not part of this feature) — so whatever the user was looking at right after editing was already stale or gone, making "I clicked reset and nothing happened" an easy, reasonable conclusion. **Fixed**: saving now reopens the viewer showing the result directly.
+- **User's follow-up ask**: make an edited deadline visible without having to open it. Added a `.deadline-edited-badge` shown in every deadline list (course-detail list/icon views, Dashboard's Upcoming widget, Calendar's upcoming sidebar), plus a compact "✎" prefix on Calendar month-grid chips (too small for the full badge).
+- Verified with a second scripted repro confirming the badge appears without clicking in and disappears immediately on reset. `scripts/verify-app.js` updated (saving no longer self-closes, so 6 sites needed an explicit close added) — full suite passes.
+- Docs: `open-questions.md` #3 updated with this follow-up.
 
 ## Session 2026-07-28 (continued) — configurable sync settings built (Phase 3 item 2 of 3)
 

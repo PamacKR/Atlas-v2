@@ -1083,23 +1083,34 @@ const fs = require('fs');
     if (description) await window.fill('#deadline-edit-description', description);
   }
 
+  // Saving now reopens the viewer showing the saved deadline (open-questions.md
+  // #3 — previously it just closed with no visible confirmation, which is
+  // what made a "your edit was silently protected/reset" state impossible to
+  // notice without reopening by hand), so each save needs an explicit close
+  // before the next action that would otherwise be blocked by the overlay.
   await window.click('#new-deadline-button');
   await window.waitForTimeout(300);
   await fillDeadlineForm({ title: 'Midterm exam', kind: 'exam', date: '15-08-2026' });
   await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
+  await window.click('#deadline-view-close');
+  await window.waitForTimeout(150);
 
   await window.click('#new-deadline-button');
   await window.waitForTimeout(300);
   await fillDeadlineForm({ title: 'Homework 1', kind: 'assignment', date: '01-08-2026', time: '23:59' });
   await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
+  await window.click('#deadline-view-close');
+  await window.waitForTimeout(150);
 
   await window.click('#new-deadline-button');
   await window.waitForTimeout(300);
   await fillDeadlineForm({ title: 'Read syllabus', kind: 'reading' }); // no due date
   await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
+  await window.click('#deadline-view-close');
+  await window.waitForTimeout(150);
 
   const deadlineTitlesInOrder = await window.$$eval('#deadline-list li.deadline-item .deadline-title', (els) =>
     els.map((e) => e.textContent)
@@ -1203,9 +1214,8 @@ const fs = require('fs');
   await window.keyboard.type('for the format.');
   await window.click('#deadline-save-button');
   await window.waitForTimeout(300);
-
-  await window.click(`li[data-deadline-id="${deadlineIds[0]}"] .deadline-title`);
-  await window.waitForTimeout(300);
+  // Save reopens the viewer showing this exact deadline already (no need to
+  // close + re-click it) — go straight to checking the rendered description.
   const mentionLinkText = await window.textContent('#deadline-view-description .deadline-mention');
   console.log('rendered mention link text:', mentionLinkText);
   if (!mentionLinkText || !mentionLinkText.includes('sample-lecture-notes.md')) {
@@ -1220,6 +1230,9 @@ const fs = require('fs');
   }
   await window.click('#preview-close');
   await window.waitForTimeout(200);
+  // Clicking the mention above already closed the deadline viewer itself
+  // (wireMentionClicks in renderer.ts calls closeDeadlineEditor() before
+  // opening the referenced resource) — nothing left to close here.
   await goToPage('courses');
   // Navigating to Courses fresh lands on the grid — reselect the course to
   // reach its detail view (Deadlines) again.
@@ -1288,6 +1301,8 @@ const fs = require('fs');
   if ((await window.$$('#deadline-list li.deadline-item')).length !== 3) {
     throw new Error('FAIL: editing a deadline created a duplicate instead of updating it');
   }
+  await window.click('#deadline-view-close');
+  await window.waitForTimeout(150);
 
   // Today/Tomorrow relative labels — a deadline due today or tomorrow should
   // show that word instead of the date; a deadline further out should not.
@@ -1316,6 +1331,8 @@ const fs = require('fs');
     Number(el.dataset.deadlineId)
   );
   await window.evaluate((id) => window.atlas.deleteDeadline(id), dueTodayId);
+  await window.click('#deadline-view-close');
+  await window.waitForTimeout(150);
   // Reselect to force a deadlines refresh — the grid itself is hidden while
   // the course detail view is showing, so go back to it first (Playwright's
   // click() requires the target to be visible).

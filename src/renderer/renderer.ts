@@ -1142,6 +1142,22 @@ function formatDueDate(dueAt: string | null): string {
   return `${label} at ${timeLabel}`;
 }
 
+// Shared across every place a deadline is listed (course-detail list/icon
+// views, Calendar chips/upcoming rows, Dashboard's Upcoming widget) — a
+// visible marker for a locally-edited Classroom deadline, so the user
+// doesn't have to open one just to find out it's edited (previously only
+// visible inside the viewer, per the user's explicit ask). Returns null
+// when there's nothing to show, so every call site can just check truthiness
+// rather than repeating the local_overrides check itself.
+function makeDeadlineEditedBadge(deadline: Deadline): HTMLSpanElement | null {
+  if (!deadline.local_overrides) return null;
+  const badge = document.createElement('span');
+  badge.className = 'deadline-edited-badge';
+  badge.textContent = '✎ Edited';
+  badge.title = "You've edited this — Classroom's own updates to the edited field(s) won't overwrite your changes.";
+  return badge;
+}
+
 function renderDeadlineListView(deadlines: Deadline[]): void {
   const list = document.getElementById('deadline-list')!;
   list.className = 'view-list';
@@ -1171,6 +1187,8 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
       removedBadge.textContent = 'Removed from Classroom';
       li.appendChild(removedBadge);
     }
+    const editedBadge = makeDeadlineEditedBadge(deadline);
+    if (editedBadge) li.appendChild(editedBadge);
 
     const kind = document.createElement('span');
     kind.className = 'code';
@@ -1215,6 +1233,9 @@ function renderDeadlineIconView(deadlines: Deadline[]): void {
     name.className = 'icon-name';
     name.textContent = deadline.title;
     li.appendChild(name);
+
+    const editedBadge = makeDeadlineEditedBadge(deadline);
+    if (editedBadge) li.appendChild(editedBadge);
 
     const due = document.createElement('div');
     due.className = 'icon-due';
@@ -2029,9 +2050,15 @@ function renderCalendarGrid(deadlines: DashboardDeadline[]): void {
       chip.className = 'calendar-deadline-chip';
       chip.style.borderLeftColor = color;
       chip.style.backgroundColor = `${color}26`; // ~15% opacity tint, so the block itself reads as "this course's color", not just a thin accent line
-      chip.title = `${deadline.course_name}: ${deadline.title}`;
+      // Compact "✎" prefix rather than a full text badge — a month-grid chip
+      // is small and already two lines; a full "Edited" badge (used in the
+      // roomier list/icon/dashboard views) would overflow it.
+      const editedPrefix = deadline.local_overrides ? '✎ ' : '';
+      chip.title = `${editedPrefix}${deadline.course_name}: ${deadline.title}${
+        deadline.local_overrides ? " (you've edited this)" : ''
+      }`;
       chip.innerHTML = `
-        <span class="calendar-deadline-chip-title">${escapeHtml(deadline.title)}</span>
+        <span class="calendar-deadline-chip-title">${editedPrefix}${escapeHtml(deadline.title)}</span>
         <span class="calendar-deadline-chip-course">${escapeHtml(deadline.course_name)}</span>
       `;
       chip.addEventListener('click', () => void openDashboardDeadline(deadline));
@@ -2090,6 +2117,8 @@ function renderCalendarUpcomingList(deadlines: DashboardDeadline[]): void {
         <span class="calendar-upcoming-title">${escapeHtml(deadline.title)}</span>
         <span class="calendar-upcoming-course">${escapeHtml(deadline.course_name)}</span>
       `;
+      const editedBadge = makeDeadlineEditedBadge(deadline);
+      if (editedBadge) row.appendChild(editedBadge);
       row.addEventListener('click', () => void openDashboardDeadline(deadline));
       container.appendChild(row);
     }
@@ -2177,6 +2206,8 @@ function renderDashboardDeadlineRows(): void {
     badge.className = 'upcoming-kind-badge';
     badge.textContent = DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
     metaRow.append(courseEl, badge);
+    const editedBadge = makeDeadlineEditedBadge(deadline);
+    if (editedBadge) metaRow.appendChild(editedBadge);
     content.append(titleEl, metaRow);
     li.appendChild(content);
 
@@ -4281,12 +4312,18 @@ async function init(): Promise<void> {
     const dueAt = isoDate ? (time ? `${isoDate}T${time}` : isoDate) : null;
     const description = descriptionTextarea.value.trim() || null;
 
-    if (currentEditingDeadlineId === null) {
-      await atlasApi.createDeadline(selectedCourse.id, title, kind, dueAt, description);
-    } else {
-      await atlasApi.updateDeadline(currentEditingDeadlineId, title, kind, dueAt, description);
-    }
-    closeDeadlineEditor();
+    const saved =
+      currentEditingDeadlineId === null
+        ? await atlasApi.createDeadline(selectedCourse.id, title, kind, dueAt, description)
+        : await atlasApi.updateDeadline(currentEditingDeadlineId, title, kind, dueAt, description);
+
+    // Reopen showing the saved result instead of just closing (which used
+    // to leave the user with no visible confirmation at all — no new date,
+    // no "you've edited this" marker, nothing — until they reopened the
+    // deadline by hand). This is what actually caused "I clicked reset and
+    // nothing happened": the view they were looking at right after saving
+    // was already stale/closed, not the reset itself failing.
+    await openDeadlineViewer(saved);
     await renderDeadlines();
   });
 
