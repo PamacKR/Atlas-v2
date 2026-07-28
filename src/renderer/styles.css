@@ -84,9 +84,18 @@ body {
   background: transparent;
 }
 
+/* Fixed to exactly the viewport height (not min-height) with overflow
+   hidden, so #sidebar's own height is always exactly the viewport — a page
+   with content taller than the viewport (Resources, Calendar) must scroll
+   *inside* #main-area instead of stretching the whole flex row taller than
+   the screen. Without this, #sidebar (a flex sibling with align-items:
+   stretch by default) grew to match whichever page's content was tallest,
+   pushing the bottom-pinned "Collapse" button below the visible viewport on
+   exactly those two pages — it wasn't missing, just scrolled out of view. */
 #app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 #sidebar {
@@ -177,6 +186,7 @@ body {
   flex: 1;
   min-width: 0;
   padding: 1.5rem 2rem 2rem 2rem;
+  overflow-y: auto;
 }
 
 #topbar {

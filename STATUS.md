@@ -2,7 +2,23 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-27 (Atlas-v2 fork)
+**Last updated:** 2026-07-27 (Atlas-v2, sidebar layout fix + handoff to a fresh session)
+
+## Handoff note — this is now the active working directory
+
+The user is moving to a brand-new chat session with **`Atlas-v2` (this directory) as the working directory** going forward, likely (but not necessarily) via Pi coding agent rather than Claude Code — the tool isn't confirmed, which is exactly why the project was generalized to `AGENTS.md` in the first place (see the fork entry directly below). A fresh session should:
+
+- Read `AGENTS.md` → this file → `open-questions.md`, in that order, before doing anything (per `AGENTS.md`'s own onboarding instruction).
+- Not assume anything about `C:\Users\Pamac\Downloads\Atlas` (the original repo) — that directory is explicitly Claude-Code-only territory and out of scope here; this fork is now the one being actively developed.
+- Know the repo-local git identity here is currently still `Claude <noreply@anthropic.com>` (set when this fork was created and pushed) — if a different tool is doing the committing now, update it per `AGENTS.md`'s "Identity in this repo" section rather than leaving a misleading author on new commits.
+- The GitHub remote for this fork is `PamacKR/Atlas-v2` (private), separate from `PamacKR/Atlas`.
+
+## Session — sidebar collapse button missing on Resources/Calendar (real bug, not missing UI)
+
+There's only one "Collapse" control in the whole app — the sidebar's own collapse toggle (`#sidebar-collapse-toggle`), pinned to the bottom of the sidebar nav via `margin-top: auto`. It isn't a per-page element, so "missing on Resources/Calendar" couldn't be a missing-markup issue — it turned out to be a layout bug that happened to only manifest on those two pages:
+
+- `#app-shell` was `min-height: 100vh` with no `overflow` set, so the whole document scrolled as one unit. Since `#sidebar` is a flex sibling of `#main-area` with the default `align-items: stretch`, its height matched whatever `#main-area`'s content needed — on a page taller than the viewport (Resources with many items, or the Calendar month grid), `#sidebar` itself grew taller than the screen too, pushing its bottom-pinned Collapse button below the visible viewport. It wasn't missing, just scrolled out of view on exactly the two pages whose content is tallest.
+- Fixed by making `#app-shell` a fixed `height: 100vh` with `overflow: hidden`, and giving `#main-area` its own `overflow-y: auto` — so tall page content scrolls *inside* the content area, `#sidebar` stays pinned at exactly the viewport height on every page, and the Collapse button is always visible regardless of how tall the current page's content is.
 
 ## Atlas-v2 fork — project generalized away from being Claude-Code-specific
 
