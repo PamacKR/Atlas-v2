@@ -1270,6 +1270,10 @@ function makeDeadlineCheckbox(deadline: Deadline): HTMLInputElement {
 
 async function renderDeadlines(): Promise<void> {
   void renderDashboard();
+  // Deadline edits/resets/deletes never navigate away from whatever page is
+  // currently showing (modals layer on top), so Calendar needs an explicit
+  // nudge here or it keeps showing stale data until the user flips months.
+  if (currentPage === 'calendar') void renderCalendarPage();
   const section = document.getElementById('deadlines-section')!;
   const heading = document.getElementById('deadlines-heading')!;
   const list = document.getElementById('deadline-list')!;
