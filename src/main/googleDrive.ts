@@ -1,9 +1,23 @@
+import * as fs from 'fs';
 import { google } from 'googleapis';
 import { getDb } from './db/database';
 import { getDriveClient } from './googleAuth';
 
 const FOLDER_ID_SETTING_KEY = 'google_drive_folder_id';
 const FOLDER_NAME_SETTING_KEY = 'google_drive_folder_name';
+
+// Separate from the inbox folder above — this one holds resources Atlas has
+// uploaded *to* Drive so they can be viewed there with real layout fidelity
+// (open-questions.md #12, ARCHITECTURE.md §7), created and named by Atlas
+// itself rather than pointed at by the user.
+const PREVIEW_FOLDER_ID_SETTING_KEY = 'google_drive_preview_folder_id';
+const PREVIEW_FOLDER_NAME = 'Atlas Previews';
+
+const OFFICE_MIME_TYPES: Record<string, string> = {
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
 
 // Google's own native file types (Docs/Sheets/Slides/...) can't be fetched
 // via `alt: 'media'` — that only works for regular binary/text files, which
@@ -210,4 +224,161 @@ export async function downloadDriveFileContent(driveFileId: string): Promise<Buf
 export function removePendingDriveFile(driveFileId: string): void {
   const db = getDb();
   db.prepare('DELETE FROM drive_pending_files WHERE drive_file_id = ?').run(driveFileId);
+}
+
+// --- Office file preview via Google Drive (open-questions.md #12) ---
+//
+// Uploads a local .pptx/.docx/.xlsx to a dedicated Drive folder so it can be
+// opened in Drive's own viewer — real slide layout/images/formatting, which
+// Atlas's local preview (preview.ts) deliberately doesn't attempt. This is
+// the reverse direction of the inbox-folder scan above: a file the user
+// already has locally, copied *up* to Drive purely so Drive's viewer can
+// show it, not something being imported into Atlas.
+
+function driveViewUrl(fileId: string): string {
+  return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
+// Created once, on first use — named and owned entirely by Atlas, unlike
+// the inbox folder (which the user points at by pasting a link). Verifies
+// the remembered folder still exists (the user could delete it by hand in
+// Drive) rather than trusting a stale ID forever, since a stale parent ID
+// would make every upload fail with a confusing "not found" error instead
+// of just quietly recreating the folder.
+async function ensurePreviewFolder(drive: ReturnType<typeof google.drive>): Promise<string> {
+  const existingId = getSetting(PREVIEW_FOLDER_ID_SETTING_KEY);
+  if (existingId) {
+    try {
+      const res = await drive.files.get({ fileId: existingId, fields: 'id, trashed' });
+      if (!res.data.trashed) return existingId;
+    } catch {
+      // Folder no longer exists or isn't accessible — fall through and
+      // create a fresh one rather than surfacing this as an error.
+    }
+  }
+
+  const created = await drive.files.create({
+    requestBody: { name: PREVIEW_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' },
+    fields: 'id',
+  });
+  const folderId = created.data.id!;
+  setSetting(PREVIEW_FOLDER_ID_SETTING_KEY, folderId);
+  return folderId;
+}
+
+export interface DrivePreviewResult {
+  viewUrl: string;
+  uploaded: boolean; // false when an already-current cached copy was reused
+}
+
+// Uploads (or re-uploads, if the local file changed since last time) a
+// resource's file to the preview folder, and returns the URL to open it at.
+// A resource whose drive_preview_file_id already points at a copy matching
+// the file's current size/mtime is reused as-is — no network call at all —
+// which is what makes every open after the first one instant rather than
+// re-uploading a multi-megabyte deck every time. There's no byte-level
+// upload progress reported (main.ts just tells the renderer "uploading" vs.
+// "done") — the googleapis client library's own onUploadProgress hook is
+// marked deprecated/ignored in the version this project pins, so it
+// wouldn't actually fire; showing a fake percentage from a hook that never
+// calls back would be worse than an honest indeterminate spinner.
+export async function uploadResourceForPreview(resourceId: number): Promise<DrivePreviewResult> {
+  const client = getDriveClient();
+  if (!client) throw new Error('Google Drive is not connected.');
+
+  const db = getDb();
+  const resource = db
+    .prepare(
+      'SELECT file_path, kind, drive_preview_file_id, drive_preview_synced_size, drive_preview_synced_mtime_ms FROM resources WHERE id = ?'
+    )
+    .get(resourceId) as
+    | {
+        file_path: string;
+        kind: string;
+        drive_preview_file_id: string | null;
+        drive_preview_synced_size: number | null;
+        drive_preview_synced_mtime_ms: number | null;
+      }
+    | undefined;
+  if (!resource) throw new Error('Resource not found.');
+
+  const mimeType = OFFICE_MIME_TYPES[resource.kind];
+  if (!mimeType) throw new Error(`Unsupported file type for Google Drive preview: ${resource.kind}`);
+
+  const stat = fs.statSync(resource.file_path);
+  const mtimeMs = Math.round(stat.mtimeMs);
+
+  if (
+    resource.drive_preview_file_id &&
+    resource.drive_preview_synced_size === stat.size &&
+    resource.drive_preview_synced_mtime_ms === mtimeMs
+  ) {
+    return { viewUrl: driveViewUrl(resource.drive_preview_file_id), uploaded: false };
+  }
+
+  const drive = google.drive({ version: 'v3', auth: client });
+  const folderId = await ensurePreviewFolder(drive);
+
+  // A stream, not a Buffer — googleapis/gaxios switches to a resumable
+  // upload automatically once the body is large enough to need it, so a
+  // multi-hundred-MB lecture deck doesn't need special-casing here.
+  const media = { mimeType, body: fs.createReadStream(resource.file_path) };
+
+  let fileId: string;
+  if (resource.drive_preview_file_id) {
+    // Re-upload in place (files.update keeps the same file ID) rather than
+    // creating a second copy and orphaning the old one in the preview
+    // folder — the point of caching by ID is exactly one Drive file per
+    // resource, ever.
+    const updated = await drive.files.update({ fileId: resource.drive_preview_file_id, media, fields: 'id' });
+    fileId = updated.data.id!;
+  } else {
+    const created = await drive.files.create({
+      requestBody: { name: resource.file_path.split(/[/\\]/).pop(), parents: [folderId] },
+      media,
+      fields: 'id',
+    });
+    fileId = created.data.id!;
+  }
+
+  db.prepare(
+    'UPDATE resources SET drive_preview_file_id = ?, drive_preview_synced_size = ?, drive_preview_synced_mtime_ms = ? WHERE id = ?'
+  ).run(fileId, stat.size, mtimeMs, resourceId);
+
+  return { viewUrl: driveViewUrl(fileId), uploaded: true };
+}
+
+// Best-effort — called when a resource (or its whole course) is deleted, so
+// the preview folder doesn't accumulate copies for resources that no longer
+// exist in Atlas. Never allowed to block or fail the actual local delete:
+// the caller fires this without awaiting/catching, since losing a stray
+// Drive file is a cosmetic issue, not a data-loss one.
+export async function deletePreviewCopy(driveFileId: string): Promise<void> {
+  const client = getDriveClient();
+  if (!client) return;
+  const drive = google.drive({ version: 'v3', auth: client });
+  try {
+    await drive.files.delete({ fileId: driveFileId });
+  } catch {
+    // Already gone, or Drive unreachable — nothing more to do.
+  }
+}
+
+// Powers the Settings "Clear Drive preview cache" action — deletes every
+// uploaded preview copy from Drive and forgets them locally, so a stale or
+// unwanted set of uploads can be wiped in one action rather than needing the
+// user to hunt down and delete them by hand in Drive.
+export async function clearAllPreviewCopies(): Promise<void> {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT id, drive_preview_file_id FROM resources WHERE drive_preview_file_id IS NOT NULL")
+    .all() as { id: number; drive_preview_file_id: string }[];
+
+  for (const row of rows) {
+    await deletePreviewCopy(row.drive_preview_file_id);
+  }
+
+  db.prepare(
+    'UPDATE resources SET drive_preview_file_id = NULL, drive_preview_synced_size = NULL, drive_preview_synced_mtime_ms = NULL WHERE drive_preview_file_id IS NOT NULL'
+  ).run();
 }

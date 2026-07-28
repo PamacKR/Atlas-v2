@@ -23,6 +23,9 @@ import {
   downloadDriveFileContent,
   removePendingDriveFile,
   ignoreDrivePendingFile,
+  uploadResourceForPreview,
+  deletePreviewCopy,
+  clearAllPreviewCopies,
 } from './googleDrive';
 import {
   scanClassroom,
@@ -889,6 +892,19 @@ ipcMain.handle('google:disconnectDrive', () => {
   disconnectGoogleDrive();
 });
 
+// Deletes every resource's uploaded Drive preview copy (see
+// uploadResourceForPreview in googleDrive.ts) and forgets them locally —
+// the user's manual escape hatch for reclaiming Drive space or clearing out
+// stale uploads, rather than needing to hunt them down by hand in Drive.
+ipcMain.handle('google:clearDrivePreviewCache', async () => {
+  try {
+    await clearAllPreviewCopies();
+    return { ok: true as const };
+  } catch (err) {
+    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
 // Scans the configured Drive folder and, if anything new turned up, tells
 // the renderer to refresh its pending-files count/badge — same push-event
 // pattern as resources:changed/notes:changed. Called once at launch, then on
@@ -1265,6 +1281,41 @@ ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) =
   db.prepare('UPDATE resources SET zoom_level = ? WHERE id = ?').run(zoom, resourceId);
 });
 
+// --- Google Drive preview (open-questions.md #12, ARCHITECTURE.md §7) ---
+// Uploads a .pptx/.docx/.xlsx to Atlas's dedicated Drive preview folder (or
+// reuses the existing upload if the file hasn't changed) and opens Drive's
+// own viewer for it in the user's browser — real slide/document layout,
+// which the in-app preview deliberately can't render. Shared by both the
+// resource context menu (click handler runs directly in the main process,
+// no IPC round-trip needed) and the in-app preview modal's button (which
+// does go through resources:openInGoogleDrive below, since that's
+// renderer-invoked). Events keep both callers' UI in sync: 'driveOpenStart'
+// so the renderer can show "Uploading…" immediately (there's no byte-level
+// progress to report — see the comment on uploadResourceForPreview), then
+// exactly one of 'driveOpenSuccess'/'driveOpenError'.
+const OFFICE_PREVIEW_KINDS = new Set(['pptx', 'docx', 'xlsx']);
+
+async function openResourceInGoogleDrive(resourceId: number, sender: Electron.WebContents): Promise<void> {
+  sender.send('resources:driveOpenStart', resourceId);
+  try {
+    if (!isGoogleDriveConnected()) {
+      throw new Error('Google Drive is not connected. Connect it in Settings first.');
+    }
+    const { viewUrl } = await uploadResourceForPreview(resourceId);
+    void shell.openExternal(viewUrl);
+    sender.send('resources:driveOpenSuccess', resourceId);
+  } catch (err) {
+    sender.send('resources:driveOpenError', resourceId, err instanceof Error ? err.message : String(err));
+  }
+}
+
+// Renderer-invoked entry point (the preview modal's "Open in Google Drive"
+// button) — the context menu below calls openResourceInGoogleDrive directly
+// instead, since its click handler already runs in the main process.
+ipcMain.handle('resources:openInGoogleDrive', (event, resourceId: number) =>
+  openResourceInGoogleDrive(resourceId, event.sender)
+);
+
 // Native right-click menu. "Open in browser" opens the local-server URL
 // (see localServer.ts) in the OS's real default browser — not Electron's own
 // preview panel — so files can live in real, switchable browser tabs.
@@ -1285,6 +1336,17 @@ ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
       label: isLink ? 'Open link' : 'Open in browser',
       click: () => shell.openExternal(isLink ? resource.file_path : getResourceBrowserUrl(resourceId)),
     },
+    // Only for the file kinds where Drive's viewer actually offers something
+    // the in-app preview can't (real slide/document layout) — PDFs/images
+    // already render natively, and this would just be clutter there.
+    ...(OFFICE_PREVIEW_KINDS.has(resource.kind)
+      ? [
+          {
+            label: 'Open in Google Drive',
+            click: () => void openResourceInGoogleDrive(resourceId, event.sender),
+          },
+        ]
+      : []),
     { type: 'separator' },
     {
       label: 'Delete',
@@ -1302,6 +1364,14 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
     | { folder_name: string }
     | undefined;
+  // The resources themselves cascade-delete below via the FK, which would
+  // otherwise leave their Drive preview copies (if any) orphaned in Atlas's
+  // preview folder forever — collect them first while the rows still exist.
+  // Best-effort/not awaited, same reasoning as resources:delete above.
+  const previewFileIds = db
+    .prepare("SELECT drive_preview_file_id FROM resources WHERE course_id = ? AND drive_preview_file_id IS NOT NULL")
+    .all(courseId) as { drive_preview_file_id: string }[];
+  for (const row of previewFileIds) void deletePreviewCopy(row.drive_preview_file_id);
   // Stop watching any folders mapped to this course before the watched_folders
   // rows cascade-delete — an orphaned live watcher would keep importing files
   // into a course that no longer exists.
@@ -1388,9 +1458,13 @@ ipcMain.on('folders:contextMenu', (event, folderId: number) => {
 ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   const db = getDb();
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
-    | { file_path: string }
+    | { file_path: string; drive_preview_file_id: string | null }
     | undefined;
   if (resource) fs.rmSync(resource.file_path, { force: true });
+  // Best-effort, not awaited — deleting the resource locally must succeed
+  // regardless of whether Drive is reachable right now; a stray leftover
+  // file in the preview folder is a cosmetic issue, not a data-loss one.
+  if (resource?.drive_preview_file_id) void deletePreviewCopy(resource.drive_preview_file_id);
   db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
   rebuildSearchIndex();
 });

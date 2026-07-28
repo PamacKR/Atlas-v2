@@ -209,6 +209,7 @@ interface AtlasApi {
   isDriveConnected: () => Promise<boolean>;
   connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectDrive: () => Promise<void>;
+  clearDrivePreviewCache: () => Promise<{ ok: true } | { ok: false; error: string }>;
   getDriveFolder: () => Promise<DriveFolder | null>;
   setDriveFolder: (link: string) => Promise<{ ok: true; name: string } | { ok: false; error: string }>;
   listPendingDriveFiles: () => Promise<DrivePendingFile[]>;
@@ -264,6 +265,10 @@ interface AtlasApi {
   runResourceOcr: (resourceId: number) => Promise<string | null>;
   saveResourceOcrText: (resourceId: number, text: string) => Promise<void>;
   onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void) => void;
+  openResourceInGoogleDrive: (resourceId: number) => Promise<void>;
+  onResourceDriveOpenStart: (handler: (resourceId: number) => void) => void;
+  onResourceDriveOpenSuccess: (handler: (resourceId: number) => void) => void;
+  onResourceDriveOpenError: (handler: (resourceId: number, error: string) => void) => void;
   showResourceContextMenu: (resourceId: number) => void;
   showCourseContextMenu: (courseId: number) => void;
   onContextMenuDelete: (handler: (resourceId: number) => void) => void;
@@ -1275,6 +1280,17 @@ async function connectDrive(): Promise<void> {
 async function disconnectDrive(): Promise<void> {
   await atlasApi.disconnectDrive();
   await renderDriveStatus();
+}
+
+async function clearDrivePreviewCache(): Promise<void> {
+  const button = document.getElementById('drive-clear-preview-cache-button') as HTMLButtonElement;
+  const status = document.getElementById('drive-clear-preview-cache-status')!;
+  button.disabled = true;
+  status.hidden = false;
+  status.textContent = 'Clearing…';
+  const result = await atlasApi.clearDrivePreviewCache();
+  button.disabled = false;
+  status.textContent = result.ok ? 'Cleared.' : `Failed: ${result.error}`;
 }
 
 async function saveDriveFolder(): Promise<void> {
@@ -3096,6 +3112,11 @@ function setImageZoom(zoom: number): void {
 // A global overlay (near the end of <body>), not scoped to the Resources
 // page — opening one never navigates away from whatever page is currently
 // showing (Dashboard, a course detail view, etc.), it just layers on top.
+// Only these kinds have anything Google Drive's viewer offers that the
+// in-app preview can't (real slide/document layout) — PDFs/images already
+// render natively, so the button would just be clutter there.
+const OFFICE_PREVIEW_KINDS = new Set(['pptx', 'docx', 'xlsx']);
+
 async function openPreview(resource: Resource): Promise<void> {
   const overlay = document.getElementById('preview-overlay')!;
   const title = document.getElementById('preview-title')!;
@@ -3103,6 +3124,7 @@ async function openPreview(resource: Resource): Promise<void> {
   const body = document.getElementById('preview-body')!;
   const zoomControls = document.getElementById('zoom-controls')!;
   const ocrButton = document.getElementById('preview-run-ocr') as HTMLButtonElement;
+  const driveButton = document.getElementById('preview-open-in-drive') as HTMLButtonElement;
 
   title.textContent = resource.title;
   note.hidden = true;
@@ -3120,6 +3142,10 @@ async function openPreview(resource: Resource): Promise<void> {
   ocrButton.disabled = false;
   document.getElementById('preview-ocr-status')!.textContent = '';
   discardResourceOcr();
+
+  driveButton.hidden = !OFFICE_PREVIEW_KINDS.has(resource.kind);
+  driveButton.disabled = false;
+  document.getElementById('preview-drive-status')!.textContent = '';
 
   const preview = await atlasApi.getPreview(resource.id);
   body.innerHTML = '';
@@ -3227,6 +3253,19 @@ async function saveResourceOcr(): Promise<void> {
   discardResourceOcr();
   await atlasApi.saveResourceOcrText(resourceId, text);
   document.getElementById('preview-ocr-status')!.textContent = 'Saved — now searchable.';
+}
+
+// Uploads (or reuses an already-current upload of) this resource to Atlas's
+// Drive preview folder and opens Google Drive's own viewer for it in the
+// browser (open-questions.md #12) — real slide/document layout the in-app
+// preview can't render. There's no byte-level progress to show (see the
+// comment on uploadResourceForPreview in googleDrive.ts), just an
+// indeterminate "Uploading…" between the driveOpenStart/driveOpenSuccess-or-
+// Error events fired from main.ts — the same events also fire for the
+// context-menu entry point, so both stay in sync automatically.
+function openCurrentPreviewInGoogleDrive(): void {
+  if (currentPreviewResourceId === null) return;
+  void atlasApi.openResourceInGoogleDrive(currentPreviewResourceId);
 }
 
 const MAXIMIZE_ICON =
@@ -3778,6 +3817,9 @@ async function init(): Promise<void> {
   document.getElementById('manage-courses-button')!.addEventListener('click', () => showPage('courses'));
   document.getElementById('drive-connect-button')!.addEventListener('click', connectDrive);
   document.getElementById('drive-disconnect-button')!.addEventListener('click', disconnectDrive);
+  document
+    .getElementById('drive-clear-preview-cache-button')!
+    .addEventListener('click', () => void clearDrivePreviewCache());
   document.getElementById('drive-folder-save')!.addEventListener('click', saveDriveFolder);
   document.getElementById('drive-review-button')!.addEventListener('click', openDriveReviewPanel);
   document.getElementById('drive-review-close')!.addEventListener('click', closeDriveReviewPanel);
@@ -3887,6 +3929,23 @@ async function init(): Promise<void> {
     if (progress.resourceId !== currentPreviewResourceId) return;
     document.getElementById('preview-ocr-status')!.textContent =
       progress.totalPages > 1 ? `Running OCR… page ${progress.page} of ${progress.totalPages}` : 'Running OCR…';
+  });
+
+  document.getElementById('preview-open-in-drive')!.addEventListener('click', openCurrentPreviewInGoogleDrive);
+  atlasApi.onResourceDriveOpenStart((resourceId) => {
+    if (resourceId !== currentPreviewResourceId) return;
+    (document.getElementById('preview-open-in-drive') as HTMLButtonElement).disabled = true;
+    document.getElementById('preview-drive-status')!.textContent = 'Uploading…';
+  });
+  atlasApi.onResourceDriveOpenSuccess((resourceId) => {
+    if (resourceId !== currentPreviewResourceId) return;
+    (document.getElementById('preview-open-in-drive') as HTMLButtonElement).disabled = false;
+    document.getElementById('preview-drive-status')!.textContent = 'Opened in Google Drive.';
+  });
+  atlasApi.onResourceDriveOpenError((resourceId, error) => {
+    if (resourceId !== currentPreviewResourceId) return;
+    (document.getElementById('preview-open-in-drive') as HTMLButtonElement).disabled = false;
+    document.getElementById('preview-drive-status')!.textContent = error;
   });
   document.addEventListener('keydown', (e) => {
     // Ctrl+L jumps to search from anywhere, same convention as a browser's

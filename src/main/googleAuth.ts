@@ -15,9 +15,21 @@ import { getDb } from './db/database';
 
 const REFRESH_TOKEN_SETTING_KEY = 'google_drive_refresh_token';
 
-// Read-only is enough — Atlas only ever downloads a copy into local managed
-// storage (open-questions.md #19), it never writes back to Drive.
-const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
+// drive.readonly covers the inbox-folder scan/download (open-questions.md
+// #19) — Atlas never writes back to anything already in the user's Drive.
+// drive.file was added 2026-07-28 (open-questions.md #12) for the Office
+// preview feature: it only grants access to files Atlas itself creates via
+// this API (the uploaded preview copies in a dedicated folder — see
+// googleDrive.ts's ensurePreviewFolder/uploadResourceForPreview) — Google
+// classifies it as non-sensitive, a *narrower* grant than drive.readonly,
+// since it can't see or touch anything else in the user's Drive. Adding a
+// scope to an already-connected account doesn't retroactively apply to an
+// existing refresh token (see the standing gotcha in ARCHITECTURE.md §4b) —
+// the user needs to disconnect and reconnect Drive once after this ships.
+const DRIVE_SCOPES = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
+];
 
 // Separate refresh token from Drive's — Classroom is expected to be
 // connected against the user's college Workspace account, not the personal

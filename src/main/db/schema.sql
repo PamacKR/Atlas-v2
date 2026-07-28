@@ -61,7 +61,17 @@ CREATE TABLE IF NOT EXISTS resources (
   -- classwork_materials below) rather than a courseWork/announcement one —
   -- lets the Classwork course-detail section group "post + its links"
   -- the way Classroom's own Classwork tab does. NULL otherwise.
-  classwork_material_id INTEGER REFERENCES classwork_materials(id) ON DELETE CASCADE
+  classwork_material_id INTEGER REFERENCES classwork_materials(id) ON DELETE CASCADE,
+  -- Tracks this resource's uploaded copy in Atlas's dedicated Drive preview
+  -- folder (open-questions.md #12, ARCHITECTURE.md §7) — the opposite
+  -- direction from drive_file_id above (a local file uploaded *to* Drive so
+  -- it can be viewed there with real layout fidelity, not a Drive file
+  -- imported in). drive_preview_synced_size/mtime_ms are the local file's
+  -- stat() values as of the last successful upload; a mismatch means the
+  -- file changed since and the cached copy needs re-uploading.
+  drive_preview_file_id TEXT,
+  drive_preview_synced_size INTEGER,
+  drive_preview_synced_mtime_ms INTEGER
 );
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to

@@ -2,7 +2,19 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-28 (Atlas-v2, Classroom "changed today" bug fix, note false-change fix, dashboard button fix, course archiving built)
+**Last updated:** 2026-07-28 (Atlas-v2, Office file preview via Google Drive built)
+
+## Session 2026-07-28 (continued) — Office file preview via Google Drive, reversing an earlier recommendation
+
+Follow-up to `open-questions.md` #12, which had been sitting deferred since session 20 with a recommendation to hold off. The user pushed back directly on four points behind that recommendation, and three turned out to be wrong for their actual situation (not opposed to files leaving the machine for a better viewing experience; no Word/PowerPoint installed, so "use the desktop app" wasn't a real alternative; a text-only outline is such a low bar that almost any improvement clears it) — the fourth (Slides conversion fidelity) turned out to be moot once the plan changed from *converting* to Slides/Docs to just letting Drive preview the original Office file directly, which doesn't lose fidelity the way conversion does. Planned in detail before building, confirmed with the user, then built in one pass:
+
+- **"Open in Google Drive"** — a new action (resource right-click menu, and a button in the in-app preview modal), for `.pptx`/`.docx`/`.xlsx` resources only. Uploads to a dedicated "Atlas Previews" folder Atlas creates and manages in the user's Drive, then opens Drive's real viewer in the browser. The existing local preview (text outline / mammoth HTML / SheetJS tables) is untouched and stays the default — this is additional, not a replacement, so offline viewing keeps working.
+- **Upload is cached** (`resources.drive_preview_file_id` + the local file's size/mtime at last upload) — only the first open of an unchanged file re-uploads; a changed file re-uploads in place (same Drive file ID) rather than creating a duplicate.
+- **OAuth scope added**: `drive.file` alongside Drive's existing `drive.readonly` — narrower than the existing grant (only touches files Atlas itself created), but per the standing scope-change gotcha, **the user needs to disconnect and reconnect Google Drive once** for it to take effect.
+- Cleanup: deleting a resource or course also deletes its Drive preview copy (best-effort, non-blocking); a new "Clear Drive preview cache" Settings action wipes all of them at once.
+- **Known, unfixed caveat**: the user has two Google accounts signed in (personal for Drive, college for Classroom) — opening a Drive link may land on the wrong account's "no access" page depending on which account the browser treats as active. Documented in `ARCHITECTURE.md` §7 as a real limitation, not silently ignored; not fixed in this pass.
+- Verified via `npm run build`; the Drive round-trip itself isn't covered by `scripts/verify-app.js` (same live-account limitation as the rest of Drive/Classroom) — worth a manual check against real lecture decks once the user reconnects Drive.
+- Docs updated in the same pass: `open-questions.md` #12 resolved, new `ARCHITECTURE.md` §7 subsection, `ROADMAP.md` Phase 3 item ticked.
 
 ## Session 2026-07-28 — real Dashboard/notes bugs found via an audit, plus course archiving built
 

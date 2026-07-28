@@ -422,6 +422,13 @@
             </section>
 
             <section class="settings-section">
+              <h3>Office file previews</h3>
+              <p class="muted">PowerPoint/Word/Excel files opened via "Open in Google Drive" are uploaded to a dedicated "Atlas Previews" folder in your Drive, so later opens are instant instead of re-uploading every time.</p>
+              <button id="drive-clear-preview-cache-button" type="button">Clear Drive preview cache</button>
+              <p id="drive-clear-preview-cache-status" class="muted" hidden></p>
+            </section>
+
+            <section class="settings-section">
               <h3>Google Classroom</h3>
               <p id="classroom-status" class="muted">Not connected.</p>
               <button id="classroom-connect-button" type="button">Connect Google Classroom</button>
@@ -501,8 +508,12 @@
         <span id="preview-title"></span>
         <div class="split-preview-actions">
           <span id="preview-ocr-status" class="muted"></span>
+          <span id="preview-drive-status" class="muted"></span>
           <button id="preview-run-ocr" type="button" title="Run OCR on this PDF" aria-label="Run OCR on this PDF" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h3M17 4h3v3M20 17v3h-3M7 20H4v-3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          </button>
+          <button id="preview-open-in-drive" type="button" title="Open in Google Drive" aria-label="Open in Google Drive" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12 9 4h6l4.5 8-4.5 8H9z"/><path d="M9 4l4.5 8H21"/></svg>
           </button>
           <button id="preview-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>

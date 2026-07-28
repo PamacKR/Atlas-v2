@@ -64,6 +64,24 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('classwork_material_id')) {
     db.exec('ALTER TABLE resources ADD COLUMN classwork_material_id INTEGER REFERENCES classwork_materials(id) ON DELETE CASCADE');
   }
+  // Tracks this resource's uploaded copy in Atlas's dedicated Drive preview
+  // folder (open-questions.md #12, ARCHITECTURE.md §7) — distinct from
+  // drive_file_id above, which means "this resource was *imported from* a
+  // Drive file" (the inbox-scan feature, §4a). This is the opposite
+  // direction: a local file Atlas uploaded *to* Drive so it can be viewed
+  // there with real layout fidelity. drive_preview_synced_size/mtime_ms are
+  // the local file's stat() values as of the last successful upload — a
+  // mismatch on either means the file changed since, so the cached Drive
+  // copy is stale and needs re-uploading rather than reused.
+  if (!resourceColumns.includes('drive_preview_file_id')) {
+    db.exec('ALTER TABLE resources ADD COLUMN drive_preview_file_id TEXT');
+  }
+  if (!resourceColumns.includes('drive_preview_synced_size')) {
+    db.exec('ALTER TABLE resources ADD COLUMN drive_preview_synced_size INTEGER');
+  }
+  if (!resourceColumns.includes('drive_preview_synced_mtime_ms')) {
+    db.exec('ALTER TABLE resources ADD COLUMN drive_preview_synced_mtime_ms INTEGER');
+  }
 
   const noteColumns = (db.prepare('PRAGMA table_info(notes)').all() as { name: string }[]).map(
     (c) => c.name

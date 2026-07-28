@@ -202,6 +202,8 @@ contextBridge.exposeInMainWorld('atlas', {
   connectDrive: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:connectDrive'),
   disconnectDrive: (): Promise<void> => ipcRenderer.invoke('google:disconnectDrive'),
+  clearDrivePreviewCache: (): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('google:clearDrivePreviewCache'),
   getDriveFolder: (): Promise<DriveFolder | null> => ipcRenderer.invoke('google:getDriveFolder'),
   setDriveFolder: (link: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:setDriveFolder', link),
@@ -284,6 +286,19 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('resources:saveOcrText', resourceId, text),
   onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void): void => {
     ipcRenderer.on('resources:ocrProgress', (_event, progress: ResourceOcrProgress) => handler(progress));
+  },
+  openResourceInGoogleDrive: (resourceId: number): Promise<void> =>
+    ipcRenderer.invoke('resources:openInGoogleDrive', resourceId),
+  onResourceDriveOpenStart: (handler: (resourceId: number) => void): void => {
+    ipcRenderer.on('resources:driveOpenStart', (_event, resourceId: number) => handler(resourceId));
+  },
+  onResourceDriveOpenSuccess: (handler: (resourceId: number) => void): void => {
+    ipcRenderer.on('resources:driveOpenSuccess', (_event, resourceId: number) => handler(resourceId));
+  },
+  onResourceDriveOpenError: (handler: (resourceId: number, error: string) => void): void => {
+    ipcRenderer.on('resources:driveOpenError', (_event, resourceId: number, error: string) =>
+      handler(resourceId, error)
+    );
   },
   showResourceContextMenu: (resourceId: number): void =>
     ipcRenderer.send('resources:contextMenu', resourceId),
