@@ -16,12 +16,29 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 
 **Status:** Partially resolved for Classroom (2026-07-26) — no background polling interval, unlike Drive's ~20s. Classroom syncs once on app launch plus an explicit "Sync now" button. Classroom content (new assignments, announcements, courses) changes far less often than a Drive inbox, so continuous polling against the college Workspace account isn't worth the extra API load — see `ARCHITECTURE.md` §4b. Gmail's half of this question is still open, deferred to when the Gmail adapter is built.
 
+**Answered in principle (2026-07-28), to be built as the next piece of work.** The real answer to "manual, automatic, or configurable" is **configurable, per source** — every sync schedule in Atlas today is hardcoded and invisible (Drive polls every 20s, Classroom is launch + manual only), which also means the user has no way to tell when anything last ran. That invisibility is not a cosmetic gap: the Classroom adapter was silently failing on every single sync for weeks (#21) and nothing in the UI could have revealed it. Planned shape:
+
+- A **Sync section in Settings**, one row per source (Drive / Classroom / Gmail once it exists): **Off / On launch only / Every N minutes**, chosen from a small set of sensible intervals rather than a free-text field.
+- A **"last synced" timestamp** per source, in plain relative language ("2 minutes ago"), plus the last error if the most recent attempt failed — so a broken sync looks broken instead of looking identical to "nothing new."
+- A per-source **"Sync now"**, plus one "Sync everything."
+- **Defaults exactly preserve today's behavior** (Drive 20s, Classroom launch-only), so nothing changes for the user unless they change it.
+
+This supersedes the per-adapter, hardcoded-and-undocumented approach; the existing `setInterval` in `main.ts` becomes driven by the stored setting. Gmail will plug into the same system rather than inventing a third convention (see #28).
+
 ## 3. Offline behavior
 
 - Which features should remain fully functional without an internet connection?
 - How should synchronization conflicts be handled after reconnecting?
 
-**Status:** Partially resolved by the architecture decision to use embedded SQLite (`ARCHITECTURE.md` §2) — everything in the canonical database (viewing, notes, search, manual uploads) works fully offline by construction. What's still open: the conflict-resolution policy for data edited locally and changed at the source between syncs.
+**Status:** Partially resolved by the architecture decision to use embedded SQLite (`ARCHITECTURE.md` §2) — everything in the canonical database (viewing, notes, search, manual uploads) works fully offline by construction.
+
+**Conflict policy decided (2026-07-28), to be built as the next piece of work — and it turns out this isn't hypothetical, it's an active data-loss bug.** Found while planning the rest of Phase 3: `deadlines:update`/the deadline editor let the user edit *any* deadline including Classroom-synced ones, while `upsertDeadline` in `googleClassroom.ts` does `DO UPDATE SET title = excluded.title, due_at = excluded.due_at` on every sync. So editing a Classroom-sourced deadline (e.g. correcting a due date the professor changed verbally in class) is silently reverted on the next launch, with no warning and no trace. Same shape applies to `assignments` (title/description/due_at). `deadlines.completed` is already safe — the upsert never touches it.
+
+Decided approach, confirmed with the user:
+
+- **Per-field protection, not whole-row locking.** Atlas records which specific fields the user edited by hand and never overwrites those on a re-sync, while still accepting source updates to fields they didn't touch. The user explicitly chose this over the simpler "once edited, this row stops syncing entirely": a moved deadline is precisely the update you least want to miss, so one cosmetic title edit must not permanently blind the row to real due-date changes.
+- **Locally-edited state must be visible, not invisible.** A marker on any deadline carrying local overrides, plus a "reset to the Classroom version" action to discard them — otherwise the user has no way to tell why a deadline stopped matching Classroom, or to undo it.
+- **Deleted-at-source items are greyed out, not deleted.** Today nothing ever removes a `deadlines`/`assignments` row whose Classroom coursework was deleted at the source — there's no reconciliation pass at all (unlike `drive_pending_files`, which does reconcile). Rather than hard-deleting on disappearance, mark it as no longer present in Classroom and let the user dismiss it: the user chose this because a hard delete could destroy notes, descriptions, or `@`-mentions they had attached to that deadline.
 
 ## 4. Course lifecycle
 
@@ -272,3 +289,37 @@ The #26 fix above (pinning the button to the bottom of its own box) only moved t
 - **Trade-off, stated plainly rather than discovered later**: the three columns' bottoms will no longer always line up flush when their content genuinely differs in length (e.g. 2 deadlines vs. 7 resources) — that flush-bottom look was the whole reason the previous approach existed. This is the direct trade against "no dead space when there's nothing to fill it with," and there's no way to have both when the underlying data itself is uneven. Revisit only if the user says the uneven bottoms look worse than the gap did.
 
 **Status:** Resolved/built. Verified via `npm run build`; the visual result (uneven column bottoms vs. no blank space) needs a look against the user's own real Dashboard, not just the 1-course test fixture, same caveat as #24/#25.
+
+### 28. Gmail adapter — scope, and why Phase 4 now comes before it
+
+Planned 2026-07-28 while drafting the rest of Phase 3. The design discussion changed both what the Gmail adapter should be *and* the order of the remaining roadmap, so both are recorded here together.
+
+**The user's actual motivation, in their words:** "the college spams us with so many emails there are many times you just miss something important." Plus two concrete cases Classroom doesn't cover — a venue change for an exam announced only by email, and a TF replying to a doubt they emailed about. They were explicit that whether course communication happens over Classroom or email "all depends on the professor," and that their semester hasn't started yet, so **none of this can be validated against real usage until it does**.
+
+**The key architectural split, which resolves the user's own confusion ("is this something feasible within the app or something an AI agent should handle?"):**
+
+> "Is this email important?" is not a fact about an email — it depends on the user, that week, what they're working on. Atlas storing a permanent `important` flag would be exactly the AI-inference-written-back-as-canonical-fact that `AGENTS.md` and PRD §17 prohibit, *and* it would be wrong much of the time. "Which emails exist, from whom, and what they say" **is** a fact, and that's Atlas's job.
+
+So: Atlas captures and files email; an AI agent answers "what did I miss?" freshly at query time, via Phase 4's Context Builder/MCP layer. No importance judgment is built into Atlas at all.
+
+**A point worth not underrating, raised during the discussion:** a user-curated tracked-sender list already solves most of the stated problem *with no AI whatsoever*. The user's difficulty isn't recognising an important email — they'd know a venue change mattered instantly — it's that it's buried under college noise. A feed restricted to the ~20 people who actually matter *is* the filter; the noise simply isn't in the room. An AI agent adds one specific thing on top: catching something important from a sender they hadn't thought to add. That's real, but it's the smaller half, and it's the half that genuinely needs Phase 4.
+
+**Agreed scope for the Gmail adapter when it is built:**
+
+- **A user-managed tracked-sender list** (Settings), each address optionally tied to a course. Course-tied senders file automatically; senders with no course (exam office, department) still come in, to a general non-course view. The user estimates ~20 addresses, but couldn't give a real number pre-semester. Atlas fetches from these addresses and nobody else — no domain-wide sweep in v1.
+- **Automatic thread tracking**: any conversation containing a message the user sent is tracked, so a TF's reply arrives without the TF needing to be on the list first. Purely mechanical (thread contains a sent message), no content judgment. Bounded to the college domain and to threads from the connection date onward, so it can't sweep in personal mail history.
+- **Offer-to-track**: an untracked sender appearing in a tracked thread prompts "track this person too?", so the list gets built through use rather than upfront data entry.
+- **Full email bodies are stored and readable in-app** for everything Atlas fetches. An earlier draft proposed storing only metadata until an email was assigned to a course; the user asked directly whether that meant they couldn't read the email in the app, and the answer made the restriction indefensible for mail they'd explicitly opted into. Metadata-only was only ever intended for a broad "everything else from the college domain" bucket — **that bucket is dropped from v1 entirely** and revisited only if/when Phase 4 exists to triage it.
+- **Attachments are added to a course manually, per attachment** (user's explicit choice, overriding the original auto-import proposal) — listed on the email with an "Add to course" action each. Simpler, and avoids courses filling with signature images.
+- **A global Email page** (mirroring the existing Resources/Notes pages, with a course filter) plus a per-course Email tab — because not all tracked email is course-shaped, and a course-only surface would have nowhere to put exam-office or department mail.
+- **Read-only Gmail access** (`gmail.readonly`). Atlas can never send, delete, or modify anything. Same restricted-scope 7-day testing-mode reconnect cycle as Drive/Classroom, and its own separate connection/token rather than being bolted onto Classroom's (which would force a Classroom reconnect and couple two independently-useful features).
+- **No importance scoring, ranking, or filtering by content anywhere in Atlas.**
+
+**Roadmap reorder: Phase 4 (Context Builder + MCP) now comes before the Gmail adapter.** Reasoning, agreed with the user:
+
+- The user's primary want from Gmail ("tell me what I missed") is a Phase 4 capability by definition — it cannot be delivered by the Gmail adapter alone no matter how it's built.
+- Phase 4 is still entirely unbuilt while being the product's actual purpose (PRD §16/§18/§21), and everything already in Atlas — courses, notes, deadlines, resources, Classroom assignments/announcements — is already worth querying. Phase 4 delivers value immediately, with or without email.
+- Building Gmail's storage shape *before* knowing how the agent actually queries risks designing the wrong shape and reworking it.
+- The user's response: "If you think doing phase 4 first will help better implement the gmail integration then im okay with that."
+
+**Status:** Agreed/planned, not built. Gmail is deferred until after Phase 4. The two remaining non-Gmail Phase 3 items (conflict handling — #3; sync configuration — #2) are agreed and come first, since both are small, independently useful, and unaffected by this reorder.

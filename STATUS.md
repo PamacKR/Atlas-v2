@@ -2,7 +2,18 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-28 (Atlas-v2, Office file preview via Google Drive built)
+**Last updated:** 2026-07-28 (Atlas-v2, rest-of-Phase-3 planned; Phase 4 reordered ahead of Gmail)
+
+## Session 2026-07-28 (continued) — planned the rest of Phase 3; Phase 4 moved ahead of Gmail
+
+Planning only — **no code written this pass**, by explicit user instruction ("add or edit whatever you need to in the necessary docs and I will give you the go ahead and only then you get started"). The three remaining Phase 3 items were planned in detail and two roadmap-level decisions came out of it.
+
+- **Found an active data-loss bug while researching, not yet fixed**: editing a Classroom-synced deadline is silently reverted on the next sync (`upsertDeadline` overwrites `title`/`due_at` unconditionally, and the deadline editor happily edits synced rows). Also, an assignment deleted in Classroom currently lingers in Atlas forever — there's no reconciliation pass for coursework at all. Both are now the concrete definition of the previously-vague "conflict handling" roadmap item. Full detail and the agreed fix in `open-questions.md` #3.
+- **Conflict-handling policy decided**: per-field protection (edited fields are preserved, untouched fields still accept source updates), a visible marker + "reset to Classroom version" action, and greyed-out-not-deleted for items removed at the source. The user chose per-field over whole-row locking, and grey-out over hard delete, for stated reasons — see #3.
+- **Sync configuration decided**: a real Settings section with per-source Off / launch-only / every-N-minutes, last-synced timestamps, last error, and per-source + global "Sync now". Defaults preserve today's behavior exactly. This finally answers `open-questions.md` #2's "manual, automatic, or configurable" — the answer is configurable, and the current invisibility is what let the Classroom adapter fail silently for weeks (#21).
+- **Gmail adapter scoped, and deliberately deferred behind Phase 4** (`open-questions.md` #28). Scope: a user-managed tracked-sender list (~20 addresses, each optionally tied to a course), automatic tracking of threads the user replied to, full email readable in-app, attachments added to a course manually per attachment, a global Email page plus per-course tab, read-only access on its own connection. **No importance scoring anywhere in Atlas** — the user's core motivation ("the college spams us so much you miss something important") is a query-time judgment that belongs to the AI agent, not a stored fact, per `AGENTS.md`/PRD §17.
+- **Phase 4 (Context Builder + MCP) now comes before the Gmail adapter.** The user's main want from Gmail can't be delivered without Phase 4; Phase 4 is the product's stated purpose and is still entirely unbuilt; and everything already in Atlas is worth querying today. User agreed. `ROADMAP.md` updated — working order is now: conflict handling → sync configuration → Phase 4 → Gmail.
+- **Caveat the user raised twice and worth carrying forward**: their semester hasn't started, so they genuinely cannot yet say how many senders they'd track, or whether their professors will use Classroom or email. Any Gmail design decision that depends on real usage patterns should be treated as provisional until there's a real semester's mail to check it against.
 
 ## Session 2026-07-28 (continued) — Office file preview via Google Drive, reversing an earlier recommendation
 
