@@ -1,6 +1,6 @@
 # AGENTS.md — how an AI coding agent works on Atlas
 
-This document describes how an AI coding agent (as an engineering collaborator, not as a feature of the product) should operate while building Atlas. It's project-specific guidance layered on top of whatever general defaults the agent already has — read it before making architectural calls or writing product-facing copy in this repo. It applies regardless of which tool is doing the work (Claude Code, Pi coding agent, or anything else) and regardless of which model is behind it.
+This document describes how an AI coding agent (as an engineering collaborator, not as a feature of the product) should operate while building Atlas. It's project-specific guidance layered on top of whatever general defaults the agent already has — read it before making architectural calls or writing product-facing copy in this repo. It applies regardless of which tool is doing the work (Claude Code or anything else) and regardless of which model is behind it.
 
 **Starting a fresh session (new chat, new agent, or after context compaction)?** Read, in order: this file, then [`STATUS.md`](STATUS.md) (what's actually been decided/built and what's pending), then [`open-questions.md`](open-questions.md). Don't re-derive decisions already recorded in those files or in `ARCHITECTURE.md`/`ROADMAP.md` — treat them as settled unless the user says otherwise. `STATUS.md` is the one document expected to go stale fastest; update it whenever real progress happens, not just at the end of a session.
 

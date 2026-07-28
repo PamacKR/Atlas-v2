@@ -4,7 +4,7 @@
 
 A centralized academic knowledge platform. Atlas is a desktop application that continuously organizes a student's academic life — lecture material, notes, assignments, announcements, deadlines, and handwritten notes — into structured, per-course workspaces pulled automatically from Google Classroom, Gmail, Drive, local folders, and manual uploads.
 
-Atlas is **not** an AI application. It is the source of truth that external AI coding agents — Claude Code, Pi coding agent, or any other MCP-capable tool — use for reasoning, studying, and assignment assistance.
+Atlas is **not** an AI application. It is the source of truth that external AI coding agents — Claude Code or any other MCP-capable tool — use for reasoning, studying, and assignment assistance.
 
 ## Philosophy
 

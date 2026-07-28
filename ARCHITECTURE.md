@@ -157,7 +157,7 @@ The Context Builder (PRD section 16) is a query layer over the canonical databas
 
 ## 6. Runtime AI integration: local MCP server
 
-Atlas exposes its Context Builder to whichever AI coding agent the user is running via a **local MCP (Model Context Protocol) server** bundled with the app, rather than only generating static context files. MCP is itself a model/vendor-agnostic protocol — any MCP-capable client (Claude Code, Pi coding agent, or others) can connect to the same server without Atlas needing to know or care which one it is.
+Atlas exposes its Context Builder to whichever AI coding agent the user is running via a **local MCP (Model Context Protocol) server** bundled with the app, rather than only generating static context files. MCP is itself a model/vendor-agnostic protocol — any MCP-capable client (Claude Code or others) can connect to the same server without Atlas needing to know or care which one it is.
 
 Why MCP over static file export:
 
