@@ -119,6 +119,15 @@ function migrate(db: Database.Database): void {
   if (!assignmentColumns.includes('updated_at')) {
     db.exec('ALTER TABLE assignments ADD COLUMN updated_at TEXT');
   }
+  if (!assignmentColumns.includes('posted_at')) {
+    // Classroom's own creationTime for the courseWork item — mirrors
+    // announcements.posted_at/classwork_materials.posted_at, which already
+    // existed. Needed so a synced assignment's attachment resources can be
+    // given their real "added" date instead of defaulting to sync time (see
+    // googleClassroom.ts) — assignments previously had no equivalent field
+    // to source that from at all.
+    db.exec('ALTER TABLE assignments ADD COLUMN posted_at TEXT');
+  }
 
   // Partial unique indexes (rather than a UNIQUE column constraint, which
   // SQLite's ALTER TABLE ADD COLUMN can't add to an existing table) — give
@@ -136,6 +145,37 @@ function migrate(db: Database.Database): void {
   );
   db.exec(
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_announcements_classroom_announcement_id ON announcements(classroom_announcement_id) WHERE classroom_announcement_id IS NOT NULL'
+  );
+
+  // resources never got the same partial-unique-index treatment as the
+  // four tables above, even though its insertLinkResource/importBuffer... an
+  // upsert-by-external-id path (classroom_attachment_id, drive_file_id) that
+  // assumes one. INSERT OR IGNORE only actually de-duplicates once a real
+  // constraint exists to conflict against — without it, a re-sync/re-scan
+  // can silently create duplicate rows for the same external file. A stale
+  // reconciliation bug (see reconcileCourseStorage) masked this in practice
+  // by deleting and re-inserting every Classroom-linked resource on every
+  // launch, so duplicates never had a chance to build up — now that that
+  // bug is fixed, this index is what actually prevents them going forward.
+  // Any duplicates already sitting in an existing database (extremely
+  // unlikely given the above, but not impossible) are collapsed down to the
+  // earliest row per key first, since CREATE UNIQUE INDEX fails outright if
+  // duplicate values are already present.
+  db.exec(`
+    DELETE FROM resources WHERE id NOT IN (
+      SELECT MIN(id) FROM resources WHERE classroom_attachment_id IS NOT NULL GROUP BY classroom_attachment_id
+    ) AND classroom_attachment_id IS NOT NULL
+  `);
+  db.exec(`
+    DELETE FROM resources WHERE id NOT IN (
+      SELECT MIN(id) FROM resources WHERE drive_file_id IS NOT NULL GROUP BY drive_file_id
+    ) AND drive_file_id IS NOT NULL
+  `);
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_resources_classroom_attachment_id ON resources(classroom_attachment_id) WHERE classroom_attachment_id IS NOT NULL'
+  );
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_resources_drive_file_id ON resources(drive_file_id) WHERE drive_file_id IS NOT NULL'
   );
 }
 

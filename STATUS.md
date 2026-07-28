@@ -2,7 +2,18 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-27 (Atlas-v2, sidebar layout fix + handoff to a fresh session)
+**Last updated:** 2026-07-28 (Atlas-v2, Classroom "changed today" bug fix, note false-change fix, dashboard button fix, course archiving built)
+
+## Session 2026-07-28 — real Dashboard/notes bugs found via an audit, plus course archiving built
+
+The user asked for a review of which already-built features still had ambiguous or unfinished edges (ignoring anything not yet built). That review surfaced two real, previously-unreported bugs, which the user then asked to be fixed alongside two smaller items:
+
+- **Classroom files falsely shown as "changed today"/"recently added" on every launch** — root-caused to `reconcileCourseStorage()` treating a Classroom attachment's external URL (`resources.file_path` for `kind = 'link'` rows) as if it were a file on disk, so every one of them got deleted and immediately recreated (with a fresh timestamp) on every single launch. Fixed, plus a related missing-uniqueness gap in the database that the delete/recreate cycle had been silently masking, plus a one-time automatic repair of the ~155 already-corrupted timestamps using Classroom's own real posting times. Full detail: `ARCHITECTURE.md` §4, `open-questions.md` #26.
+- **Notes falsely marked as "changed" just from opening and closing them**, no edit needed — the note editor fires its own internal "content changed" signal once during setup, and closing always saved unconditionally. Both now check whether the content actually changed first, in two places (the editor itself and the underlying save handler) so any future save path inherits the same protection. See `open-questions.md` #26.
+- **Dashboard's "View full calendar" button had grey empty space below it** — was floating directly under a height-capped list instead of anchored to the bottom of its box. Fixed with the same "pin to bottom" approach already proven on the Courses page's card layout (`open-questions.md` #25/#26) — one CSS line (`margin-top: auto`).
+- **Course archiving built** (`open-questions.md` #4, previously open/deferred to Phase 5) — archive/unarchive a course without touching any of its files/notes/deadlines, via a right-click menu item or a button on the course's own detail page. The Courses page gained a "Show archived courses" toggle (active and archived courses are shown as two separate lists, never mixed). Archived courses stop auto-syncing from Classroom but stay fully searchable — archiving only declutters the course list, it doesn't hide material. `ROADMAP.md` Phase 5's archiving item is now checked off.
+- Two items surfaced in the same review were explicitly deferred by the user for a separate discussion later, not built in this pass: revisiting PPTX/DOCX/XLSX preview fidelity (`open-questions.md` #12), and the `xlsx` package's known security advisories (accepted risk, `ARCHITECTURE.md` §7) — no action taken on either.
+- Verified with `npm run build` after each change; no full `npm run verify` run this session — per the user's standing instruction, that suite is reserved for major changes, and while the course-archiving feature is real feature work, the individual pieces were each verified by build + the fixes are logic-level, not UI flows `verify-app.js` would meaningfully exercise better than a manual look. Worth a `npm run verify` pass and/or a manual look at the real `Atlas-Storage` data before considering this fully closed out.
 
 ## Handoff note — this is now the active working directory
 

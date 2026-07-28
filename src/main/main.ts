@@ -357,10 +357,79 @@ function stopWatchingFolder(folderId: number): void {
 // watched folders were being monitored for changes.
 const activeCourseStorageWatchers = new Map<number, FSWatcher>();
 
+// One-time cleanup for resources that were given a wrong "added" date by a
+// past bug (see reconcileCourseStorage's kind != 'link' fix above): every
+// Classroom attachment resource's added_at used to get overwritten to
+// "right now" on every single app launch, so the Dashboard's "Recently
+// added"/"What changed today" widgets falsely showed every synced Classroom
+// file as brand new every time the app opened. This repairs the rows
+// already sitting in the database from before that fix, using each
+// resource's real Classroom posting time (already stored on the
+// announcement/assignment/classwork item it came from) — never guessed.
+// Gated by an app_settings flag so it only ever runs once; afterwards,
+// insertLinkResource (googleClassroom.ts) sets the correct added_at itself
+// at the moment a resource is first created, so there's nothing left to fix.
+function repairClassroomResourceAddedAtOnce(): void {
+  const db = getDb();
+  const alreadyRepaired = db
+    .prepare("SELECT 1 FROM app_settings WHERE key = 'classroom_resource_added_at_repaired'")
+    .get();
+  if (alreadyRepaired) return;
+
+  const resources = db
+    .prepare(
+      "SELECT id, classroom_attachment_id FROM resources WHERE source = 'classroom' AND classroom_attachment_id IS NOT NULL"
+    )
+    .all() as { id: number; classroom_attachment_id: string }[];
+
+  const findAnnouncementPostedAt = db.prepare(
+    'SELECT posted_at FROM announcements WHERE classroom_announcement_id = ?'
+  );
+  const findAssignmentPostedAt = db.prepare(
+    'SELECT posted_at FROM assignments WHERE classroom_coursework_id = ?'
+  );
+  const findClassworkPostedAt = db.prepare(
+    'SELECT posted_at FROM classwork_materials WHERE classroom_coursework_material_id = ?'
+  );
+  const updateAddedAt = db.prepare('UPDATE resources SET added_at = ? WHERE id = ?');
+
+  for (const resource of resources) {
+    // classroom_attachment_id is built as `${ownerId}:${link.url}` (see
+    // extractMaterialLinks/saveLinkResources in googleClassroom.ts) —
+    // ownerId is a Classroom item ID, which never itself contains ':', so
+    // splitting on the first one recovers it correctly even though a URL
+    // (the rest of the string) usually does.
+    const ownerId = resource.classroom_attachment_id.slice(0, resource.classroom_attachment_id.indexOf(':'));
+    if (!ownerId) continue;
+
+    const postedAt = (
+      (findAnnouncementPostedAt.get(ownerId) as { posted_at: string | null } | undefined) ??
+      (findAssignmentPostedAt.get(ownerId) as { posted_at: string | null } | undefined) ??
+      (findClassworkPostedAt.get(ownerId) as { posted_at: string | null } | undefined)
+    )?.posted_at;
+
+    if (postedAt) updateAddedAt.run(postedAt, resource.id);
+  }
+
+  db.prepare(
+    "INSERT INTO app_settings (key, value) VALUES ('classroom_resource_added_at_repaired', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"
+  ).run();
+  rebuildSearchIndex();
+}
+
 function reconcileCourseStorage(courseId: number): void {
   const db = getDb();
+  // kind = 'link' resources (Classroom attachments — see googleClassroom.ts)
+  // store an external URL in file_path, not a path on this machine's disk —
+  // fs.existsSync() on a URL always returns false, which used to make this
+  // function delete every single one of them on every launch (they'd then
+  // get re-inserted a moment later by the Classroom sync that follows,
+  // producing a fresh added_at each time and making the Dashboard falsely
+  // report them as "recently added"/"changed today"). Only resources this
+  // function actually manages (a real file under this course's own storage
+  // folder) should ever be reconciled here.
   const resources = db
-    .prepare('SELECT id, file_path FROM resources WHERE course_id = ?')
+    .prepare("SELECT id, file_path FROM resources WHERE course_id = ? AND kind != 'link'")
     .all(courseId) as { id: number; file_path: string }[];
   for (const resource of resources) {
     if (fs.existsSync(resource.file_path)) continue;
@@ -561,7 +630,12 @@ app.whenReady().then(async () => {
   // Google Classroom sync (Phase 3, ARCHITECTURE.md §4b): once on launch,
   // plus the explicit "Sync now" button — deliberately no polling interval,
   // unlike Drive. No-ops quietly if Classroom isn't connected yet.
-  void scanClassroomAndNotify();
+  // Awaited (rather than fire-and-forget like the Drive scan above)
+  // specifically so the one-time added_at repair below can run right after
+  // it — that repair depends on this same sync having just backfilled
+  // assignments.posted_at for any pre-existing assignment rows (see
+  // upsertAssignment in googleClassroom.ts).
+  void scanClassroomAndNotify().then(() => repairClassroomResourceAddedAtOnce());
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -672,7 +746,13 @@ ipcMain.handle('dashboard:upcomingDeadlines', () => {
     .all();
 });
 
-ipcMain.handle('dashboard:courseSummaries', () => {
+// `archived` param: false (default, and every existing caller that doesn't
+// pass one) returns only active courses, matching the behavior this handler
+// always had. Passing true switches to *only* archived courses instead — the
+// Courses page's archived toggle shows one list or the other, never both at
+// once, so there's no ambiguity about which state a course card shown here
+// is in.
+ipcMain.handle('dashboard:courseSummaries', (_event, archived = false) => {
   const db = getDb();
   return db
     .prepare(
@@ -681,10 +761,21 @@ ipcMain.handle('dashboard:courseSummaries', () => {
               (SELECT COUNT(*) FROM deadlines WHERE deadlines.course_id = courses.id) AS deadline_count,
               (SELECT COUNT(*) FROM notes WHERE notes.course_id = courses.id) AS note_count
        FROM courses
-       WHERE courses.archived = 0
+       WHERE courses.archived = ?
        ORDER BY courses.name`
     )
-    .all();
+    .all(archived ? 1 : 0);
+});
+
+// Archiving/unarchiving only ever flips this one flag — it deliberately
+// leaves every file, note, and deadline exactly as-is (unlike Delete, which
+// is destructive). An archived course is filtered out of the normal course
+// list/pickers/Classroom auto-sync, but stays fully intact and searchable —
+// see open-questions.md #4.
+ipcMain.handle('courses:setArchived', (_event, courseId: number, archived: boolean) => {
+  const db = getDb();
+  db.prepare('UPDATE courses SET archived = ? WHERE id = ?').run(archived ? 1 : 0, courseId);
+  return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
 
 // Cross-course listings for the global Resources/Notes pages (§7/§8) — the
@@ -1304,11 +1395,24 @@ ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   rebuildSearchIndex();
 });
 
-// Course row has no "open in default app" equivalent — just Delete, but
-// kept as a native menu (rather than an in-page button) for consistency
-// with the resource context menu.
+// Course row has no "open in default app" equivalent — just Archive/Unarchive
+// and Delete, kept as a native menu (rather than in-page buttons) for
+// consistency with the resource context menu. The Archive label reflects
+// this course's current state, looked up fresh each time the menu opens.
 ipcMain.on('resources:courseContextMenu', (event, courseId: number) => {
+  const db = getDb();
+  const course = db.prepare('SELECT archived FROM courses WHERE id = ?').get(courseId) as
+    | { archived: number }
+    | undefined;
+  const isArchived = course?.archived === 1;
   const menu = Menu.buildFromTemplate([
+    {
+      label: isArchived ? 'Unarchive' : 'Archive',
+      click: () => {
+        event.sender.send('resources:courseContextMenuToggleArchive', courseId, !isArchived);
+      },
+    },
+    { type: 'separator' },
     {
       label: 'Delete',
       click: () => {
@@ -1461,10 +1565,17 @@ function deriveTitleFromMarkdown(markdown: string): string {
 
 ipcMain.handle('notes:updateContent', (_event, noteId: number, contentMarkdown: string) => {
   const db = getDb();
-  const note = db.prepare('SELECT title_is_manual FROM notes WHERE id = ?').get(noteId) as
-    | { title_is_manual: number }
+  const note = db.prepare('SELECT title_is_manual, content_markdown, title FROM notes WHERE id = ?').get(noteId) as
+    | { title_is_manual: number; content_markdown: string; title: string }
     | undefined;
   if (!note) return null;
+
+  // Second layer of the same "opening/closing a note shouldn't count as a
+  // change" guard the renderer already applies (renderer.ts's
+  // noteContentAtOpen) — kept here too so any other caller of this same
+  // handler gets the same protection, rather than relying on the renderer
+  // never accidentally sending an unchanged save.
+  if (contentMarkdown === note.content_markdown) return { title: note.title_is_manual ? null : note.title };
 
   const title = note.title_is_manual ? undefined : deriveTitleFromMarkdown(contentMarkdown);
   if (title !== undefined) {

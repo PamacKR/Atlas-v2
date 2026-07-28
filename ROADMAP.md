@@ -53,8 +53,8 @@ Reordered 2026-07-26 (user decision) to build the **Google Drive adapter first**
 
 ## Phase 5 — Lifecycle & polish
 
-- Course/semester archiving and lifecycle rules
-- Old-course searchability defaults
+- [x] Course archiving: archive/unarchive a course (right-click or a detail-page button) without deleting anything; a "Show archived courses" toggle on the Courses page shows one list or the other; archived courses stop auto-syncing from Classroom but stay fully searchable. See `open-questions.md` #4/#26, `ARCHITECTURE.md` §2.
+- Old-course searchability defaults — resolved as part of the above: archived courses stay searchable by default (see `open-questions.md` #4)
 - Relationship editing (lecture→course, assignment→lecture, exam→lectures, email→assignment) as explicit, user/metadata-originated links
 - Dashboard v2: unread announcements, new assignments, recently synced items
 - Offline-mode audit: confirm which features degrade gracefully without a connection

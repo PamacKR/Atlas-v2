@@ -152,8 +152,15 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
 
   const classroom = classroomApi();
   const db = getDb();
+  // Archived courses are deliberately excluded — archiving a course is
+  // meant to stop it pulling in new content on every launch, not just hide
+  // it from the course list (open-questions.md #4). It stays linked
+  // (classroom_course_id is untouched by archiving) so unarchiving picks
+  // sync back up automatically, with no need to reconnect anything.
   const mappedCourses = db
-    .prepare('SELECT id, classroom_course_id, name FROM courses WHERE classroom_course_id IS NOT NULL')
+    .prepare(
+      "SELECT id, classroom_course_id, name FROM courses WHERE classroom_course_id IS NOT NULL AND archived = 0"
+    )
     .all() as { id: number; classroom_course_id: string; name: string }[];
 
   let changed = false;
@@ -174,11 +181,12 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
   // exception was probably the *actual* root cause of every past report of
   // "nothing synced," not just the missing per-course guard.
   const upsertAssignment = db.prepare(`
-    INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, updated_at)
-    VALUES (?, ?, ?, ?, 'classroom', ?, ?)
+    INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, updated_at, posted_at)
+    VALUES (?, ?, ?, ?, 'classroom', ?, ?, ?)
     ON CONFLICT (classroom_coursework_id) WHERE classroom_coursework_id IS NOT NULL DO UPDATE SET
       title = excluded.title, description = excluded.description,
-      due_at = excluded.due_at, updated_at = excluded.updated_at
+      due_at = excluded.due_at, updated_at = excluded.updated_at,
+      posted_at = COALESCE(assignments.posted_at, excluded.posted_at)
   `);
   const upsertDeadline = db.prepare(`
     INSERT INTO deadlines (course_id, title, kind, due_at, source, classroom_coursework_id, stale_import)
@@ -205,21 +213,37 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
     ON CONFLICT (classroom_coursework_material_id) DO UPDATE SET
       title = excluded.title, description = excluded.description
   `);
+  // added_at is passed explicitly as the owning item's own real Classroom
+  // timestamp (courseWork/announcement/courseWorkMaterial creationTime),
+  // rather than left to the schema's `datetime('now')` default — otherwise
+  // every attachment resource's "added" date is really just "whenever this
+  // sync happened to run," which is what made the Dashboard's "Recently
+  // added"/"What changed today" widgets falsely show every synced Classroom
+  // file as brand new on every launch.
   const insertLinkResource = db.prepare(`
-    INSERT OR IGNORE INTO resources (course_id, title, kind, source, file_path, original_filename, classroom_attachment_id, classwork_material_id)
-    VALUES (?, ?, 'link', 'classroom', ?, ?, ?, ?)
+    INSERT OR IGNORE INTO resources (course_id, title, kind, source, file_path, original_filename, classroom_attachment_id, classwork_material_id, added_at)
+    VALUES (?, ?, 'link', 'classroom', ?, ?, ?, ?, ?)
   `);
 
   const saveLinkResources = (
     courseId: number,
     ownerId: string,
     links: { title: string; url: string }[],
-    classworkMaterialRowId: number | null
+    classworkMaterialRowId: number | null,
+    ownerPostedAt: string
   ): boolean => {
     let any = false;
     for (const link of links) {
       const attachmentKey = `${ownerId}:${link.url}`;
-      const result = insertLinkResource.run(courseId, link.title, link.url, link.title, attachmentKey, classworkMaterialRowId);
+      const result = insertLinkResource.run(
+        courseId,
+        link.title,
+        link.url,
+        link.title,
+        attachmentKey,
+        classworkMaterialRowId,
+        ownerPostedAt
+      );
       if (result.changes > 0) any = true;
     }
     return any;
@@ -234,13 +258,15 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
       for (const work of courseWorkRes.data.courseWork ?? []) {
         if (!work.id || !work.title) continue;
         const dueAt = formatDueAt(work.dueDate ?? undefined, work.dueTime ?? undefined);
+        const postedAt = work.creationTime ?? new Date().toISOString();
         const insertResult = upsertAssignment.run(
           course.id,
           work.title,
           work.description ?? null,
           dueAt,
           work.id,
-          work.updateTime ?? null
+          work.updateTime ?? null,
+          postedAt
         );
         if (insertResult.changes > 0) changed = true;
         const deadlineResult = upsertDeadline.run(
@@ -252,7 +278,9 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
         );
         if (deadlineResult.changes > 0) changed = true;
 
-        if (saveLinkResources(course.id, work.id, extractMaterialLinks(work.materials), null)) changed = true;
+        if (saveLinkResources(course.id, work.id, extractMaterialLinks(work.materials), null, postedAt)) {
+          changed = true;
+        }
       }
 
       const announcementsRes = await classroom.courses.announcements.list({
@@ -261,16 +289,19 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
       });
       for (const announcement of announcementsRes.data.announcements ?? []) {
         if (!announcement.id) continue;
+        const postedAt = announcement.creationTime ?? new Date().toISOString();
         const result = upsertAnnouncement.run(
           course.id,
           announcement.text?.slice(0, 80) || 'Announcement',
           announcement.text ?? null,
-          announcement.creationTime ?? new Date().toISOString(),
+          postedAt,
           announcement.id
         );
         if (result.changes > 0) changed = true;
 
-        if (saveLinkResources(course.id, announcement.id, extractMaterialLinks(announcement.materials), null)) {
+        if (
+          saveLinkResources(course.id, announcement.id, extractMaterialLinks(announcement.materials), null, postedAt)
+        ) {
           changed = true;
         }
       }
@@ -281,6 +312,7 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
       });
       for (const item of materialsRes.data.courseWorkMaterial ?? []) {
         if (!item.id || !item.title) continue;
+        const postedAt = item.creationTime ?? new Date().toISOString();
         const result = upsertClasswork.run(
           course.id,
           item.title,
@@ -293,7 +325,10 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
         const classworkRow = db
           .prepare('SELECT id FROM classwork_materials WHERE classroom_coursework_material_id = ?')
           .get(item.id) as { id: number } | undefined;
-        if (classworkRow && saveLinkResources(course.id, item.id, extractMaterialLinks(item.materials), classworkRow.id)) {
+        if (
+          classworkRow &&
+          saveLinkResources(course.id, item.id, extractMaterialLinks(item.materials), classworkRow.id, postedAt)
+        ) {
           changed = true;
         }
       }

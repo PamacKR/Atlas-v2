@@ -257,6 +257,7 @@ interface AtlasApi {
   uploadResource: (courseId: number) => Promise<Resource | null>;
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
+  setCourseArchived: (courseId: number, archived: boolean) => Promise<Course>;
   deleteResource: (resourceId: number) => Promise<void>;
   getPreview: (resourceId: number) => Promise<Preview>;
   setResourceZoom: (resourceId: number, zoom: number) => Promise<void>;
@@ -267,6 +268,7 @@ interface AtlasApi {
   showCourseContextMenu: (courseId: number) => void;
   onContextMenuDelete: (handler: (resourceId: number) => void) => void;
   onCourseContextMenuDelete: (handler: (courseId: number) => void) => void;
+  onCourseContextMenuToggleArchive: (handler: (courseId: number, archived: boolean) => void) => void;
   listWatchedFolders: (courseId: number) => Promise<WatchedFolder[]>;
   addWatchedFolder: (courseId: number) => Promise<WatchedFolder | null>;
   removeWatchedFolder: (folderId: number) => Promise<void>;
@@ -312,7 +314,7 @@ interface AtlasApi {
   listAllDeadlinesWithCourse: () => Promise<DashboardDeadline[]>;
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
-  getCourseSummaries: () => Promise<CourseSummary[]>;
+  getCourseSummaries: (archived?: boolean) => Promise<CourseSummary[]>;
   listAllResources: () => Promise<ResourceWithCourse[]>;
   listAllNotes: () => Promise<NoteWithCourse[]>;
 }
@@ -517,6 +519,11 @@ function resolveConfirm(result: boolean): void {
 let courseViewMode: 'grid' | 'list' = 'grid';
 type CourseSort = 'name' | 'resources' | 'deadlines' | 'notes';
 let courseSort: CourseSort = 'name';
+// Shows either active courses (default) or archived ones, never both mixed
+// together — a plain either/or toggle rather than an "include archived"
+// checkbox, so there's no ambiguity about which state a course card on
+// screen is in (open-questions.md #4).
+let showArchivedCourses = false;
 
 function compareCourseSummaries(a: CourseSummary, b: CourseSummary, sort: CourseSort): number {
   if (sort === 'resources') return b.resource_count - a.resource_count;
@@ -532,9 +539,13 @@ function compareCourseSummaries(a: CourseSummary, b: CourseSummary, sort: Course
 async function renderCourses(): Promise<void> {
   void renderDashboard();
   const list = document.getElementById('course-list')!;
-  const allSummaries = await atlasApi.getCourseSummaries();
+  const emptyState = document.getElementById('course-list-empty')!;
+  const allSummaries = await atlasApi.getCourseSummaries(showArchivedCourses);
   let courses = semesterFilter ? allSummaries.filter((c) => c.term === semesterFilter) : allSummaries;
   courses = [...courses].sort((a, b) => compareCourseSummaries(a, b, courseSort));
+
+  emptyState.hidden = courses.length > 0;
+  emptyState.textContent = showArchivedCourses ? 'No archived courses.' : 'No courses yet.';
 
   list.className = courseViewMode === 'grid' ? 'view-grid' : 'view-list';
   list.innerHTML = '';
@@ -599,6 +610,14 @@ function setCourseViewMode(mode: 'grid' | 'list'): void {
   courseViewMode = mode;
   document.getElementById('course-view-grid')!.classList.toggle('active', mode === 'grid');
   document.getElementById('course-view-list')!.classList.toggle('active', mode === 'list');
+  void renderCourses();
+}
+
+function setShowArchivedCourses(value: boolean): void {
+  showArchivedCourses = value;
+  const button = document.getElementById('toggle-archived-courses')!;
+  button.textContent = value ? 'Show active courses' : 'Show archived courses';
+  button.classList.toggle('active', value);
   void renderCourses();
 }
 
@@ -2263,6 +2282,15 @@ let noteEditorInstance: Crepe | null = null;
 let currentNoteId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let noteTitleBeforeEdit = '';
+// The note's markdown right after it finished opening (post-Crepe-mount, not
+// the raw DB value — Crepe can reformat markdown slightly on load, e.g.
+// normalizing whitespace, and comparing against its own output avoids a
+// false "changed" reading from that alone). Used so simply opening and
+// closing a note — with no real edit — doesn't bump its updated_at and make
+// the Dashboard's "What changed today" falsely list it. Crepe fires its
+// markdownUpdated listener once during mount even with nothing typed, which
+// is what caused this in the first place.
+let noteContentAtOpen: string | null = null;
 
 // Reflects the derived-from-first-line title (Google-Docs style, see
 // notes:updateContent in main.ts) back into the title input — but only when
@@ -2276,12 +2304,20 @@ function applyDerivedTitle(title: string | null): void {
 }
 
 function scheduleNoteSave(): void {
+  if (!noteEditorInstance || noteEditorInstance.getMarkdown() === noteContentAtOpen) return;
+
   const statusEl = document.getElementById('note-save-status')!;
   statusEl.textContent = 'Saving…';
   if (noteSaveTimer) clearTimeout(noteSaveTimer);
   noteSaveTimer = setTimeout(async () => {
     if (currentNoteId === null || !noteEditorInstance) return;
-    const result = await atlasApi.updateNoteContent(currentNoteId, noteEditorInstance.getMarkdown());
+    const markdown = noteEditorInstance.getMarkdown();
+    if (markdown === noteContentAtOpen) {
+      statusEl.textContent = '';
+      return;
+    }
+    const result = await atlasApi.updateNoteContent(currentNoteId, markdown);
+    noteContentAtOpen = markdown;
     if (result) applyDerivedTitle(result.title);
     statusEl.textContent = 'Saved';
     // The Notes page keeps the note list visible right alongside the
@@ -2331,7 +2367,13 @@ async function flushPendingNoteSave(): Promise<void> {
     noteSaveTimer = null;
   }
   if (currentNoteId !== null && noteEditorInstance) {
-    await atlasApi.updateNoteContent(currentNoteId, noteEditorInstance.getMarkdown());
+    const markdown = noteEditorInstance.getMarkdown();
+    // Closing a note the user only opened to look at (no real edit) must
+    // not touch it — otherwise it wrongly shows up as "changed today" and
+    // its updated_at moves for no reason.
+    if (markdown === noteContentAtOpen) return;
+    await atlasApi.updateNoteContent(currentNoteId, markdown);
+    noteContentAtOpen = markdown;
   }
 }
 
@@ -2388,6 +2430,10 @@ async function mountNoteEditor(note: Note): Promise<void> {
   });
   await crepe.create();
   noteEditorInstance = crepe;
+  // Baseline for the open/close no-op check above — captured from Crepe's
+  // own output post-mount, after whatever normalization it just did, not
+  // the raw value passed in.
+  noteContentAtOpen = crepe.getMarkdown();
 }
 
 async function openNoteEditor(note: Note): Promise<void> {
@@ -2629,6 +2675,26 @@ function backToCourseList(): void {
   void renderCourses(); // clear the stale .selected highlight left on the grid
 }
 
+// Label reflects this specific course's current state — Delete stays
+// right-click-only (destructive, less common), but Archive/Unarchive gets a
+// direct button here too since it's the page where the user is actively
+// deciding "am I done with this course," and it's a reversible action.
+function updateCourseDetailArchiveButton(course: Course): void {
+  const button = document.getElementById('course-detail-archive-toggle')!;
+  button.textContent = course.archived === 1 ? 'Unarchive course' : 'Archive course';
+}
+
+async function toggleSelectedCourseArchived(): Promise<void> {
+  if (!selectedCourse) return;
+  const updated = await atlasApi.setCourseArchived(selectedCourse.id, selectedCourse.archived !== 1);
+  // Archiving the course currently open removes it from the active list (or
+  // vice versa for unarchiving) — going back to the grid avoids leaving the
+  // user stranded on a detail page for a course that no longer matches
+  // whichever filter (Active/Archived) the grid is currently showing.
+  backToCourseList();
+  setShowArchivedCourses(updated.archived === 1);
+}
+
 // Deadlines + Watched folders are shown directly (real, already-built
 // features); Resources/Notes stay global pages — these two link buttons
 // just jump to them pre-filtered to this course rather than duplicating
@@ -2648,7 +2714,13 @@ async function selectCourse(course: Course): Promise<void> {
   avatarSlot.innerHTML = '';
   avatarSlot.appendChild(makeCourseAvatar(course));
 
-  const summaries = await atlasApi.getCourseSummaries();
+  updateCourseDetailArchiveButton(course);
+
+  // Reaching this detail page from the archived view means this specific
+  // course is itself archived — pass that through so the lookup below finds
+  // it (getCourseSummaries only ever returns one state or the other, never
+  // both at once).
+  const summaries = await atlasApi.getCourseSummaries(course.archived === 1);
   const summary = summaries.find((s) => s.id === course.id);
   document.getElementById('course-detail-resource-count')!.textContent = String(summary?.resource_count ?? 0);
   document.getElementById('course-detail-note-count')!.textContent = String(summary?.note_count ?? 0);
@@ -3618,8 +3690,14 @@ async function init(): Promise<void> {
     courseSort = (e.target as HTMLSelectElement).value as CourseSort;
     void renderCourses();
   });
+  document.getElementById('toggle-archived-courses')!.addEventListener('click', () => {
+    setShowArchivedCourses(!showArchivedCourses);
+  });
 
   document.getElementById('course-detail-back')!.addEventListener('click', backToCourseList);
+  document.getElementById('course-detail-archive-toggle')!.addEventListener('click', () => {
+    void toggleSelectedCourseArchived();
+  });
   document.getElementById('course-detail-view-resources')!.addEventListener('click', () => {
     if (!selectedCourse) return;
     resourcesCourseFilterId = selectedCourse.id;
@@ -3930,6 +4008,12 @@ async function init(): Promise<void> {
     await renderResourcesPage();
     await renderNotesPage();
     await renderDeadlines();
+  });
+
+  atlasApi.onCourseContextMenuToggleArchive(async (courseId, archived) => {
+    await atlasApi.setCourseArchived(courseId, archived);
+    if (selectedCourse && selectedCourse.id === courseId) backToCourseList();
+    await renderCourses();
   });
 
   const newDeadlineButton = document.getElementById('new-deadline-button') as HTMLButtonElement;

@@ -376,7 +376,12 @@ ul#search-results li.search-empty:hover {
    inconsistent since both are the same kind of action (a widget-level
    footer action, not part of the header). */
 .dashboard-widget-footer-btn {
-  margin-top: 0.9rem;
+  /* auto instead of a fixed 0.9rem: pins the button to the bottom of its
+     widget box regardless of how tall the list above it happens to be,
+     instead of floating directly under the list content and leaving grey
+     empty space below the button whenever the widget is stretched taller
+     than the list needs (see open-questions.md #25). */
+  margin-top: auto;
   width: 100%;
   padding: 0.55rem 0.9rem;
   border-radius: 6px;
@@ -794,6 +799,7 @@ ul#all-resources-list li .code {
   margin-bottom: 1rem;
 }
 
+.courses-toolbar-left,
 .courses-toolbar-right {
   display: flex;
   align-items: center;
@@ -974,6 +980,10 @@ ul#course-list.view-list li.course-card .course-card-counts {
 
 #course-detail-meta {
   margin: 0.15rem 0 0 0;
+}
+
+#course-detail-archive-toggle {
+  margin-left: auto;
 }
 
 /* Tabbed course-detail layout (replaces the old single long-scroll page —

@@ -193,6 +193,8 @@ contextBridge.exposeInMainWorld('atlas', {
   listCourses: (): Promise<Course[]> => ipcRenderer.invoke('courses:list'),
   createCourse: (name: string, code: string | null, term: string | null): Promise<Course> =>
     ipcRenderer.invoke('courses:create', name, code, term),
+  setCourseArchived: (courseId: number, archived: boolean): Promise<Course> =>
+    ipcRenderer.invoke('courses:setArchived', courseId, archived),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
@@ -293,6 +295,11 @@ contextBridge.exposeInMainWorld('atlas', {
   onCourseContextMenuDelete: (handler: (courseId: number) => void): void => {
     ipcRenderer.on('resources:courseContextMenuDelete', (_event, courseId: number) => handler(courseId));
   },
+  onCourseContextMenuToggleArchive: (handler: (courseId: number, archived: boolean) => void): void => {
+    ipcRenderer.on('resources:courseContextMenuToggleArchive', (_event, courseId: number, archived: boolean) =>
+      handler(courseId, archived)
+    );
+  },
   listWatchedFolders: (courseId: number): Promise<WatchedFolder[]> =>
     ipcRenderer.invoke('folders:listWatched', courseId),
   addWatchedFolder: (courseId: number): Promise<WatchedFolder | null> =>
@@ -359,7 +366,8 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('deadlines:listAllWithCourse'),
   getRecentResources: (): Promise<DashboardResource[]> => ipcRenderer.invoke('dashboard:recentResources'),
   getRecentActivity: (): Promise<DashboardActivityItem[]> => ipcRenderer.invoke('dashboard:recentActivity'),
-  getCourseSummaries: (): Promise<CourseSummary[]> => ipcRenderer.invoke('dashboard:courseSummaries'),
+  getCourseSummaries: (archived = false): Promise<CourseSummary[]> =>
+    ipcRenderer.invoke('dashboard:courseSummaries', archived),
   listAllResources: (): Promise<ResourceWithCourse[]> => ipcRenderer.invoke('resources:listAll'),
   listAllNotes: (): Promise<NoteWithCourse[]> => ipcRenderer.invoke('notes:listAll'),
 });

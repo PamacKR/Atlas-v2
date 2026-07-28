@@ -121,13 +121,19 @@
           </form>
 
           <div class="courses-toolbar">
-            <select id="semester-filter">
-              <option value="">All semesters</option>
-              <option value="Monsoon 26">Monsoon 26</option>
-              <option value="Spring 27">Spring 27</option>
-              <option value="Monsoon 27">Monsoon 27</option>
-              <option value="Spring 28">Spring 28</option>
-            </select>
+            <div class="courses-toolbar-left">
+              <select id="semester-filter">
+                <option value="">All semesters</option>
+                <option value="Monsoon 26">Monsoon 26</option>
+                <option value="Spring 27">Spring 27</option>
+                <option value="Monsoon 27">Monsoon 27</option>
+                <option value="Spring 28">Spring 28</option>
+              </select>
+              <!-- Toggles between active courses (default) and archived ones —
+                   never both mixed together, so a card on screen is
+                   unambiguously one or the other. -->
+              <button id="toggle-archived-courses" type="button" class="link-button">Show archived courses</button>
+            </div>
             <div class="courses-toolbar-right">
               <select id="course-sort">
                 <option value="name">Sort by: Name</option>
@@ -147,6 +153,7 @@
           </div>
 
           <ul id="course-list" class="view-grid"></ul>
+          <p id="course-list-empty" class="muted" hidden></p>
         </div>
 
         <div id="courses-detail-view" hidden>
@@ -161,6 +168,7 @@
               <h2 id="course-detail-heading"></h2>
               <p id="course-detail-meta" class="muted"></p>
             </div>
+            <button id="course-detail-archive-toggle" type="button" class="link-button">Archive course</button>
           </div>
 
           <!-- Tabbed layout (replaces the old single long-scroll page) —
