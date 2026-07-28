@@ -327,17 +327,22 @@ ul#search-results li.search-empty:hover {
   color: var(--color-text-secondary);
 }
 
-/* Three columns (My Courses | Upcoming | Recent activity), per the shared
-   screenshot. Back to the Grid default (align-items: stretch, so no need to
-   state it) so all three columns share a flat bottom edge — the earlier
-   align-items: start was only needed because #dashboard-deadlines rows were
-   stacking/centering from a separate flex-direction bug (see
-   .upcoming-row below); now that's fixed at the source, stretching is safe
-   and matches the reference layout. */
+/* Three columns (My Courses | Upcoming | Recent activity). align-items:
+   start (not the Grid default of stretch) — stretch forces every column to
+   match the height of the tallest one (here, the right column's two
+   stacked widgets), and with real data the columns' content heights
+   genuinely differ (e.g. only 2 real upcoming deadlines vs. 7-8 recent
+   resources) — there's no amount of real content to fill that gap with, so
+   stretching just left a dead, empty-looking void inside the shorter
+   widgets instead of showing anything (see open-questions.md #27). Letting
+   each column size to its own content means the three columns' bottoms
+   won't always line up flush anymore, but nothing shows blank space it has
+   no content for. */
 #dashboard-main-grid {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.3fr) minmax(240px, 1fr);
   gap: 1rem;
+  align-items: start;
 }
 
 #dashboard-right-column {
@@ -356,17 +361,16 @@ ul#search-results li.search-empty:hover {
 }
 
 /* A fixed cap (same idea as the generic .dashboard-widget ul rule the
-   Recently-added/What-changed widgets already use) rather than max-height:
-   none — letting Upcoming grow to fit every one of its (often 8+) rows made
-   it taller than the right column's two capped widgets combined, so the
-   grid stretched My Courses/Upcoming down to match Upcoming's own
-   oversized height, well past what 5-ish courses/deadlines actually need.
-   Capping both at the same height keeps all three columns close to the
-   same natural size, with scroll for whatever doesn't fit. */
+   Recently-added/What-changed widgets already use), so a course/deadline
+   list with unusually many rows still scrolls instead of growing the whole
+   widget unboundedly. No `flex: 1` here (removed, see open-questions.md
+   #27) — that was forcing the list itself to stretch and fill whatever
+   extra height the grid handed the widget, which is exactly what produced
+   a dead blank area below a short list. Without it, the list (and the
+   widget around it) is only ever as tall as its own content actually needs,
+   up to this cap. */
 #dashboard-courses-widget > ul,
 #dashboard-upcoming-widget > ul {
-  flex: 1;
-  min-height: 0;
   max-height: 360px;
   overflow-y: auto;
 }
