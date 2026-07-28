@@ -1834,9 +1834,14 @@ button#add-watch-folder {
    #drive-connect-button/#drive-disconnect-button toggle via the `hidden`
    attribute depending on connection state, so `display` must be scoped to
    :not([hidden]) rather than set unconditionally. */
+button#sync-now-all {
+  margin-top: 0.6rem;
+}
+
 button#drive-connect-button:not([hidden]),
 button#drive-disconnect-button:not([hidden]),
-button#drive-clear-preview-cache-button {
+button#drive-clear-preview-cache-button,
+button#sync-now-all {
   padding: 0.4rem 0.9rem;
   border-radius: 4px;
   border: 1px solid var(--color-border);
@@ -1848,7 +1853,8 @@ button#drive-clear-preview-cache-button {
 
 button#drive-connect-button:hover:not([hidden]),
 button#drive-disconnect-button:hover:not([hidden]),
-button#drive-clear-preview-cache-button:hover {
+button#drive-clear-preview-cache-button:hover,
+button#sync-now-all:hover {
   background: var(--color-hover-bg);
 }
 
@@ -3380,6 +3386,25 @@ button#classroom-connect-confirm {
 .settings-theme-buttons {
   display: flex;
   gap: 0.4rem;
+}
+
+/* Sync schedule row controls (open-questions.md #2) — same idea as
+   .settings-theme-buttons (a control cluster on the right of a
+   .settings-row), just with a <select> + a .link-button instead of chips. */
+.sync-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#sync-config-drive,
+#sync-config-classroom {
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated-2);
+  color: var(--color-text);
+  font-size: 0.82rem;
 }
 
 #settings-accent-swatches {

@@ -1,5 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// Sync configuration (open-questions.md #2) — one entry per source
+// ('drive'/'classroom'), keyed the same as sync:getStatus's return shape.
+export interface SyncSourceStatus {
+  mode: 'off' | 'launch' | 'interval';
+  intervalSeconds: number;
+  lastSuccess: string | null;
+  lastError: string | null;
+}
+export type SyncStatus = Record<'drive' | 'classroom', SyncSourceStatus>;
+
 export interface Course {
   id: number;
   name: string;
@@ -209,6 +219,11 @@ contextBridge.exposeInMainWorld('atlas', {
   disconnectDrive: (): Promise<void> => ipcRenderer.invoke('google:disconnectDrive'),
   clearDrivePreviewCache: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:clearDrivePreviewCache'),
+  getSyncStatus: (): Promise<SyncStatus> => ipcRenderer.invoke('sync:getStatus'),
+  setSyncConfig: (source: 'drive' | 'classroom', value: string): Promise<void> =>
+    ipcRenderer.invoke('sync:setConfig', source, value),
+  syncNow: (source: 'drive' | 'classroom'): Promise<void> => ipcRenderer.invoke('sync:now', source),
+  syncAllNow: (): Promise<void> => ipcRenderer.invoke('sync:nowAll'),
   getDriveFolder: (): Promise<DriveFolder | null> => ipcRenderer.invoke('google:getDriveFolder'),
   setDriveFolder: (link: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:setDriveFolder', link),
@@ -228,8 +243,6 @@ contextBridge.exposeInMainWorld('atlas', {
   connectClassroom: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('classroom:connect'),
   disconnectClassroom: (): Promise<void> => ipcRenderer.invoke('classroom:disconnect'),
-  syncClassroomNow: (): Promise<{ ok: boolean; changed?: boolean; errors?: ClassroomSyncError[]; error?: string }> =>
-    ipcRenderer.invoke('classroom:syncNow'),
   listPendingClassroomCourses: (): Promise<ClassroomPendingCourse[]> =>
     ipcRenderer.invoke('classroom:listPendingCourses'),
   ignorePendingClassroomCourse: (classroomCourseId: string): Promise<void> =>

@@ -405,6 +405,54 @@
           </div>
 
           <div class="settings-panel" data-settings-panel="sources" hidden>
+            <!-- Sync schedule (open-questions.md #2) — one row per source.
+                 Every source's sync used to be hardcoded and invisible; this
+                 makes it a real, adjustable setting with a visible last-
+                 synced time and last error, instead of a sync silently
+                 failing with no way to notice (see open-questions.md #21,
+                 where exactly that happened for weeks). -->
+            <section class="settings-section">
+              <h3>Sync</h3>
+              <div class="settings-row">
+                <div>
+                  <div class="settings-row-label">Google Drive</div>
+                  <div id="sync-status-drive" class="settings-row-hint"></div>
+                </div>
+                <div class="sync-row-controls">
+                  <select id="sync-config-drive">
+                    <option value="off">Off</option>
+                    <option value="launch">On launch only</option>
+                    <option value="interval:20">Every 20 seconds</option>
+                    <option value="interval:60">Every 1 minute</option>
+                    <option value="interval:300">Every 5 minutes</option>
+                    <option value="interval:900">Every 15 minutes</option>
+                    <option value="interval:1800">Every 30 minutes</option>
+                    <option value="interval:3600">Every 60 minutes</option>
+                  </select>
+                  <button id="sync-now-drive" type="button" class="link-button">Sync now</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <div>
+                  <div class="settings-row-label">Google Classroom</div>
+                  <div id="sync-status-classroom" class="settings-row-hint"></div>
+                </div>
+                <div class="sync-row-controls">
+                  <select id="sync-config-classroom">
+                    <option value="off">Off</option>
+                    <option value="launch">On launch only</option>
+                    <option value="interval:300">Every 5 minutes</option>
+                    <option value="interval:900">Every 15 minutes</option>
+                    <option value="interval:1800">Every 30 minutes</option>
+                    <option value="interval:3600">Every 60 minutes</option>
+                  </select>
+                  <button id="sync-now-classroom" type="button" class="link-button">Sync now</button>
+                </div>
+              </div>
+
+              <button id="sync-now-all" type="button">Sync everything now</button>
+            </section>
+
             <section class="settings-section">
               <h3>Google Drive</h3>
               <p id="drive-status" class="muted">Not connected.</p>
@@ -433,7 +481,6 @@
               <p id="classroom-status" class="muted">Not connected.</p>
               <button id="classroom-connect-button" type="button">Connect Google Classroom</button>
               <button id="classroom-disconnect-button" type="button" hidden>Disconnect</button>
-              <button id="classroom-sync-button" type="button" hidden>Sync now</button>
               <p id="classroom-pending-status" class="muted" hidden></p>
               <button id="classroom-review-button" type="button" hidden>Review new courses</button>
             </section>

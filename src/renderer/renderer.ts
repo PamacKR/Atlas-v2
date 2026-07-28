@@ -9,6 +9,15 @@ interface Course {
   classroom_course_id: string | null;
 }
 
+// Sync configuration (open-questions.md #2) — one entry per source.
+interface SyncSourceStatus {
+  mode: 'off' | 'launch' | 'interval';
+  intervalSeconds: number;
+  lastSuccess: string | null;
+  lastError: string | null;
+}
+type SyncStatus = Record<'drive' | 'classroom', SyncSourceStatus>;
+
 interface Resource {
   id: number;
   course_id: number;
@@ -220,6 +229,10 @@ interface AtlasApi {
   connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectDrive: () => Promise<void>;
   clearDrivePreviewCache: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  getSyncStatus: () => Promise<SyncStatus>;
+  setSyncConfig: (source: 'drive' | 'classroom', value: string) => Promise<void>;
+  syncNow: (source: 'drive' | 'classroom') => Promise<void>;
+  syncAllNow: () => Promise<void>;
   getDriveFolder: () => Promise<DriveFolder | null>;
   setDriveFolder: (link: string) => Promise<{ ok: true; name: string } | { ok: false; error: string }>;
   listPendingDriveFiles: () => Promise<DrivePendingFile[]>;
@@ -234,7 +247,6 @@ interface AtlasApi {
   isClassroomConnected: () => Promise<boolean>;
   connectClassroom: () => Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectClassroom: () => Promise<void>;
-  syncClassroomNow: () => Promise<{ ok: boolean; changed?: boolean; errors?: ClassroomSyncError[]; error?: string }>;
   listPendingClassroomCourses: () => Promise<ClassroomPendingCourse[]>;
   ignorePendingClassroomCourse: (classroomCourseId: string) => Promise<void>;
   mapClassroomCourseToExisting: (
@@ -500,10 +512,65 @@ function setSettingsTab(tab: string): void {
 
 async function renderSettingsPage(): Promise<void> {
   await Promise.all([
+    renderSyncStatus(),
     renderDriveStatus(),
     renderClassroomStatus(),
     renderSettingsAbout(),
   ]);
+}
+
+// Sync schedule (open-questions.md #2) — one dropdown + last-synced/error
+// line per source. `value` on each <select> is exactly the config string
+// main.ts's sync:setConfig expects ('off' / 'launch' / 'interval:<seconds>'),
+// so no translation is needed between the two.
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return 'never';
+  const then = new Date(iso).getTime();
+  const diffSeconds = Math.round((Date.now() - then) / 1000);
+  if (diffSeconds < 5) return 'just now';
+  if (diffSeconds < 60) return `${diffSeconds}s ago`;
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+async function renderSyncStatus(): Promise<void> {
+  const status = await atlasApi.getSyncStatus();
+  for (const source of ['drive', 'classroom'] as const) {
+    const info = status[source];
+    const value = info.mode === 'interval' ? `interval:${info.intervalSeconds}` : info.mode;
+    (document.getElementById(`sync-config-${source}`) as HTMLSelectElement).value = value;
+
+    const statusEl = document.getElementById(`sync-status-${source}`)!;
+    const lastSyncedText = `Last synced: ${formatRelativeTime(info.lastSuccess)}`;
+    statusEl.textContent = info.lastError ? `${lastSyncedText} — ${info.lastError}` : lastSyncedText;
+  }
+}
+
+async function syncSourceNowClicked(source: 'drive' | 'classroom'): Promise<void> {
+  const button = document.getElementById(`sync-now-${source}`) as HTMLButtonElement;
+  button.disabled = true;
+  button.textContent = 'Syncing…';
+  await atlasApi.syncNow(source);
+  button.disabled = false;
+  button.textContent = 'Sync now';
+  await renderSyncStatus();
+  if (source === 'drive') await renderDrivePendingStatus();
+  else await renderClassroomPendingStatus();
+}
+
+async function syncAllNowClicked(): Promise<void> {
+  const button = document.getElementById('sync-now-all') as HTMLButtonElement;
+  button.disabled = true;
+  button.textContent = 'Syncing…';
+  await atlasApi.syncAllNow();
+  button.disabled = false;
+  button.textContent = 'Sync everything now';
+  await renderSyncStatus();
+  await Promise.all([renderDrivePendingStatus(), renderClassroomPendingStatus()]);
 }
 
 async function renderSettingsAbout(): Promise<void> {
@@ -1461,7 +1528,6 @@ async function renderClassroomStatus(): Promise<void> {
   document.getElementById('classroom-status')!.textContent = connected ? 'Connected.' : 'Not connected.';
   (document.getElementById('classroom-connect-button') as HTMLButtonElement).hidden = connected;
   (document.getElementById('classroom-disconnect-button') as HTMLButtonElement).hidden = !connected;
-  (document.getElementById('classroom-sync-button') as HTMLButtonElement).hidden = !connected;
 
   await renderClassroomPendingStatus();
 }
@@ -1503,22 +1569,6 @@ async function connectClassroom(): Promise<void> {
 async function disconnectClassroom(): Promise<void> {
   await atlasApi.disconnectClassroom();
   await renderClassroomStatus();
-}
-
-async function syncClassroomNowClicked(): Promise<void> {
-  const button = document.getElementById('classroom-sync-button') as HTMLButtonElement;
-  button.disabled = true;
-  button.textContent = 'Syncing…';
-  const result = await atlasApi.syncClassroomNow();
-  button.disabled = false;
-  button.textContent = 'Sync now';
-  await renderClassroomPendingStatus();
-  if (result.errors && result.errors.length > 0) {
-    alert(
-      `Synced, but ${result.errors.length} course(s) failed:\n` +
-        result.errors.map((e) => `${e.courseName || 'Unknown course'}: ${e.message}`).join('\n')
-    );
-  }
 }
 
 // One row per pending Classroom course — a course picker (existing courses,
@@ -3867,6 +3917,19 @@ async function init(): Promise<void> {
     button.addEventListener('click', () => showPage(button.dataset.page as AppPage));
   });
   document.getElementById('manage-courses-button')!.addEventListener('click', () => showPage('courses'));
+
+  document.getElementById('sync-config-drive')!.addEventListener('change', (e) => {
+    void atlasApi.setSyncConfig('drive', (e.target as HTMLSelectElement).value).then(renderSyncStatus);
+  });
+  document.getElementById('sync-config-classroom')!.addEventListener('change', (e) => {
+    void atlasApi.setSyncConfig('classroom', (e.target as HTMLSelectElement).value).then(renderSyncStatus);
+  });
+  document.getElementById('sync-now-drive')!.addEventListener('click', () => void syncSourceNowClicked('drive'));
+  document
+    .getElementById('sync-now-classroom')!
+    .addEventListener('click', () => void syncSourceNowClicked('classroom'));
+  document.getElementById('sync-now-all')!.addEventListener('click', () => void syncAllNowClicked());
+
   document.getElementById('drive-connect-button')!.addEventListener('click', connectDrive);
   document.getElementById('drive-disconnect-button')!.addEventListener('click', disconnectDrive);
   document
@@ -3882,7 +3945,6 @@ async function init(): Promise<void> {
 
   document.getElementById('classroom-connect-button')!.addEventListener('click', connectClassroom);
   document.getElementById('classroom-disconnect-button')!.addEventListener('click', disconnectClassroom);
-  document.getElementById('classroom-sync-button')!.addEventListener('click', syncClassroomNowClicked);
   document.getElementById('classroom-review-button')!.addEventListener('click', openClassroomReviewPanel);
   document.getElementById('classroom-review-close')!.addEventListener('click', closeClassroomReviewPanel);
   document

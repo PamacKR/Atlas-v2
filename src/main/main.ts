@@ -622,23 +622,22 @@ app.whenReady().then(async () => {
   // enough at this app's scale to just do unconditionally on every launch.
   rebuildSearchIndex();
 
-  // Google Drive "inbox folder" scan (Phase 3, open-questions.md #19):
-  // once on launch, then every ~20s while the app stays open. True push
-  // (Drive's changes.watch webhook) needs a public HTTPS endpoint, which
-  // doesn't fit a local desktop app — polling is the accepted near-real-time
-  // tradeoff. No-ops quietly if Drive isn't connected or no folder is set yet.
-  void scanDriveAndNotify();
-  setInterval(() => void scanDriveAndNotify(), 20_000);
-
-  // Google Classroom sync (Phase 3, ARCHITECTURE.md §4b): once on launch,
-  // plus the explicit "Sync now" button — deliberately no polling interval,
-  // unlike Drive. No-ops quietly if Classroom isn't connected yet.
-  // Awaited (rather than fire-and-forget like the Drive scan above)
-  // specifically so the one-time added_at repair below can run right after
-  // it — that repair depends on this same sync having just backfilled
-  // assignments.posted_at for any pre-existing assignment rows (see
-  // upsertAssignment in googleClassroom.ts).
-  void scanClassroomAndNotify().then(() => repairClassroomResourceAddedAtOnce());
+  // Google Drive "inbox folder" scan (Phase 3, open-questions.md #19) and
+  // Google Classroom sync (Phase 3, ARCHITECTURE.md §4b): schedule per each
+  // source's configured Off/On-launch/Every-N-minutes setting
+  // (open-questions.md #2) — defaults reproduce the prior hardcoded
+  // behavior exactly (Drive every 20s, Classroom launch-only), so this is a
+  // pure generalization, not a behavior change, unless the user has
+  // touched the new Settings controls. True push (Drive's changes.watch
+  // webhook) needs a public HTTPS endpoint, which doesn't fit a local
+  // desktop app — polling is the accepted near-real-time tradeoff. Both
+  // no-op quietly if their source isn't connected yet.
+  void applySyncSchedule('drive');
+  // Awaited (rather than fire-and-forget) specifically so the one-time
+  // added_at repair below can run right after it — that repair depends on
+  // this same sync having just backfilled assignments.posted_at for any
+  // pre-existing assignment rows (see upsertAssignment in googleClassroom.ts).
+  void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -910,18 +909,149 @@ ipcMain.handle('google:clearDrivePreviewCache', async () => {
   }
 });
 
+// --- Sync configuration (open-questions.md #2) ---
+// Every source's sync schedule used to be hardcoded and invisible (Drive
+// polled every 20s no matter what, Classroom only on launch/"Sync now") —
+// which is also how the Classroom adapter managed to fail on every single
+// sync for weeks without the UI ever showing it (open-questions.md #21).
+// This makes the schedule a real, visible, user-adjustable setting per
+// source, stored as one app_settings string: 'off' | 'launch' |
+// 'interval:<seconds>'. Defaults reproduce today's exact prior behavior —
+// Drive polls every 20s, Classroom is launch-only — so nothing changes for
+// an existing user unless they touch the new Settings controls themselves.
+type SyncSource = 'drive' | 'classroom';
+type SyncMode = 'off' | 'launch' | 'interval';
+
+const DEFAULT_SYNC_CONFIG: Record<SyncSource, { mode: SyncMode; intervalSeconds: number }> = {
+  drive: { mode: 'interval', intervalSeconds: 20 },
+  classroom: { mode: 'launch', intervalSeconds: 300 },
+};
+
+function getSyncConfig(source: SyncSource): { mode: SyncMode; intervalSeconds: number } {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(`sync_config_${source}`) as
+    | { value: string }
+    | undefined;
+  if (!row) return DEFAULT_SYNC_CONFIG[source];
+  if (row.value === 'off') return { mode: 'off', intervalSeconds: DEFAULT_SYNC_CONFIG[source].intervalSeconds };
+  if (row.value === 'launch') return { mode: 'launch', intervalSeconds: DEFAULT_SYNC_CONFIG[source].intervalSeconds };
+  const match = row.value.match(/^interval:(\d+)$/);
+  if (match) return { mode: 'interval', intervalSeconds: Number(match[1]) };
+  return DEFAULT_SYNC_CONFIG[source];
+}
+
+function setSyncSetting(key: string, value: string): void {
+  const db = getDb();
+  db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?').run(
+    key,
+    value,
+    value
+  );
+}
+
+function getSyncSetting(key: string): string | null {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+// Recorded on every automatic *and* manual sync attempt for a source — the
+// "last synced"/"last error" the Settings UI shows. lastSuccess is only
+// ever moved forward on an actual successful run; lastError is set on
+// failure and cleared on a clean success, but a partial failure (some
+// courses/files failed, others didn't) still moves lastSuccess forward
+// *and* keeps the error visible, since a sync that mostly worked is still
+// worth showing as "synced," just with a caveat attached.
+function recordSyncResult(source: SyncSource, succeeded: boolean, errorMessage: string | null): void {
+  if (succeeded) setSyncSetting(`sync_${source}_last_success`, new Date().toISOString());
+  setSyncSetting(`sync_${source}_last_error`, errorMessage ?? '');
+}
+
+const syncIntervalTimers: Partial<Record<SyncSource, ReturnType<typeof setInterval>>> = {};
+
+function clearSyncInterval(source: SyncSource): void {
+  const timer = syncIntervalTimers[source];
+  if (timer) {
+    clearInterval(timer);
+    delete syncIntervalTimers[source];
+  }
+}
+
+function runSourceSync(source: SyncSource): Promise<void> {
+  return source === 'drive' ? scanDriveAndNotify() : scanClassroomAndNotify().then(() => {});
+}
+
+// (Re)applies a source's current config: clears any existing interval
+// timer, then — unless the mode is 'off' — runs one sync immediately and,
+// for 'interval' mode, starts a new recurring timer at the configured
+// period. Called once per source at launch, and again immediately whenever
+// the user changes that source's setting, so a change takes effect without
+// needing a relaunch. 'off' means no automatic sync at all, not even at
+// launch — the user's explicit "Sync now"/per-course-connect actions still
+// work regardless of this setting, since those are deliberate user actions,
+// not the background schedule this setting controls.
+function applySyncSchedule(source: SyncSource): Promise<void> {
+  clearSyncInterval(source);
+  const { mode, intervalSeconds } = getSyncConfig(source);
+  if (mode === 'off') return Promise.resolve();
+
+  const initial = runSourceSync(source);
+  if (mode === 'interval') {
+    syncIntervalTimers[source] = setInterval(() => void runSourceSync(source), intervalSeconds * 1000);
+  }
+  return initial;
+}
+
+ipcMain.handle('sync:getStatus', () => {
+  const sources: SyncSource[] = ['drive', 'classroom'];
+  const status: Record<string, unknown> = {};
+  for (const source of sources) {
+    const { mode, intervalSeconds } = getSyncConfig(source);
+    status[source] = {
+      mode,
+      intervalSeconds,
+      lastSuccess: getSyncSetting(`sync_${source}_last_success`),
+      lastError: getSyncSetting(`sync_${source}_last_error`) || null,
+    };
+  }
+  return status;
+});
+
+// value is 'off' | 'launch' | 'interval:<seconds>' — validated against
+// that exact shape before being stored, so a malformed value can never end
+// up silently disabling a source's sync or crashing the interval-seconds
+// parse later.
+ipcMain.handle('sync:setConfig', (_event, source: SyncSource, value: string) => {
+  if (value !== 'off' && value !== 'launch' && !/^interval:\d+$/.test(value)) {
+    throw new Error(`Invalid sync config value: ${value}`);
+  }
+  setSyncSetting(`sync_config_${source}`, value);
+  void applySyncSchedule(source);
+});
+
+ipcMain.handle('sync:now', async (_event, source: SyncSource) => {
+  await runSourceSync(source);
+});
+
+ipcMain.handle('sync:nowAll', async () => {
+  await Promise.all([runSourceSync('drive'), runSourceSync('classroom')]);
+});
+
 // Scans the configured Drive folder and, if anything new turned up, tells
 // the renderer to refresh its pending-files count/badge — same push-event
-// pattern as resources:changed/notes:changed. Called once at launch, then on
-// a ~20s interval while the app stays open (see app.whenReady() below), and
-// once immediately after the user sets/changes the folder so the pending
-// list doesn't wait for the next interval tick.
+// pattern as resources:changed/notes:changed. Called once at launch, then
+// on whatever interval the user's configured (see applySyncSchedule
+// above — 20s by default, matching the prior hardcoded behavior), and once
+// immediately after the user sets/changes the folder so the pending list
+// doesn't wait for the next interval tick.
 async function scanDriveAndNotify(): Promise<void> {
   try {
     const foundNew = await scanDriveFolder();
     if (foundNew && mainWindow) mainWindow.webContents.send('google:driveChanged');
+    recordSyncResult('drive', true, null);
   } catch (err) {
     console.error('Google Drive scan failed:', err);
+    recordSyncResult('drive', false, err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -991,31 +1121,32 @@ ipcMain.handle('classroom:disconnect', () => {
 // Runs a full scan (new/unmapped courses, plus coursework/announcements/
 // classwork for already-mapped courses) and tells the renderer if anything
 // changed — same push-event pattern as scanDriveAndNotify. Called once at
-// launch and from an explicit "Sync now" button; deliberately no
-// setInterval (see ARCHITECTURE.md §4b for why Classroom doesn't poll like
-// Drive does). Per-course sync errors (see syncClassroomCourseworkForMappedCourses)
-// are returned rather than only console.error'd, so a real failure is
-// visible in the UI instead of looking identical to "nothing new."
+// launch, from an explicit "Sync now" button, and on whatever interval the
+// user's configured (see applySyncSchedule — launch-only by default,
+// matching the prior hardcoded behavior; see ARCHITECTURE.md §4b for why
+// that was the original default). Per-course sync errors (see
+// syncClassroomCourseworkForMappedCourses) are returned rather than only
+// console.error'd, so a real failure is visible in the UI instead of
+// looking identical to "nothing new."
 async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: ClassroomSyncError[] }> {
   try {
     const { changed, errors } = await scanClassroom();
     if (changed && mainWindow) mainWindow.webContents.send('classroom:changed');
-    if (errors.length > 0) console.error('Google Classroom sync errors:', errors);
+    if (errors.length > 0) {
+      console.error('Google Classroom sync errors:', errors);
+      recordSyncResult('classroom', true, `${errors.length} course(s) failed: ${errors.map((e) => e.courseName || e.message).join(', ')}`);
+    } else {
+      recordSyncResult('classroom', true, null);
+    }
     return { changed, errors };
   } catch (err) {
     console.error('Google Classroom scan failed:', err);
-    return { changed: false, errors: [{ courseId: -1, courseName: '', message: err instanceof Error ? err.message : String(err) }] };
+    const message = err instanceof Error ? err.message : String(err);
+    recordSyncResult('classroom', false, message);
+    return { changed: false, errors: [{ courseId: -1, courseName: '', message }] };
   }
 }
 
-ipcMain.handle('classroom:syncNow', async () => {
-  try {
-    const { changed, errors } = await scanClassroomAndNotify();
-    return { ok: true as const, changed, errors };
-  } catch (err) {
-    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-  }
-});
 
 ipcMain.handle('classroom:listAvailableCoursesForLinking', () => listAvailableClassroomCoursesForLinking());
 

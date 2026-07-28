@@ -2,7 +2,16 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-28 (Atlas-v2, conflict handling for Classroom-synced deadlines built)
+**Last updated:** 2026-07-28 (Atlas-v2, configurable sync settings built — Phase 3 items 1 and 2 of 3 now done)
+
+## Session 2026-07-28 (continued) — configurable sync settings built (Phase 3 item 2 of 3)
+
+- **Every source's sync schedule is now a real, visible, adjustable Settings control** instead of hardcoded/invisible — Off / On launch only / Every N minutes, per source (Drive, Classroom), stored as one `app_settings` string per source (`'off'`/`'launch'`/`'interval:<seconds>'`). Defaults reproduce the exact prior behavior (Drive 20s, Classroom launch-only), so nothing changes for the user unless they touch the new dropdowns.
+- **"Last synced"/last-error is now visible per source** — this is what was missing when the Classroom adapter silently failed on every sync for weeks (session 46): there was simply no UI surface that could have shown it. Now there is.
+- **Consolidated Classroom's old standalone "Sync now" button** (with its own `alert()`-based error popup) into the new unified per-source control, rather than leaving two differently-styled sync-now affordances for the same source.
+- Verified with `npm run build` and a full `npm run verify` pass (no regressions) — real scheduling/timer behavior change, worth the full suite.
+- Docs updated in the same pass: `open-questions.md` #2 resolved, new `ARCHITECTURE.md` §4 "Sync scheduling" subsection, `ROADMAP.md` checkbox ticked.
+- **Phase 3's first two items (conflict handling, sync configuration) are now both done.** Per the agreed order, **Phase 4 (Context Builder + MCP) is next**, with the Gmail adapter deliberately last — see `open-questions.md` #28 for the full reasoning.
 
 ## Session 2026-07-28 (continued) — conflict handling built (Phase 3 item 1 of 3)
 
