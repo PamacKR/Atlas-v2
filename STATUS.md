@@ -2,19 +2,13 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-28 (Atlas-v2, Calendar-page refresh gap diagnosed but NOT yet fixed — see "Handoff" below before doing anything else)
+**Last updated:** 2026-07-28 (Atlas-v2, Calendar-page refresh gap fixed)
 
-## Handoff — pick this up first, before anything else
+## Session 2026-07-28 (continued) — fixed the Calendar-page refresh gap
 
-The user asked to prepare for a context compaction mid-diagnosis, so this is a real, confirmed, **unfixed** bug — not a completed item. Everything needed to fix it in one pass, without re-deriving anything, is here and in `open-questions.md` #3's "Second follow-up" section.
+Previously diagnosed but left unfixed across a context compaction (see prior session log below for the root-cause writeup). The actual fix landed in one place: `renderDeadlines()` in `renderer.ts` is the shared refresh point every deadline mutation already calls (save, reset-to-Classroom, delete, completion toggle), but it only ever refreshed Dashboard. Added `if (currentPage === 'calendar') void renderCalendarPage();` right alongside the existing `renderDashboard()` call there, so all four call sites get the Calendar refresh for free instead of needing four separate patches. Verified with `npm run build` and a full `npm run verify` pass.
 
-**The bug**: editing or resetting a deadline while looking at the **Calendar** page never updates the Calendar itself — the old date sticks until the user changes month and back.
-
-**Root cause (confirmed by reading the code)**: opening a deadline (`openDashboardDeadline()` in `renderer.ts`) calls `selectCourse()`, which only toggles the Courses page's *internal* sub-view (`#courses-list-view` vs `#courses-detail-view`) — it never calls `showPage('courses')`, so the module-level `currentPage` variable stays `'calendar'` the whole time if that's where the user started. This matches the app's own by-design overlay behavior (modals never navigate away from the current page). The Dashboard already refreshes correctly after an edit/reset because `renderDashboard()` is already called; **Calendar has no equivalent call**.
-
-**The fix** (small, precise, not yet applied): in both `resetCurrentDeadlineOverrides()` and the `deadlineEditForm` submit handler in `src/renderer/renderer.ts`, add `if (currentPage === 'calendar') await renderCalendarPage();` alongside the existing `renderDeadlines()`/`renderDashboard()` calls. Worth also checking `makeDeadlineCheckbox()`'s completion toggle and the deadline-delete handler for the same gap while in there.
-
-**Also revisit once that's fixed**: the user separately said the reset action still felt like "no confirmation" — likely largely explained by this same bug (nothing was visibly moving because Calendar wasn't refreshing), but worth a fresh look once the refresh gap is closed to see if anything else is needed.
+**Revisit if it resurfaces**: the user separately said the reset action still felt like "no confirmation" — likely explained by this same bug (nothing was visibly moving because Calendar wasn't refreshing). Worth a fresh look if the complaint recurs now that the refresh gap is closed.
 
 ## Session 2026-07-28 (continued) — investigated a "Reset to Classroom version" bug report, fixed the real cause
 
