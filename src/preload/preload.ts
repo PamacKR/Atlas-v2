@@ -58,6 +58,11 @@ export interface Deadline {
   completed: number;
   source: string;
   description: string | null;
+  classroom_coursework_id: string | null;
+  local_overrides: string | null;
+  classroom_title: string | null;
+  classroom_due_at: string | null;
+  classroom_removed: number;
 }
 
 export interface NoteOcrProgress {
@@ -370,6 +375,8 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('deadlines:update', deadlineId, title, kind, dueAt, description),
   setDeadlineCompleted: (deadlineId: number, completed: boolean): Promise<void> =>
     ipcRenderer.invoke('deadlines:setCompleted', deadlineId, completed),
+  resetDeadlineClassroomOverrides: (deadlineId: number): Promise<Deadline> =>
+    ipcRenderer.invoke('deadlines:resetClassroomOverrides', deadlineId),
   deleteDeadline: (deadlineId: number): Promise<void> => ipcRenderer.invoke('deadlines:delete', deadlineId),
   showDeadlineContextMenu: (deadlineId: number): void => ipcRenderer.send('deadlines:contextMenu', deadlineId),
   onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void): void => {

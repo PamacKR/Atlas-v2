@@ -143,7 +143,29 @@ CREATE TABLE IF NOT EXISTS deadlines (
   -- has since become overdue (the normal case) keeps stale_import = 0, so
   -- it still surfaces as "Overdue" in Upcoming — only already-dead-on-
   -- arrival rows are hidden.
-  stale_import INTEGER NOT NULL DEFAULT 0
+  stale_import INTEGER NOT NULL DEFAULT 0,
+  -- Conflict handling for Classroom-synced deadlines (open-questions.md #3).
+  -- A comma-delimited list of field names the user has edited by hand since
+  -- the last sync (currently only 'title' and/or 'due_at' are ever synced
+  -- fields, e.g. "title,due_at") — a re-sync never overwrites a field
+  -- listed here, but still applies Classroom's update to any field the user
+  -- hasn't touched. NULL/empty means fully synced, no local overrides.
+  local_overrides TEXT,
+  -- Classroom's own current title/due date, kept up to date by every sync
+  -- regardless of local_overrides — this is what makes "Reset to Classroom
+  -- version" possible without a fresh API call, and what lets the UI show
+  -- what Classroom's version actually says even while an override is in
+  -- place. NULL for a manually-created deadline (nothing to shadow).
+  classroom_title TEXT,
+  classroom_due_at TEXT,
+  -- Set when this deadline's Classroom coursework was deleted at the
+  -- source (reconciled once per Classroom sync — see
+  -- syncClassroomCourseworkForMappedCourses in googleClassroom.ts). The row
+  -- is never auto-deleted, since it may carry a description/@-mentions the
+  -- user attached — it's shown greyed out instead, and the user's existing
+  -- Delete action is the way to dismiss it. Cleared back to 0 if the
+  -- coursework ever reappears in a later sync.
+  classroom_removed INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS announcements (
@@ -172,7 +194,18 @@ CREATE TABLE IF NOT EXISTS assignments (
   classroom_coursework_id TEXT,
   -- Classroom's own updateTime for this courseWork item — lets a re-sync
   -- skip re-writing rows that haven't actually changed since last seen.
-  updated_at TEXT
+  updated_at TEXT,
+  -- Classroom's own creationTime for this courseWork item — mirrors
+  -- announcements.posted_at/classwork_materials.posted_at. Used to give a
+  -- synced attachment resource its real "added" date instead of defaulting
+  -- to sync time (open-questions.md #26).
+  posted_at TEXT,
+  -- Set when this assignment's Classroom coursework was deleted at the
+  -- source, same reconciliation pass as deadlines.classroom_removed —
+  -- assignments has no direct editing UI (the mirrored deadlines row is
+  -- what the user actually edits), so this is display-only, for the
+  -- course-detail Assignments tab. Cleared back to 0 if it reappears.
+  classroom_removed INTEGER NOT NULL DEFAULT 0
 );
 
 -- Files seen in the user's designated Google Drive "inbox" folder

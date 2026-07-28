@@ -181,18 +181,36 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
   // exception was probably the *actual* root cause of every past report of
   // "nothing synced," not just the missing per-course guard.
   const upsertAssignment = db.prepare(`
-    INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, updated_at, posted_at)
-    VALUES (?, ?, ?, ?, 'classroom', ?, ?, ?)
+    INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, updated_at, posted_at, classroom_removed)
+    VALUES (?, ?, ?, ?, 'classroom', ?, ?, ?, 0)
     ON CONFLICT (classroom_coursework_id) WHERE classroom_coursework_id IS NOT NULL DO UPDATE SET
       title = excluded.title, description = excluded.description,
       due_at = excluded.due_at, updated_at = excluded.updated_at,
-      posted_at = COALESCE(assignments.posted_at, excluded.posted_at)
+      posted_at = COALESCE(assignments.posted_at, excluded.posted_at),
+      classroom_removed = 0
   `);
+  // Conflict handling (open-questions.md #3): title/due_at are only ever
+  // overwritten with Classroom's incoming value when the user hasn't
+  // edited that specific field since the last sync — deadlines:update
+  // (main.ts) is what adds a field name to local_overrides the moment the
+  // user changes it. classroom_title/classroom_due_at are updated
+  // unconditionally on every sync regardless of overrides — they're the
+  // shadow of "what Classroom currently says," which is what makes
+  // deadlines:resetClassroomOverrides possible without a fresh API call.
+  // local_overrides itself is deliberately never touched here — clearing it
+  // is only ever an explicit user action (the reset), never a side effect
+  // of a sync.
   const upsertDeadline = db.prepare(`
-    INSERT INTO deadlines (course_id, title, kind, due_at, source, classroom_coursework_id, stale_import)
-    VALUES (?, ?, 'assignment', ?, 'classroom', ?, ?)
+    INSERT INTO deadlines (course_id, title, kind, due_at, source, classroom_coursework_id, stale_import, classroom_title, classroom_due_at, classroom_removed)
+    VALUES (?, ?, 'assignment', ?, 'classroom', ?, ?, ?, ?, 0)
     ON CONFLICT (classroom_coursework_id) WHERE classroom_coursework_id IS NOT NULL DO UPDATE SET
-      title = excluded.title, due_at = excluded.due_at
+      title = CASE WHEN instr(',' || COALESCE(deadlines.local_overrides, '') || ',', ',title,') > 0
+              THEN deadlines.title ELSE excluded.title END,
+      due_at = CASE WHEN instr(',' || COALESCE(deadlines.local_overrides, '') || ',', ',due_at,') > 0
+               THEN deadlines.due_at ELSE excluded.due_at END,
+      classroom_title = excluded.classroom_title,
+      classroom_due_at = excluded.classroom_due_at,
+      classroom_removed = 0
   `);
   // Today's date (YYYY-MM-DD), computed once per sync — due_at is either a
   // bare date or date+time in that same format, so a lexical compare against
@@ -249,12 +267,55 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
     return any;
   };
 
+  // Marks any assignment/deadline whose Classroom coursework no longer
+  // appears in a fresh courseWork.list for its course as classroom_removed
+  // — reconciled once per sync, per course, the same way scanDriveFolder
+  // reconciles drive_pending_files. Never deletes: the row may carry a
+  // description/@-mentions the user attached (open-questions.md #3), so
+  // it's left in place, greyed out in the UI, with the user's existing
+  // Delete action as the way to dismiss it.
+  const reconcileRemovedCoursework = (courseId: number, liveIds: Set<string>): boolean => {
+    let any = false;
+    const existingIds = db
+      .prepare(
+        'SELECT DISTINCT classroom_coursework_id AS id FROM deadlines WHERE course_id = ? AND classroom_coursework_id IS NOT NULL'
+      )
+      .all(courseId) as { id: string }[];
+    for (const row of existingIds) {
+      if (liveIds.has(row.id)) continue;
+      const result = db
+        .prepare(
+          'UPDATE deadlines SET classroom_removed = 1 WHERE course_id = ? AND classroom_coursework_id = ? AND classroom_removed = 0'
+        )
+        .run(courseId, row.id);
+      if (result.changes > 0) any = true;
+    }
+    // `NOT IN ()` with zero placeholders isn't valid SQL, and `NOT IN (NULL)`
+    // evaluates to NULL (neither true nor false) for every row — either way,
+    // an empty liveIds set (every coursework item gone) would wrongly match
+    // nothing rather than everything, so that case skips the IN clause and
+    // its condition entirely.
+    const notInClause = liveIds.size > 0 ? `AND classroom_coursework_id NOT IN (${Array(liveIds.size).fill('?').join(',')})` : '';
+    const removedResult = db
+      .prepare(
+        `UPDATE assignments SET classroom_removed = 1
+         WHERE course_id = ? AND classroom_coursework_id IS NOT NULL AND classroom_removed = 0
+           ${notInClause}`
+      )
+      .run(courseId, ...liveIds);
+    if (removedResult.changes > 0) any = true;
+    return any;
+  };
+
   for (const course of mappedCourses) {
     try {
       const courseWorkRes = await classroom.courses.courseWork.list({
         courseId: course.classroom_course_id,
         pageSize: 200,
       });
+      const liveCourseworkIds = new Set(
+        (courseWorkRes.data.courseWork ?? []).map((w) => w.id).filter((id): id is string => Boolean(id))
+      );
       for (const work of courseWorkRes.data.courseWork ?? []) {
         if (!work.id || !work.title) continue;
         const dueAt = formatDueAt(work.dueDate ?? undefined, work.dueTime ?? undefined);
@@ -274,7 +335,9 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
           work.title,
           dueAt,
           work.id,
-          dueAt && dueAt.slice(0, 10) < todayStr ? 1 : 0
+          dueAt && dueAt.slice(0, 10) < todayStr ? 1 : 0,
+          work.title,
+          dueAt
         );
         if (deadlineResult.changes > 0) changed = true;
 
@@ -282,6 +345,7 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
           changed = true;
         }
       }
+      if (reconcileRemovedCoursework(course.id, liveCourseworkIds)) changed = true;
 
       const announcementsRes = await classroom.courses.announcements.list({
         courseId: course.classroom_course_id,

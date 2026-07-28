@@ -715,10 +715,14 @@ ipcMain.handle('dashboard:stats', () => {
   ).count;
   const resourceCount = (db.prepare('SELECT COUNT(*) AS count FROM resources').get() as { count: number }).count;
   const noteCount = (db.prepare('SELECT COUNT(*) AS count FROM notes').get() as { count: number }).count;
+  // classroom_removed = 0 (open-questions.md #3): an assignment deleted at
+  // the Classroom source shouldn't count toward "upcoming" — planning
+  // around a deadline that no longer exists would be actively misleading,
+  // unlike stale_import rows which are just old, not gone.
   const upcomingDeadlineCount = (
     db
       .prepare(
-        'SELECT COUNT(*) AS count FROM deadlines WHERE completed = 0 AND due_at IS NOT NULL AND stale_import = 0'
+        'SELECT COUNT(*) AS count FROM deadlines WHERE completed = 0 AND due_at IS NOT NULL AND stale_import = 0 AND classroom_removed = 0'
       )
       .get() as { count: number }
   ).count;
@@ -743,6 +747,7 @@ ipcMain.handle('dashboard:upcomingDeadlines', () => {
        FROM deadlines
        JOIN courses ON courses.id = deadlines.course_id
        WHERE deadlines.completed = 0 AND deadlines.due_at IS NOT NULL AND deadlines.stale_import = 0
+         AND deadlines.classroom_removed = 0
        ORDER BY deadlines.due_at ASC
        LIMIT 8`
     )
@@ -1946,6 +1951,18 @@ ipcMain.handle(
   }
 );
 
+// Splits a comma-delimited override-field list into a Set, and back — kept
+// as plain comma-delimited text in the DB (see schema.sql) rather than JSON,
+// since the only two possible tokens ('title', 'due_at') never collide as
+// substrings and this avoids depending on SQLite's JSON1 extension being
+// present in this better-sqlite3 build.
+function parseOverrides(stored: string | null): Set<string> {
+  return new Set((stored ?? '').split(',').filter(Boolean));
+}
+function serializeOverrides(overrides: Set<string>): string | null {
+  return overrides.size > 0 ? [...overrides].join(',') : null;
+}
+
 ipcMain.handle(
   'deadlines:update',
   (
@@ -1957,16 +1974,51 @@ ipcMain.handle(
     description: string | null
   ) => {
     const db = getDb();
-    db.prepare('UPDATE deadlines SET title = ?, kind = ?, due_at = ?, description = ? WHERE id = ?').run(
-      title,
-      kind,
-      dueAt,
-      description,
-      deadlineId
-    );
+    const current = db
+      .prepare('SELECT title, due_at, classroom_coursework_id, local_overrides FROM deadlines WHERE id = ?')
+      .get(deadlineId) as
+      | { title: string; due_at: string | null; classroom_coursework_id: string | null; local_overrides: string | null }
+      | undefined;
+
+    // Conflict handling (open-questions.md #3): only a Classroom-synced
+    // deadline can have an "override" in the first place — a manually
+    // created deadline has nothing from Classroom to protect against. Only
+    // the two fields Classroom's sync actually writes (title, due_at) are
+    // ever tracked; kind/description are exclusively user-owned already and
+    // a re-sync never touches them, so there's nothing to protect there.
+    let overrides = parseOverrides(current?.local_overrides ?? null);
+    if (current?.classroom_coursework_id) {
+      if (title !== current.title) overrides.add('title');
+      if (dueAt !== current.due_at) overrides.add('due_at');
+    }
+
+    db.prepare(
+      'UPDATE deadlines SET title = ?, kind = ?, due_at = ?, description = ?, local_overrides = ? WHERE id = ?'
+    ).run(title, kind, dueAt, description, serializeOverrides(overrides), deadlineId);
     return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId);
   }
 );
+
+// "Reset to Classroom version" (open-questions.md #3) — discards the
+// user's local edits to title/due_at and restores Classroom's current
+// values, which every sync keeps shadowed in classroom_title/
+// classroom_due_at regardless of any override in place. Purely local: no
+// live Classroom API call needed, and works offline. Clears local_overrides
+// entirely rather than per-field, since this is the deliberately simple
+// "undo my changes to this item" action — the protection itself stays
+// per-field, but discarding it is all-or-nothing for one deadline.
+ipcMain.handle('deadlines:resetClassroomOverrides', (_event, deadlineId: number) => {
+  const db = getDb();
+  const current = db
+    .prepare('SELECT classroom_title, classroom_due_at FROM deadlines WHERE id = ?')
+    .get(deadlineId) as { classroom_title: string | null; classroom_due_at: string | null } | undefined;
+  if (!current) return null;
+
+  db.prepare(
+    'UPDATE deadlines SET title = COALESCE(classroom_title, title), due_at = classroom_due_at, local_overrides = NULL WHERE id = ?'
+  ).run(deadlineId);
+  return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId);
+});
 
 ipcMain.handle('deadlines:setCompleted', (_event, deadlineId: number, completed: boolean) => {
   const db = getDb();

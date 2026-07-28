@@ -123,6 +123,29 @@ function migrate(db: Database.Database): void {
     // freshly-inserted stale row so it stops flooding the Upcoming widget.
     db.exec("UPDATE deadlines SET stale_import = 1 WHERE due_at IS NOT NULL AND due_at < datetime('now')");
   }
+  // Conflict handling for Classroom-synced deadlines (open-questions.md #3)
+  // — see schema.sql for the full field-by-field reasoning.
+  if (!deadlineColumns.includes('local_overrides')) {
+    db.exec('ALTER TABLE deadlines ADD COLUMN local_overrides TEXT');
+  }
+  if (!deadlineColumns.includes('classroom_title')) {
+    db.exec('ALTER TABLE deadlines ADD COLUMN classroom_title TEXT');
+  }
+  if (!deadlineColumns.includes('classroom_due_at')) {
+    db.exec('ALTER TABLE deadlines ADD COLUMN classroom_due_at TEXT');
+  }
+  if (!deadlineColumns.includes('classroom_removed')) {
+    db.exec('ALTER TABLE deadlines ADD COLUMN classroom_removed INTEGER NOT NULL DEFAULT 0');
+    // Backfill: an existing Classroom-sourced deadline's classroom_title/
+    // classroom_due_at have never been populated before this column existed
+    // — seed them from the deadline's own current title/due_at (the last
+    // value Classroom set, since nothing local could have overridden a
+    // field this migration didn't track yet) so "Reset to Classroom
+    // version" and the shadow-value display aren't blank on first upgrade.
+    db.exec(
+      "UPDATE deadlines SET classroom_title = title, classroom_due_at = due_at WHERE classroom_coursework_id IS NOT NULL"
+    );
+  }
 
   const drivePendingColumns = (
     db.prepare('PRAGMA table_info(drive_pending_files)').all() as { name: string }[]
@@ -155,6 +178,9 @@ function migrate(db: Database.Database): void {
     // googleClassroom.ts) — assignments previously had no equivalent field
     // to source that from at all.
     db.exec('ALTER TABLE assignments ADD COLUMN posted_at TEXT');
+  }
+  if (!assignmentColumns.includes('classroom_removed')) {
+    db.exec('ALTER TABLE assignments ADD COLUMN classroom_removed INTEGER NOT NULL DEFAULT 0');
   }
 
   // Partial unique indexes (rather than a UNIQUE column constraint, which

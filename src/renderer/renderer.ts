@@ -51,6 +51,16 @@ interface Deadline {
   source: string;
   description: string | null;
   classroom_coursework_id: string | null;
+  // Conflict handling (open-questions.md #3). local_overrides is a
+  // comma-delimited list of fields ('title'/'due_at') the user has edited
+  // since the last sync; classroom_title/classroom_due_at shadow what
+  // Classroom currently says regardless of overrides, so "reset" works
+  // without a fresh API call; classroom_removed is set when this
+  // deadline's Classroom coursework was deleted at the source.
+  local_overrides: string | null;
+  classroom_title: string | null;
+  classroom_due_at: string | null;
+  classroom_removed: number;
 }
 
 // A candidate a deadline description's "@" autocomplete can insert a mention
@@ -311,6 +321,7 @@ interface AtlasApi {
     description: string | null
   ) => Promise<Deadline>;
   setDeadlineCompleted: (deadlineId: number, completed: boolean) => Promise<void>;
+  resetDeadlineClassroomOverrides: (deadlineId: number) => Promise<Deadline>;
   deleteDeadline: (deadlineId: number) => Promise<void>;
   showDeadlineContextMenu: (deadlineId: number) => void;
   onDeadlineContextMenuDelete: (handler: (deadlineId: number) => void) => void;
@@ -1073,6 +1084,7 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
     const li = document.createElement('li');
     li.className = 'deadline-item';
     if (deadline.completed) li.classList.add('completed');
+    if (deadline.classroom_removed) li.classList.add('classroom-removed');
     li.dataset.deadlineId = String(deadline.id);
 
     li.appendChild(makeDeadlineCheckbox(deadline));
@@ -1085,6 +1097,13 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
     title.className = 'deadline-title';
     title.textContent = deadline.title;
     li.appendChild(title);
+
+    if (deadline.classroom_removed) {
+      const removedBadge = document.createElement('span');
+      removedBadge.className = 'deadline-classroom-removed-badge';
+      removedBadge.textContent = 'Removed from Classroom';
+      li.appendChild(removedBadge);
+    }
 
     const kind = document.createElement('span');
     kind.className = 'code';
@@ -1115,6 +1134,7 @@ function renderDeadlineIconView(deadlines: Deadline[]): void {
     const li = document.createElement('li');
     li.className = 'icon-tile deadline-item';
     if (deadline.completed) li.classList.add('completed');
+    if (deadline.classroom_removed) li.classList.add('classroom-removed');
     li.dataset.deadlineId = String(deadline.id);
 
     li.appendChild(makeDeadlineCheckbox(deadline));
@@ -3448,6 +3468,26 @@ async function openDeadlineViewer(deadline: Deadline): Promise<void> {
     DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
   document.getElementById('deadline-view-due')!.textContent = formatDueDate(deadline.due_at);
 
+  // Conflict handling (open-questions.md #3) — both notices are mutually
+  // independent (a deadline can be both locally overridden and removed at
+  // the source, e.g. edited once, then the professor deleted the
+  // assignment), so they're shown/hidden separately rather than as one
+  // combined state.
+  document.getElementById('deadline-view-removed-notice')!.hidden = deadline.classroom_removed !== 1;
+
+  const overrides = (deadline.local_overrides ?? '').split(',').filter(Boolean);
+  const overrideNotice = document.getElementById('deadline-view-override-notice')!;
+  if (overrides.length > 0) {
+    const fieldLabels: Record<string, string> = { title: 'Title', due_at: 'Due date' };
+    document.getElementById('deadline-view-override-text')!.textContent =
+      `You've edited: ${overrides.map((f) => fieldLabels[f] ?? f).join(', ')} — Classroom's own updates to ${
+        overrides.length > 1 ? 'these' : 'this'
+      } won't overwrite your changes.`;
+    overrideNotice.hidden = false;
+  } else {
+    overrideNotice.hidden = true;
+  }
+
   const descriptionEl = document.getElementById('deadline-view-description')!;
   if (deadline.description && deadline.description.trim()) {
     descriptionEl.innerHTML = renderDeadlineDescription(deadline.description);
@@ -3461,6 +3501,18 @@ async function openDeadlineViewer(deadline: Deadline): Promise<void> {
   document.getElementById('deadline-view-mode')!.hidden = false;
   (document.getElementById('deadline-edit-form') as HTMLFormElement).hidden = true;
   document.getElementById('deadline-editor-overlay')!.hidden = false;
+}
+
+// "Reset to Classroom version" (open-questions.md #3) — discards local
+// title/due_at edits and restores what Classroom currently says, then
+// refreshes every view that could be showing this deadline's stale state.
+async function resetCurrentDeadlineOverrides(): Promise<void> {
+  if (!currentViewingDeadline) return;
+  const updated = await atlasApi.resetDeadlineClassroomOverrides(currentViewingDeadline.id);
+  if (!updated) return;
+  await openDeadlineViewer(updated);
+  await renderDeadlines();
+  void renderDashboard();
 }
 
 // dd-mm-yyyy, the format the user asked to be able to type directly — kept
@@ -4080,6 +4132,9 @@ async function init(): Promise<void> {
 
   document.getElementById('deadline-edit-button')!.addEventListener('click', () => {
     if (currentViewingDeadline) openDeadlineEditForm(currentViewingDeadline);
+  });
+  document.getElementById('deadline-reset-override-button')!.addEventListener('click', () => {
+    void resetCurrentDeadlineOverrides();
   });
   document.getElementById('deadline-view-close')!.addEventListener('click', closeDeadlineEditor);
   document.getElementById('deadline-cancel-button')!.addEventListener('click', closeDeadlineEditor);

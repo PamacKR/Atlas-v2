@@ -2636,6 +2636,40 @@ li.deadline-item.completed .icon-name {
   color: var(--color-text-muted);
 }
 
+/* Greyed-out styling for a deadline whose Classroom coursework was deleted
+   at the source (open-questions.md #3) — not deleted here, just visually
+   de-emphasized, since the row may carry a description/@-mentions the user
+   attached. Deliberately similar to .completed but without the strikethrough
+   (this isn't "done," it's "no longer tracked upstream"). */
+li.deadline-item.classroom-removed {
+  opacity: 0.55;
+}
+
+.deadline-classroom-removed-badge {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  margin-left: 0.4rem;
+}
+
+/* Conflict-handling notices in the deadline viewer (open-questions.md #3) —
+   the "removed at source" notice and the "you've edited this" + reset
+   action share the same box treatment, distinguished only by their text. */
+.deadline-conflict-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated-2);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.75rem;
+}
+
 button#new-deadline-button {
   padding: 0.5rem 1rem;
   border-radius: 4px;

@@ -550,6 +550,14 @@
           <span id="deadline-view-kind" class="code"></span>
         </div>
         <p id="deadline-view-due" class="muted"></p>
+        <!-- Conflict handling (open-questions.md #3) — shown only for a
+             Classroom-synced deadline the user has locally edited, or one
+             whose Classroom coursework was deleted at the source. -->
+        <p id="deadline-view-removed-notice" class="deadline-conflict-notice" hidden>This assignment is no longer in Google Classroom. Delete it here if you want to remove it.</p>
+        <div id="deadline-view-override-notice" class="deadline-conflict-notice" hidden>
+          <span id="deadline-view-override-text"></span>
+          <button id="deadline-reset-override-button" type="button" class="link-button">Reset to Classroom version</button>
+        </div>
         <div id="deadline-view-description"></div>
         <div id="deadline-view-actions">
           <button id="deadline-edit-button" type="button">Edit</button>

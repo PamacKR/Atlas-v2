@@ -2,7 +2,19 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-28 (Atlas-v2, rest-of-Phase-3 planned; Phase 4 reordered ahead of Gmail)
+**Last updated:** 2026-07-28 (Atlas-v2, conflict handling for Classroom-synced deadlines built)
+
+## Session 2026-07-28 (continued) — conflict handling built (Phase 3 item 1 of 3)
+
+Built exactly as planned/confirmed with the user: per-field protection (not whole-row locking), a visible override marker + "Reset to Classroom version" action, and greyed-out-not-deleted for coursework removed at the source.
+
+- **The bug this fixes was real and already live**: editing a Classroom-synced deadline (e.g. correcting a due date) was silently reverted on the very next sync, since `upsertDeadline` overwrote `title`/`due_at` unconditionally. Also, nothing ever reconciled an assignment deleted at the Classroom source — it just stayed in Atlas forever.
+- `deadlines` gained `local_overrides` (which fields the user has edited since last sync), `classroom_title`/`classroom_due_at` (Classroom's current values, always kept current regardless of overrides — this is what makes "reset" instant and offline), and `classroom_removed`. `assignments` gained `classroom_removed` too, display-only (it has no direct editing UI — the user always edits the mirrored deadline instead).
+- The actual per-field-preservation SQL (a `CASE`/`instr()` expression inside `ON CONFLICT DO UPDATE`) was verified directly against a real SQLite database before trusting it, not just read — confirmed an overridden field survives a re-sync while an untouched field still updates.
+- Also fixed in the same pass: `assignments.posted_at` (added earlier this session) had never been added to `schema.sql`'s fresh-install table, only to the migration — a brand-new install would have been missing it.
+- Verified with `npm run build`, a standalone SQLite logic test, and a full `npm run verify` pass (no regressions) — this one felt worth the full suite given it touches core deadline data integrity, not just UI.
+- Docs updated in the same pass: `open-questions.md` #3 resolved, `ARCHITECTURE.md` §4b, `ROADMAP.md` checkbox ticked.
+- **Next**: sync configuration (item 2 of 3), per the plan agreed this session.
 
 ## Session 2026-07-28 (continued) — planned the rest of Phase 3; Phase 4 moved ahead of Gmail
 
