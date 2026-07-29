@@ -10,7 +10,8 @@
     "watch": "tsc -b -w",
     "verify": "npm run build && node scripts/verify-app.js",
     "mcp:server": "node scripts/run-mcp-server.js",
-    "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js"
+    "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js",
+    "verify:extraction": "npm run build && node scripts/run-as-electron-node.js scripts/verify-extraction.js"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",

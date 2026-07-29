@@ -254,8 +254,36 @@ function scheduleExtraction(resourceId: number, kind: string, filePath: string):
 // since a real library's first backfill could take minutes, and silent
 // multi-minute background work is exactly how the Classroom sync bug went
 // unnoticed for weeks (STATUS.md).
+// Bumped whenever the extractors change in a way that would produce better
+// output for files already processed — everything is then re-extracted once.
+// v2: extraction previously discarded every hyperlink target, skipped PPTX
+// speaker notes entirely, and padded spreadsheets with tens of thousands of
+// empty cells (remote-attachments-spec.md §2.2). Files extracted by v1 hold
+// materially worse text than a re-run would produce, so a one-time re-extract
+// is the only way existing resources benefit from the fix.
+const EXTRACTION_LOGIC_VERSION = 2;
+
+function resetExtractionForNewLogicVersion(): void {
+  const db = getDb();
+  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'extraction_logic_version'").get() as
+    | { value: string }
+    | undefined;
+  if (Number(row?.value ?? 0) >= EXTRACTION_LOGIC_VERSION) return;
+
+  // Only 'extracted' parts are dropped — OCR results were reviewed and
+  // accepted by the user by hand and must never be silently discarded.
+  db.exec("DELETE FROM document_parts WHERE origin = 'extracted'");
+  db.exec(
+    "UPDATE resources SET extraction_status = 'pending', extraction_error = NULL, extracted_at = NULL WHERE extraction_status IN ('done','empty','failed')"
+  );
+  db.prepare(
+    "INSERT INTO app_settings (key, value) VALUES ('extraction_logic_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(String(EXTRACTION_LOGIC_VERSION));
+}
+
 async function extractAllPendingResources(): Promise<void> {
   const db = getDb();
+  resetExtractionForNewLogicVersion();
   const pending = db
     .prepare("SELECT id, kind, file_path FROM resources WHERE extraction_status = 'pending'")
     .all() as { id: number; kind: string; file_path: string }[];
