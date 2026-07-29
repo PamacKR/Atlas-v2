@@ -61,6 +61,7 @@ Reordered again 2026-07-28 (user decision, `open-questions.md` #28): the two rem
 ## Phase 5 — Lifecycle & polish
 
 - [x] Course archiving: archive/unarchive a course (right-click or a detail-page button) without deleting anything; a "Show archived courses" toggle on the Courses page shows one list or the other; archived courses stop auto-syncing from Classroom but stay fully searchable. See `open-questions.md` #4/#26, `ARCHITECTURE.md` §2.
+- [x] Course editing: rename/re-code/re-term a course (right-click on its card, or "Edit course" on its detail page). Only `courses.name/code/term` change — `folder_name` (file storage, Phase 4 memory files) is fixed at creation and never renamed, same tradeoff the storage folder already made.
 - Old-course searchability defaults — resolved as part of the above: archived courses stay searchable by default (see `open-questions.md` #4)
 - Relationship editing (lecture→course, assignment→lecture, exam→lectures, email→assignment) as explicit, user/metadata-originated links
 - Dashboard v2: unread announcements, new assignments, recently synced items

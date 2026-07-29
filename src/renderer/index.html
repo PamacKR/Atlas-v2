@@ -171,6 +171,7 @@
             <!-- Phase 4 Part E fallback (phase4-spec.md §7) — a plain-Markdown
                  dump of this course's context, for pasting into an AI tool
                  that can't use the MCP server directly. -->
+            <button id="course-detail-edit" type="button" class="link-button">Edit course</button>
             <button id="course-detail-export-context" type="button" class="link-button">Export for AI</button>
             <button id="course-detail-archive-toggle" type="button" class="link-button">Archive course</button>
           </div>
@@ -561,6 +562,29 @@
         <button id="course-picker-browse" type="button">Browse files…</button>
       </div>
       <p id="course-picker-progress" class="muted" hidden></p>
+    </div>
+  </div>
+
+  <div id="course-edit-overlay" hidden>
+    <div id="course-edit-panel">
+      <div class="modal-header">
+        <h3>Edit course</h3>
+        <button id="course-edit-close" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="course-edit-form">
+        <input id="course-edit-name" type="text" placeholder="Course name" required />
+        <input id="course-edit-code" type="text" placeholder="Code (optional)" />
+        <select id="course-edit-term">
+          <option value="">Semester</option>
+          <option value="Monsoon 26">Monsoon 26</option>
+          <option value="Spring 27">Spring 27</option>
+          <option value="Monsoon 27">Monsoon 27</option>
+          <option value="Spring 28">Spring 28</option>
+        </select>
+        <button type="submit">Save</button>
+      </form>
     </div>
   </div>
 

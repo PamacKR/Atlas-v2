@@ -1472,6 +1472,52 @@ ul#course-list.view-list li.course-card .course-card-counts {
   font-size: 0.85rem;
 }
 
+#course-edit-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+#course-edit-overlay:not([hidden]) {
+  display: flex;
+}
+
+#course-edit-panel {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 380px;
+  padding: 1.25rem;
+}
+
+#course-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+#course-edit-form input,
+#course-edit-form select {
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+}
+
+#course-edit-form button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  background: var(--color-accent);
+  color: white;
+  cursor: pointer;
+}
+
 .modal-header h3 {
   margin: 0;
 }

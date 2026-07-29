@@ -888,6 +888,18 @@ ipcMain.handle('dashboard:courseSummaries', (_event, archived = false) => {
 // is destructive). An archived course is filtered out of the normal course
 // list/pickers/Classroom auto-sync, but stays fully intact and searchable —
 // see open-questions.md #4.
+// Renaming/re-coding/re-terming a course only ever touches courses.name/
+// code/term — never folder_name, which is computed once at creation and
+// deliberately kept stable forever (see schema.sql) so every already-stored
+// file path, and now every memory file (memoryFiles.ts, keyed by
+// folder_name specifically so this rename can't orphan or collide anything)
+// stays valid with zero extra work here.
+ipcMain.handle('courses:update', (_event, courseId: number, name: string, code: string | null, term: string | null) => {
+  const db = getDb();
+  db.prepare('UPDATE courses SET name = ?, code = ?, term = ? WHERE id = ?').run(name, code, term, courseId);
+  return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+});
+
 ipcMain.handle('courses:setArchived', (_event, courseId: number, archived: boolean) => {
   const db = getDb();
   db.prepare('UPDATE courses SET archived = ? WHERE id = ?').run(archived ? 1 : 0, courseId);
@@ -1794,6 +1806,12 @@ ipcMain.on('resources:courseContextMenu', (event, courseId: number) => {
     | undefined;
   const isArchived = course?.archived === 1;
   const menu = Menu.buildFromTemplate([
+    {
+      label: 'Edit',
+      click: () => {
+        event.sender.send('resources:courseContextMenuEdit', courseId);
+      },
+    },
     {
       label: isArchived ? 'Unarchive' : 'Archive',
       click: () => {

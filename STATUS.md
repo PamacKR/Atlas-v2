@@ -2,7 +2,25 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-29 (Atlas-v2, Phase 4 Parts A–E all built and verified — MCP server live, see `mcp-setup.md`)
+**Last updated:** 2026-07-29 (Atlas-v2, course rename added; three real bugs found auditing Phase 4 and fixed)
+
+## Session 2026-07-29 (continued) — course editing (rename/re-code/re-term)
+
+Atlas had no way to rename a course at all — a real gap, asked for directly by the user right after Phase 4 shipped. New "Edit" entry on the course card's right-click menu, and an "Edit course" button on the course detail page, both opening the same small modal (name/code/term, pre-filled) backed by a new `courses:update` IPC handler.
+
+Only `courses.name/code/term` change. `folder_name` (the course's real files folder, and now the Phase 4 memory file — see below) is fixed at creation and never renamed — this was already true for the files folder before this session; the memory-file bug fix earlier today happened to make memory files follow the exact same rule for free, rather than needing separate rename-tracking logic. One visible consequence: a renamed course's memory file on disk keeps its original filename (e.g. `Old Name.md` after renaming to "New Name") — not a bug, same tradeoff the files folder already makes, but worth knowing if browsing `Atlas-Storage/course-profiles/` by hand.
+
+Verified with a real scripted run (create a course, rename it via the actual UI, confirm the detail page/grid/memory file all behave correctly) plus a full `npm run verify` pass, since this is a genuine new feature touching several files, not a small tweak.
+
+## Session 2026-07-29 (continued) — audited the finished Phase 4, found and fixed three real bugs
+
+Before calling Phase 4 done, ran a battery of edge-case checks against the assembled system (duplicate course names, course-scoped search, an OCR-only scanned resource) rather than trusting that individually-tested pieces compose correctly. All three surfaced real, user-facing bugs:
+
+1. **Memory files were keyed by course display name**, so two courses genuinely sharing a name (e.g. the same subject two terms running) silently shared one memory file — writing for one overwrote the other's, deleting either destroyed both. Fixed by keying on `folder_name` instead (unique, stable, already used for the files folder).
+2. **`atlas_search`'s course/type filtering happened in JavaScript after SQL's `LIMIT`**, so a course-scoped search could return nothing even when real matches existed, if the globally top-ranked hits all belonged to other courses. Moved the filtering into the SQL query itself.
+3. **`atlas_read_document` only read `origin = 'extracted'` parts**, so a scanned textbook the user ran OCR on would show up in search results but return zero content when the agent tried to actually read the page. Now falls back to OCR-derived parts per-resource.
+
+All three are now covered by regression tests in `scripts/verify-mcp.js`, alongside a new check that an ambiguous course name returns candidates instead of silently picking one. Full `npm run verify` also re-run and passing.
 
 ## Session 2026-07-29 (continued) — Phase 4 Parts B–E: memory, agent notes, query layer, MCP server, export
 

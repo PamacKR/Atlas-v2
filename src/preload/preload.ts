@@ -217,6 +217,11 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('courses:create', name, code, term),
   setCourseArchived: (courseId: number, archived: boolean): Promise<Course> =>
     ipcRenderer.invoke('courses:setArchived', courseId, archived),
+  updateCourse: (courseId: number, name: string, code: string | null, term: string | null): Promise<Course> =>
+    ipcRenderer.invoke('courses:update', courseId, name, code, term),
+  onCourseContextMenuEdit: (handler: (courseId: number) => void): void => {
+    ipcRenderer.on('resources:courseContextMenuEdit', (_event, courseId: number) => handler(courseId));
+  },
   exportCourseContext: (courseId: number): Promise<{ ok: true; filePath: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('courses:exportContext', courseId),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),

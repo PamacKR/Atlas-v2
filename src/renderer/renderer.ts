@@ -305,6 +305,8 @@ interface AtlasApi {
   onContextMenuDelete: (handler: (resourceId: number) => void) => void;
   onCourseContextMenuDelete: (handler: (courseId: number) => void) => void;
   onCourseContextMenuToggleArchive: (handler: (courseId: number, archived: boolean) => void) => void;
+  onCourseContextMenuEdit: (handler: (courseId: number) => void) => void;
+  updateCourse: (courseId: number, name: string, code: string | null, term: string | null) => Promise<Course>;
   listWatchedFolders: (courseId: number) => Promise<WatchedFolder[]>;
   addWatchedFolder: (courseId: number) => Promise<WatchedFolder | null>;
   removeWatchedFolder: (folderId: number) => Promise<void>;
@@ -2834,6 +2836,35 @@ function updateCourseDetailArchiveButton(course: Course): void {
   button.textContent = course.archived === 1 ? 'Unarchive course' : 'Archive course';
 }
 
+// Course rename/edit — reachable both from the course card's right-click
+// menu (grid/list view, courseId comes from main.ts's native context menu)
+// and from the course detail page's own "Edit" button (already-selected
+// course). Renaming only ever touches courses.name/code/term — folder_name
+// (file storage, memory files) is computed once at creation and
+// deliberately never changes, so nothing else needs updating here.
+let editingCourseId: number | null = null;
+
+function openCourseEditModal(course: Course): void {
+  editingCourseId = course.id;
+  const nameInput = document.getElementById('course-edit-name') as HTMLInputElement;
+  nameInput.value = course.name;
+  (document.getElementById('course-edit-code') as HTMLInputElement).value = course.code ?? '';
+  (document.getElementById('course-edit-term') as HTMLSelectElement).value = course.term ?? '';
+  document.getElementById('course-edit-overlay')!.hidden = false;
+  nameInput.focus();
+}
+
+async function openCourseEditModalById(courseId: number): Promise<void> {
+  const courses = await atlasApi.listCourses();
+  const course = courses.find((c) => c.id === courseId);
+  if (course) openCourseEditModal(course);
+}
+
+function closeCourseEditModal(): void {
+  editingCourseId = null;
+  document.getElementById('course-edit-overlay')!.hidden = true;
+}
+
 // Phase 4 Part E fallback (phase4-spec.md §7) — for pasting into an AI tool
 // that can't use the MCP server (Part D) directly. Reveals the written file
 // in the OS file manager (main.ts's shell.showItemInFolder) since there's no
@@ -3921,6 +3952,36 @@ async function init(): Promise<void> {
   });
 
   document.getElementById('course-detail-back')!.addEventListener('click', backToCourseList);
+  document.getElementById('course-detail-edit')!.addEventListener('click', () => {
+    if (selectedCourse) openCourseEditModal(selectedCourse);
+  });
+  document.getElementById('course-edit-close')!.addEventListener('click', closeCourseEditModal);
+  document.getElementById('course-edit-overlay')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeCourseEditModal();
+  });
+  document.getElementById('course-edit-form')!.addEventListener('keydown', (e) => {
+    // Escape closes the modal even with focus in a text field — same reason
+    // course-picker-search needs its own listener: the global Escape handler
+    // skips text fields entirely.
+    if (e.key === 'Escape') closeCourseEditModal();
+  });
+  document.getElementById('course-edit-form')!.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (editingCourseId === null) return;
+    const name = (document.getElementById('course-edit-name') as HTMLInputElement).value.trim();
+    if (!name) return;
+    const code = (document.getElementById('course-edit-code') as HTMLInputElement).value.trim() || null;
+    const term = (document.getElementById('course-edit-term') as HTMLSelectElement).value || null;
+    const courseId = editingCourseId;
+    const updated = await atlasApi.updateCourse(courseId, name, code, term);
+    closeCourseEditModal();
+    await renderCourses();
+    if (selectedCourse && selectedCourse.id === courseId) await selectCourse(updated);
+  });
+  atlasApi.onCourseContextMenuEdit((courseId) => {
+    void openCourseEditModalById(courseId);
+  });
+
   document.getElementById('course-detail-export-context')!.addEventListener('click', () => {
     void exportSelectedCourseContext();
   });
