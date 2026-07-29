@@ -19,8 +19,3 @@ atlas.db-wal
 
 # Output of scripts/verify-app.js (Playwright self-test)
 verify-screenshot.png
-
-# Machine-specific MCP config (mcp-setup.md) — hardcodes this machine's own
-# absolute paths to electron.exe and dist/main/mcpServer.js, so it would
-# break on any other machine/clone rather than being portable.
-.mcp.json

@@ -12,35 +12,29 @@ It reads the same SQLite database Atlas uses (`Downloads/Atlas-Storage/atlas.db`
 
 1. Build Atlas at least once (`npm run build`) so `dist/main/mcpServer.js` exists.
 2. Launch the Atlas app at least once, so `Downloads/Atlas-Storage/atlas.db` exists. The server refuses to start (with a clear error) if the database isn't there yet — it never creates one itself.
-3. Find your Electron binary's path:
-   ```bash
-   node -e "console.log(require('electron'))"
-   ```
-   run from this repo. It'll print something like `...\Atlas-v2\node_modules\electron\dist\electron.exe`.
+
+That's it — no path-finding step. `scripts/run-mcp-server.js` locates Electron and `mcpServer.js` itself (via `require('electron')` and its own file location), so nothing below hardcodes where this repo happens to sit on disk. Move or re-clone the folder and the same config still works.
 
 ## Configuration
 
-Add an entry to your AI tool's MCP config, using the Electron path from step 3 and the full path to `dist/main/mcpServer.js` in this repo:
+This repo already ships a working **`.mcp.json`** at its root:
 
 ```json
 {
   "mcpServers": {
     "atlas": {
-      "command": "C:\\path\\to\\Atlas-v2\\node_modules\\electron\\dist\\electron.exe",
-      "args": ["C:\\path\\to\\Atlas-v2\\dist\\main\\mcpServer.js"],
-      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+      "command": "node",
+      "args": ["scripts/run-mcp-server.js"]
     }
   }
 }
 ```
 
-Where this JSON goes depends on the tool:
+**Claude Code** picks this up automatically — just open this project and (re)start Claude Code; you'll likely get a one-time prompt to approve running the `atlas` server. No path needed at all.
 
-- **Claude Code**: project or user-level MCP config (`.mcp.json`, or via the `claude mcp add` command — see Claude Code's own MCP documentation for the exact file for your setup).
-- **Codex**: its MCP server configuration file (check Codex's current docs for the exact path — this has moved between versions).
-- **Cursor**: `.cursor/mcp.json` in the project, or the global MCP settings in Cursor's settings UI.
+**Codex / Cursor**: check whether the tool reads project-level `.mcp.json` directly (many do, since it's becoming a de facto convention). If not, copy the same `command`/`args` into that tool's own MCP config file — still no absolute path, since `node` and a path relative to the project root are portable regardless of which tool launches it, as long as it runs with this project as its working directory.
 
-After adding it, restart the tool (or reload its MCP connections) and it should list nine `atlas_*` tools.
+After it's connected, it should list nine `atlas_*` tools.
 
 ## What the agent can do
 
