@@ -18,10 +18,21 @@ export interface DocumentPart {
   text: string;
 }
 
+// A link found inside a document's content (remote-attachments-spec.md
+// §5.5.1) — kept alongside the inline "Links: ..." text already appended to
+// each part (below), since that's for the agent's own visibility while this
+// is what lets Atlas *follow* a link that points at another Drive file.
+export interface DiscoveredLink {
+  url: string;
+  label: string;
+  partOrdinal: number;
+}
+
 export interface ExtractionResult {
   status: ExtractionStatus;
   parts: DocumentPart[];
   error?: string;
+  discoveredLinks?: DiscoveredLink[];
 }
 
 // DOCX/TXT/MD have no real page boundaries, so long runs of plain text are
@@ -85,12 +96,15 @@ function chunkPlainText(text: string, labelPrefix: string): DocumentPart[] {
 // scanned PDFs with no text layer at all, triggered explicitly via the
 // existing "Run OCR" button). This one reads whatever real text the PDF
 // already contains, which is what most lecture-slide/textbook PDFs have.
-async function extractPdfParts(filePath: string): Promise<DocumentPart[]> {
+async function extractPdfParts(
+  filePath: string
+): Promise<{ parts: DocumentPart[]; links: DiscoveredLink[] }> {
   const pdfjsLib = await loadPdfjs();
   const data = new Uint8Array(fs.readFileSync(filePath));
   const doc = await pdfjsLib.getDocument({ data }).promise;
 
   const parts: DocumentPart[] = [];
+  const discovered: DiscoveredLink[] = [];
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
     const page = await doc.getPage(pageNum);
     const content = await page.getTextContent();
@@ -114,8 +128,9 @@ async function extractPdfParts(filePath: string): Promise<DocumentPart[]> {
 
     const combined = appendLinks(text, links);
     if (combined) parts.push({ ordinal: pageNum, label: `Page ${pageNum}`, text: combined });
+    for (const url of links) discovered.push({ url, label: `Page ${pageNum} link`, partOrdinal: pageNum });
   }
-  return parts;
+  return { parts, links: discovered };
 }
 
 // Same slide-XML text pulled for the preview outline (preview.ts's
@@ -149,7 +164,7 @@ function pptxSlideLinks(zip: AdmZip, slideNumber: number): string[] {
   return dedupeLinks(urls);
 }
 
-function extractPptxParts(filePath: string): DocumentPart[] {
+function extractPptxParts(filePath: string): { parts: DocumentPart[]; links: DiscoveredLink[] } {
   const zip = new AdmZip(filePath);
   const slideEntries = zip
     .getEntries()
@@ -161,6 +176,7 @@ function extractPptxParts(filePath: string): DocumentPart[] {
     });
 
   const parts: DocumentPart[] = [];
+  const discovered: DiscoveredLink[] = [];
   slideEntries.forEach((entry, i) => {
     const slideNumber = parseInt(entry.entryName.match(/slide(\d+)\.xml/)![1], 10);
     const sections = [pptxTextRuns(entry.getData().toString('utf-8'))];
@@ -177,10 +193,12 @@ function extractPptxParts(filePath: string): DocumentPart[] {
       if (notesText && notesText !== String(slideNumber)) sections.push(`Speaker notes: ${notesText}`);
     }
 
-    const text = appendLinks(sections.filter(Boolean).join('\n'), pptxSlideLinks(zip, slideNumber));
+    const slideLinks = pptxSlideLinks(zip, slideNumber);
+    const text = appendLinks(sections.filter(Boolean).join('\n'), slideLinks);
     if (text) parts.push({ ordinal: i + 1, label: `Slide ${i + 1}`, text });
+    for (const url of slideLinks) discovered.push({ url, label: `Slide ${i + 1} link`, partOrdinal: i + 1 });
   });
-  return parts;
+  return { parts, links: discovered };
 }
 
 // One part per sheet, as plain CSV-ish text rather than the HTML table
@@ -197,7 +215,7 @@ function extractPptxParts(filePath: string): DocumentPart[] {
 //     attendance sheet spanning A1:AD1041 produced 37,000 characters that
 //     were 81% commas). Empty rows are skipped and trailing empty cells
 //     trimmed, so what reaches the agent is content instead of padding.
-function sheetToText(sheet: XLSX.WorkSheet): string {
+function sheetToText(sheet: XLSX.WorkSheet, links: DiscoveredLink[], partOrdinal: number): string {
   const ref = sheet['!ref'];
   if (!ref) return '';
   const range = XLSX.utils.decode_range(ref);
@@ -218,7 +236,10 @@ function sheetToText(sheet: XLSX.WorkSheet): string {
       const raw = cell.w ?? cell.v;
       let value = raw === undefined || raw === null ? '' : String(raw).replace(/\s+/g, ' ').trim();
       const target = cell.l?.Target?.trim();
-      if (target && !target.startsWith('#')) value = value ? `${value} (${target})` : target;
+      if (target && !target.startsWith('#')) {
+        value = value ? `${value} (${target})` : target;
+        if (!target.startsWith('mailto:')) links.push({ url: target, label: value, partOrdinal });
+      }
       if (value) rowHasContent = true;
       cells.push(value);
     }
@@ -231,23 +252,26 @@ function sheetToText(sheet: XLSX.WorkSheet): string {
   return rows.join('\n');
 }
 
-function extractXlsxParts(filePath: string): DocumentPart[] {
+function extractXlsxParts(filePath: string): { parts: DocumentPart[]; links: DiscoveredLink[] } {
   const workbook = XLSX.readFile(filePath, { cellFormula: false, cellHTML: false });
   const parts: DocumentPart[] = [];
+  const discovered: DiscoveredLink[] = [];
   workbook.SheetNames.forEach((name, i) => {
-    const text = sheetToText(workbook.Sheets[name]).trim();
+    const text = sheetToText(workbook.Sheets[name], discovered, i + 1).trim();
     if (text) parts.push({ ordinal: i + 1, label: `Sheet: ${name}`, text });
   });
-  return parts;
+  return { parts, links: discovered };
 }
 
 // mammoth gives HTML with real heading tags, which is the only structural
 // signal a .docx exposes — split on h1-h3 so a long document reads section
 // by section rather than one giant part. A document with no headings at all
 // falls back to fixed-size chunking, same as plain text.
-async function extractDocxParts(filePath: string): Promise<DocumentPart[]> {
+async function extractDocxParts(filePath: string): Promise<{ parts: DocumentPart[]; links: DiscoveredLink[] }> {
   const result = await mammoth.convertToHtml({ path: filePath });
   const html = result.value;
+  const discovered: DiscoveredLink[] = [];
+  let currentOrdinal = 1;
 
   // mammoth emits real <a href> and <table> markup, but the old blanket
   // tag-strip threw both away — a reading list of links became bare titles,
@@ -260,6 +284,7 @@ async function extractDocxParts(filePath: string): Promise<DocumentPart[]> {
         const label = inner.replace(/<[^>]+>/g, '').trim();
         const target = href.trim();
         if (!target || target.startsWith('#') || target.startsWith('mailto:')) return label;
+        discovered.push({ url: target, label: label || target, partOrdinal: currentOrdinal });
         return label ? `${label} (${target})` : target;
       })
       // Cell/row boundaries become visible separators so a table stays
@@ -273,32 +298,35 @@ async function extractDocxParts(filePath: string): Promise<DocumentPart[]> {
 
   const sections = html.split(/(?=<h[1-3][ >])/i).filter((s) => stripTags(s).length > 0);
   if (sections.length <= 1) {
-    return chunkPlainText(stripTags(html), 'Section');
+    const parts = chunkPlainText(stripTags(html), 'Section');
+    return { parts, links: discovered };
   }
 
   const parts: DocumentPart[] = [];
   sections.forEach((section, i) => {
+    currentOrdinal = i + 1;
     const text = stripTags(section);
     if (text) parts.push({ ordinal: i + 1, label: `Section ${i + 1}`, text });
   });
-  return parts;
+  return { parts, links: discovered };
 }
 
 export async function extractDocumentParts(kind: string, filePath: string): Promise<ExtractionResult> {
   try {
     let parts: DocumentPart[];
+    let discoveredLinks: DiscoveredLink[] = [];
     switch (kind) {
       case 'pdf':
-        parts = await extractPdfParts(filePath);
+        ({ parts, links: discoveredLinks } = await extractPdfParts(filePath));
         break;
       case 'pptx':
-        parts = extractPptxParts(filePath);
+        ({ parts, links: discoveredLinks } = extractPptxParts(filePath));
         break;
       case 'xlsx':
-        parts = extractXlsxParts(filePath);
+        ({ parts, links: discoveredLinks } = extractXlsxParts(filePath));
         break;
       case 'docx':
-        parts = await extractDocxParts(filePath);
+        ({ parts, links: discoveredLinks } = await extractDocxParts(filePath));
         break;
       case 'text':
       case 'markdown':
@@ -310,7 +338,9 @@ export async function extractDocumentParts(kind: string, filePath: string): Prom
     // A PDF that parsed without error but yielded zero text is almost always
     // a scan (image pages, no text layer) — 'empty' rather than 'done' is
     // what tells the UI to surface the existing "Run OCR" button (§3.7).
-    return { status: parts.length > 0 ? 'done' : 'empty', parts };
+    const seen = new Set<string>();
+    const dedupedLinks = discoveredLinks.filter((l) => (seen.has(l.url) ? false : (seen.add(l.url), true)));
+    return { status: parts.length > 0 ? 'done' : 'empty', parts, discoveredLinks: dedupedLinks };
   } catch (err) {
     return { status: 'failed', parts: [], error: err instanceof Error ? err.message : String(err) };
   }

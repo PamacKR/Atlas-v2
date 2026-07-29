@@ -2,21 +2,27 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-29 (Atlas-v2, MCP server confirmed live against real data — see Handoff below)
+**Last updated:** 2026-07-29 (Atlas-v2, remote-attachments-spec.md built end to end — see Handoff below)
 
 ## Handoff — where this actually stands right now
 
-**The MCP server is connected and confirmed working** — `atlas_overview` was called live in-session and returned the user's 5 real courses correctly (`.mcp.json` at repo root, project-scoped, auto-trusted by Claude Code since it's checked into this repo). Not a hypothetical — this was verified end to end.
+**`remote-attachments-spec.md` is now built**, after the user confirmed re-extraction/memory backfill worked and gave the go-ahead. What shipped, in build order:
 
-**Two things the user still needs to do before real use, neither built/blocked, both just require opening the app:**
-1. **Re-extraction hasn't run on the user's real data yet.** The extraction bug fix (link preservation, PPTX notes, spreadsheet padding — see below) is shipped in code, but `extractAllPendingResources()` only runs the re-extraction pass the next time the actual Atlas Electron app launches (not this Claude Code session). Until then, the user's real document_parts still reflect the old broken extraction.
-2. Memory files for the user's 5 pre-existing courses were backfilled in code (`Create memory files for courses that predate Phase 4` commit) but this also only takes effect once the Atlas app is launched.
+1. **OAuth scope fix (a real discovery, not in the original spec):** `googleAuth.ts`'s `CLASSROOM_SCOPES` had zero Drive scope on it — a Classroom attachment's Drive file is shared by the professor with the account connected *to Classroom*, not the separate personal-account Drive connection, so the old assumption ("drive.readonly already covers this") was wrong. Added `drive.readonly` to `CLASSROOM_SCOPES`. **The user needs to disconnect and reconnect Google Classroom once** for this to take effect (same one-time gotcha as when `drive.file` was added earlier) — nothing else works until then.
+2. `extractMaterialLinks` (googleClassroom.ts) now keeps the Drive file ID and material kind (`driveFile`/`youTubeVideo`/`link`/`form`) instead of discarding them.
+3. Schema: `resources` gained `remote_source`, `remote_ref`, `remote_mime_type`, `remote_fetched_version`, `link_kind`, `local_twin_id`, `parent_resource_id`, `discovery_depth`.
+4. New `remoteFetch.ts` — a Drive fetcher: `canDownload` pre-check, Google-native export via `exportLinks` (falls back to `files.export()`), binary files streamed to a temp file (never under `Atlas-Storage/files/`), tries the Classroom OAuth connection first, falls back to the personal Drive connection.
+5. New `remoteSync.ts` — orchestrates it all: local-copy-first resolution (§3.3, reuses an already-downloaded twin's extracted text, zero network calls), link-following with real caps (depth 2, 100 children/parent, 300/course/sync, cycle-safe dedupe by Drive file ID), failure-state handling (permanent failures recorded, transient ones stay `pending` and retry), wired into Classroom sync + launch backfill with visible progress.
+6. Exam-scale tool changes: `atlas_course_briefing` now reports totals alongside its top-20 lists; `atlas_read_document` called with no `from`/`to` returns an outline (labels + count, no text); course-scoped `atlas_search` ceiling raised from 25 to 100.
+7. New `scripts/verify-remote.js` (`npm run verify:remote`) — stubs Google API calls at the fetcher boundary per the spec's own §9 guidance, covers local-copy-first, link-following, permission failures, and the unchanged-file-skip cache path. Passing, alongside `verify`, `verify:mcp`, and `verify:extraction` (all re-run clean after this work).
 
-**So: next real step is the user opening the Atlas app once**, then testing the MCP connection in a fresh chat as they said they would. No code work is pending — if they report something not working, the first question is always "did extraction actually finish re-running" (visible in Settings → Text extraction) before assuming a new bug.
+**What the user needs to do before this is live:**
+1. **Disconnect and reconnect Google Classroom** (Settings) — the new `drive.readonly` scope only applies to a freshly-issued token.
+2. Open the Atlas app once — Classroom sync will then start fetching the 155 previously-unfetched Drive attachments (visible progress via the existing extraction backfill toast/Settings panel). This can take a while the first time; subsequent syncs only touch what's new.
 
-**Known, deliberately out of scope until `remote-attachments-spec.md` is built**: 155 of the user's 195 real resources are Classroom attachments stored as unfetched Drive links — the agent can see their titles only, not content. This is expected, not a bug, and is exactly what that spec (drafted, not yet built) exists to fix. Do not start building it without the user's explicit go-ahead — last state was "let me test what exists first."
+**Still out of scope, by design:** Gmail (the fetcher interface is ready for it, nothing else built), fetching arbitrary non-Drive web links, YouTube transcripts, writing back to Drive.
 
-**A mistake made this session, corrected**: an earlier smoke test wrote a stray `course-profiles/Microeconomics.md` into the user's *real* Atlas-Storage (no such course exists). Deleted. Worth remembering: test scripts touching real user data must be double-checked for proper isolation (temp dirs / ATLAS_DATA_DIR override) before running, not after.
+**A mistake made in an earlier session, corrected then**: an old smoke test wrote a stray `course-profiles/Microeconomics.md` into the user's *real* Atlas-Storage. Deleted, and this session's own `scripts/verify-remote.js` was double-checked for `ATLAS_DATA_DIR` isolation before ever running.
 
 ## Session 2026-07-29 (continued) — course editing (rename/re-code/re-term)
 

@@ -105,6 +105,19 @@ export function getOverview(db: Database.Database) {
 
 const BRIEFING_LIST_LIMIT = 20;
 
+// A course reached via link-following (remote-attachments-spec.md §5.5) can
+// plausibly have 60+ resources and several thousand pages — the fixed
+// top-20 lists below stay (still the right shape for "what's new"), but
+// without a total count alongside them the agent has no way to tell "this
+// is everything" from "this is the first 20 of 300" (§5.6). One extra
+// COUNT(*) each, cheap at this app's scale.
+function countFor(db: Database.Database, table: string, courseId: number, extraWhere = ''): number {
+  const row = db.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE course_id = ? ${extraWhere}`).get(courseId) as {
+    c: number;
+  };
+  return row.c;
+}
+
 export function getCourseBriefing(db: Database.Database, ref: string | number) {
   const lookup = findCourse(db, ref);
   if (!lookup.ok) return lookup;
@@ -130,15 +143,33 @@ export function getCourseBriefing(db: Database.Database, ref: string | number) {
     .prepare('SELECT id, title, generated_by_agent, updated_at FROM notes WHERE course_id = ? ORDER BY updated_at DESC LIMIT ?')
     .all(course.id, BRIEFING_LIST_LIMIT) as { id: number; title: string; generated_by_agent: number; updated_at: string }[];
 
+  const totalDocumentParts = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM document_parts
+         JOIN resources ON resources.id = document_parts.resource_id
+         WHERE resources.course_id = ?`
+      )
+      .get(course.id) as { c: number }
+  ).c;
+
   return {
     ok: true as const,
     course: { id: course.id, name: course.name, code: course.code, term: course.term },
     memory: readMemory(course.folder_name),
     upcomingDeadlines: deadlines,
+    upcomingDeadlineTotal: countFor(db, 'deadlines', course.id, "AND completed = 0 AND classroom_removed = 0 AND due_at IS NOT NULL"),
     recentAnnouncements: announcements,
+    announcementTotal: countFor(db, 'announcements', course.id),
     resourceCountsByKind: resourceCounts,
     recentResources,
+    // Lets the agent recognize a large course (§5.6) and choose to sample
+    // broadly via atlas_list_resources' pagination rather than assume the
+    // 20 shown here are everything, or read every one deeply.
+    resourceTotal: countFor(db, 'resources', course.id),
+    totalDocumentParts,
     recentNotes,
+    noteTotal: countFor(db, 'notes', course.id),
   };
 }
 
@@ -167,6 +198,13 @@ export interface SearchHit {
 
 const SEARCH_DEFAULT_LIMIT = 10;
 const SEARCH_MAX_LIMIT = 25;
+// A course-scoped search is already narrowed to one course's own content —
+// 25 hits is thin when the agent is sweeping a whole semester (exam-scale
+// access, §5.6), so a course-scoped call gets a higher ceiling. An
+// unscoped, whole-library search keeps the lower ceiling: it's ranked
+// across every course at once, so a large N there is far more likely to be
+// noise than a genuinely broad but relevant result set.
+const SEARCH_MAX_LIMIT_COURSE_SCOPED = 100;
 const SEARCH_EXCERPT_MAX_CHARS = 400;
 
 // Never returns full text (phase4-spec.md §6.4) — a hit points at a
@@ -186,7 +224,8 @@ export function searchAtlas(
     courseId = lookup.course.id;
   }
 
-  const limit = Math.min(opts.limit ?? SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT);
+  const maxLimit = courseId !== null ? SEARCH_MAX_LIMIT_COURSE_SCOPED : SEARCH_MAX_LIMIT;
+  const limit = Math.min(opts.limit ?? SEARCH_DEFAULT_LIMIT, maxLimit);
 
   // Course/type filtering MUST happen inside the SQL, before LIMIT — doing
   // it in JavaScript afterwards was a real bug: a course-scoped search would
@@ -290,12 +329,33 @@ const READ_CHAR_CEILING = 60_000;
 
 // This is how "chapters 5 to 8" actually gets read, after atlas_search
 // locates them — `from`/`to` are 1-based ordinals into document_parts,
-// matching the ordinal search results are labeled with.
+// matching the ordinal search results are labeled with. Called with
+// neither argument, this instead returns an outline (every part's label,
+// no text) — cheap navigation for exam-scale access (§5.6): the agent can
+// see "847 pages, Chapter 5 starts at 214" before pulling any actual text,
+// which is what makes "access every file in the course" tractable instead
+// of a blind, expensive guess-and-check over hundreds of pages.
 export function readDocument(db: Database.Database, resourceId: number, from?: number, to?: number) {
   const resource = db.prepare('SELECT id, title, course_id FROM resources WHERE id = ?').get(resourceId) as
     | { id: number; title: string; course_id: number }
     | undefined;
   if (!resource) return { ok: false as const, error: `No resource with id ${resourceId}.` };
+
+  if (from === undefined && to === undefined) {
+    const hasExtracted = db
+      .prepare("SELECT 1 FROM document_parts WHERE resource_id = ? AND origin = 'extracted' LIMIT 1")
+      .get(resourceId);
+    const origin = hasExtracted ? 'extracted' : 'ocr';
+    const outline = db
+      .prepare('SELECT ordinal, label FROM document_parts WHERE resource_id = ? AND origin = ? ORDER BY ordinal')
+      .all(resourceId, origin) as { ordinal: number; label: string }[];
+    return {
+      ok: true as const,
+      resource: { id: resource.id, title: resource.title },
+      outline,
+      totalParts: outline.length,
+    };
+  }
 
   const start = from ?? 1;
   const requestedEnd = to ?? start + READ_PART_LIMIT - 1;

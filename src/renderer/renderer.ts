@@ -30,6 +30,11 @@ interface Resource {
   synced_at: string | null;
   ocr_text: string | null;
   extraction_status: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
+  extraction_error: string | null;
+  // Remote-attachment reading (remote-attachments-spec.md §4) — see
+  // schema.sql for the full field-by-field reasoning.
+  remote_source: 'drive' | 'gmail' | null;
+  link_kind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
 }
 
 interface ExtractionBackfillProgress {
@@ -726,6 +731,29 @@ let resourcesCourseFilterId: number | null = null; // null = all courses
 let notesCourseFilterId: number | null = null; // null = all courses
 let showOnlyAgentNotes = false; // Phase 4 Part B filter — agent-generated notes only
 
+// A plain-language readability label for a Classroom/Drive link resource —
+// null for anything else (a local file's readability is implicit; it's
+// either extracted or not, same as before this feature). See
+// remote-attachments-spec.md §7 for the status meanings.
+function remoteReadabilityLabel(resource: Resource): string | null {
+  if (resource.kind !== 'link') return null;
+  if (resource.link_kind && resource.link_kind !== 'driveFile') return null; // YouTube/Form/plain link — never fetchable
+  if (!resource.remote_source) return null;
+  switch (resource.extraction_status) {
+    case 'done':
+      return 'readable by agent';
+    case 'empty':
+      return 'no readable text found';
+    case 'failed':
+      return resource.extraction_error ? `not readable — ${resource.extraction_error}` : 'not readable';
+    case 'unsupported':
+      return null;
+    case 'pending':
+    default:
+      return 'not fetched yet';
+  }
+}
+
 function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTMLLIElement {
   const li = document.createElement('li');
   li.dataset.resourceId = String(resource.id);
@@ -757,6 +785,18 @@ function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTML
     kind.className = 'code resource-kind';
     kind.textContent = resource.kind;
     li.appendChild(kind);
+
+    // A Classroom/Drive link resource has no local file — whether the AI
+    // agent can actually read it (vs. just see a title) isn't obvious from
+    // the row otherwise, so "the agent didn't find it" doesn't become a
+    // silent mystery (remote-attachments-spec.md §8).
+    const remoteLabel = remoteReadabilityLabel(resource);
+    if (remoteLabel) {
+      const status = document.createElement('span');
+      status.className = 'code resource-remote-status';
+      status.textContent = remoteLabel;
+      li.appendChild(status);
+    }
   }
 
   li.addEventListener('click', () => openPreview(resource));

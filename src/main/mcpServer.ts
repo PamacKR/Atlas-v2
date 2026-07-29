@@ -134,7 +134,7 @@ async function main(): Promise<void> {
     'atlas_read_document',
     {
       description:
-        'Read a specific page/slide/sheet/section range from a resource, by the ordinal numbers atlas_search or atlas_list_resources returned. This is how "chapters 5 to 8" actually gets read — search first to find the range, then read it.',
+        'Read a specific page/slide/sheet/section range from a resource, by the ordinal numbers atlas_search or atlas_list_resources returned. This is how "chapters 5 to 8" actually gets read — search first to find the range, then read it. Called with neither `from` nor `to`, returns an outline instead (every part\'s label and the total count, no text) — cheap way to see a large document\'s shape (e.g. "847 pages, Chapter 5 starts at 214") before deciding what to actually read.',
       inputSchema: {
         resource_id: z.number().int(),
         from: z.number().int().positive().optional(),

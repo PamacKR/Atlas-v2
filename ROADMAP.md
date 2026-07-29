@@ -57,6 +57,7 @@ Reordered again 2026-07-28 (user decision, `open-questions.md` #28): the two rem
 - [x] Local MCP server (`src/main/mcpServer.ts`) exposing all of the above to any MCP-compatible AI agent (Claude Code, Codex, Cursor) over stdio. See `mcp-setup.md` for connecting a tool and `phase4-spec.md` §6.
 - [x] Static context-file export ("Export for AI" on course detail) as a fallback path for non-MCP AI tools. See `phase4-spec.md` §7.
 - "Fresh conversation" flow (`atlas_overview`) already lets a connected agent pick up full context with no manual explanation — course AI profiles (PRD §19's original narrower scope) are folded into the memory files above rather than a separate settings form.
+- [x] Remote attachment reading: Classroom Drive attachments (and links discovered inside them, e.g. a professor's course-index spreadsheet) are fetched, extracted, and discarded — never downloaded into `Atlas-Storage/files/` — so the agent can read them like any local resource. Requires the user to reconnect Google Classroom once for a new Drive scope. See `remote-attachments-spec.md` and `STATUS.md` (2026-07-29).
 
 ## Phase 5 — Lifecycle & polish
 

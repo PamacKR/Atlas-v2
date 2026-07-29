@@ -107,24 +107,51 @@ function formatDueAt(
   return `${date}T${hours}:${minutes}`;
 }
 
+export interface MaterialLink {
+  title: string;
+  url: string;
+  // Set only for an actual Drive file — the Drive file ID Google's API
+  // hands back directly (material.driveFile.driveFile.id). This is what
+  // remoteFetch.ts needs to fetch the file's bytes; nothing downstream can
+  // reach it once collapsed to just {title, url} the way this used to be
+  // (remote-attachments-spec.md §1).
+  driveFileId?: string;
+  // Distinguishes a real fetchable Drive file from a YouTube video, a plain
+  // external link, or a Form — none of which remoteFetch.ts can or should
+  // attempt to fetch (remote-attachments-spec.md §7).
+  linkKind: 'driveFile' | 'youTubeVideo' | 'link' | 'form';
+}
+
 // A courseWork/courseWorkMaterial item's attachment materials as Drive
 // links only — no download, so a link/YouTube/Forms material (which has no
 // downloadable file at all) is just as representable as a Drive file one.
-// Returns one { title, url } per material that actually has a link to show.
+// Returns one entry per material that actually has a link to show, keeping
+// the Drive file ID and material kind alongside title/url (previously
+// discarded — remote-attachments-spec.md §1 — which made every Classroom
+// attachment indistinguishable from a plain external link downstream).
 function extractMaterialLinks(
   materials: classroom_v1.Schema$Material[] | undefined
-): { title: string; url: string }[] {
-  const links: { title: string; url: string }[] = [];
+): MaterialLink[] {
+  const links: MaterialLink[] = [];
   for (const material of materials ?? []) {
     const driveFile = material.driveFile?.driveFile;
     if (driveFile?.alternateLink && driveFile.title) {
-      links.push({ title: driveFile.title, url: driveFile.alternateLink });
+      links.push({
+        title: driveFile.title,
+        url: driveFile.alternateLink,
+        driveFileId: driveFile.id ?? undefined,
+        linkKind: 'driveFile',
+      });
     } else if (material.link?.url) {
-      links.push({ title: material.link.title || material.link.url, url: material.link.url });
+      links.push({ title: material.link.title || material.link.url, url: material.link.url, linkKind: 'link' });
     } else if (material.youtubeVideo?.alternateLink) {
-      links.push({ title: material.youtubeVideo.title || 'YouTube video', url: material.youtubeVideo.alternateLink });
+      links.push({
+        title: material.youtubeVideo.title || 'YouTube video',
+        url: material.youtubeVideo.alternateLink,
+        linkKind: 'youTubeVideo',
+      });
     } else if (material.form?.formUrl) {
-      links.push({ title: material.form.title || 'Form', url: material.form.formUrl });
+      links.push({ title: material.form.title || 'Form', url: material.form.formUrl, linkKind: 'form' });
     }
   }
   return links;
@@ -239,20 +266,24 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
   // added"/"What changed today" widgets falsely show every synced Classroom
   // file as brand new on every launch.
   const insertLinkResource = db.prepare(`
-    INSERT OR IGNORE INTO resources (course_id, title, kind, source, file_path, original_filename, classroom_attachment_id, classwork_material_id, added_at)
-    VALUES (?, ?, 'link', 'classroom', ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO resources (course_id, title, kind, source, file_path, original_filename, classroom_attachment_id, classwork_material_id, added_at, remote_source, remote_ref, link_kind)
+    VALUES (?, ?, 'link', 'classroom', ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const saveLinkResources = (
     courseId: number,
     ownerId: string,
-    links: { title: string; url: string }[],
+    links: MaterialLink[],
     classworkMaterialRowId: number | null,
     ownerPostedAt: string
   ): boolean => {
     let any = false;
     for (const link of links) {
       const attachmentKey = `${ownerId}:${link.url}`;
+      // Only a real Drive file is fetchable — a YouTube/plain-link/Form
+      // material has no remote_ref, and stays permanently 'unsupported'
+      // rather than ever being handed to remoteFetch.ts (§7).
+      const remoteSource = link.driveFileId ? 'drive' : null;
       const result = insertLinkResource.run(
         courseId,
         link.title,
@@ -260,7 +291,10 @@ export async function syncClassroomCourseworkForMappedCourses(): Promise<Classro
         link.title,
         attachmentKey,
         classworkMaterialRowId,
-        ownerPostedAt
+        ownerPostedAt,
+        remoteSource,
+        link.driveFileId ?? null,
+        link.linkKind
       );
       if (result.changes > 0) any = true;
     }

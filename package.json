@@ -11,7 +11,8 @@
     "verify": "npm run build && node scripts/verify-app.js",
     "mcp:server": "node scripts/run-mcp-server.js",
     "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js",
-    "verify:extraction": "npm run build && node scripts/run-as-electron-node.js scripts/verify-extraction.js"
+    "verify:extraction": "npm run build && node scripts/run-as-electron-node.js scripts/verify-extraction.js",
+    "verify:remote": "npm run build && node scripts/run-as-electron-node.js scripts/verify-remote.js"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",

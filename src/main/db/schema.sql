@@ -84,7 +84,42 @@ CREATE TABLE IF NOT EXISTS resources (
   -- (image/zip/other/link), 'failed' on a genuine parse error.
   extraction_status TEXT NOT NULL DEFAULT 'pending',
   extraction_error TEXT,
-  extracted_at TEXT
+  extracted_at TEXT,
+  -- Remote-attachment reading (remote-attachments-spec.md §4) — a resource
+  -- whose bytes live in Drive (later Gmail) and are fetched to memory,
+  -- extracted, then discarded rather than saved under files/. NULL/NULL for
+  -- anything local (manual upload, watched folder, or an already-downloaded
+  -- Drive-inbox import — those keep using drive_file_id above).
+  remote_source TEXT, -- 'drive' | 'gmail' | NULL
+  -- Drive file ID, or 'messageId:attachmentId' for a future Gmail
+  -- attachment. Deliberately not reusing drive_file_id: that column means
+  -- "imported with a local copy" and carries a UNIQUE index this doesn't
+  -- want (the same Drive file can be referenced by several resource rows —
+  -- a Classroom attachment and a discovered link both pointing at it).
+  remote_ref TEXT,
+  -- MIME type as reported by the source at fetch time — picks the
+  -- alt:media vs. files.export() branch and which export format to ask for.
+  remote_mime_type TEXT,
+  -- Drive's modifiedTime (or a future Gmail message's immutable id) as of
+  -- the last successful fetch — a re-sync compares and skips the network
+  -- call entirely when unchanged (§6).
+  remote_fetched_version TEXT,
+  -- Classroom material kind for a 'link'-kind resource: 'driveFile' |
+  -- 'youTubeVideo' | 'link' | 'form'. Lets code tell a fetchable Drive file
+  -- apart from a YouTube video or a plain external URL without re-deriving
+  -- it from file_path. NULL for non-Classroom resources.
+  link_kind TEXT,
+  -- Set when this resource's Drive file already exists locally under a
+  -- different resource row (§3.3) — the relationship is recorded rather
+  -- than silently fetching a second copy of the same file.
+  local_twin_id INTEGER REFERENCES resources(id) ON DELETE SET NULL,
+  -- Link-following (§5.5): set when this resource was created by following
+  -- a hyperlink discovered inside another resource's extracted text, rather
+  -- than being a real Classroom/Drive-inbox item. discovery_depth is 1 for
+  -- a link found directly inside a top-level attachment, 2 for a link found
+  -- inside *that* document, and so on — capped at 2 (§5.5.3).
+  parent_resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
+  discovery_depth INTEGER NOT NULL DEFAULT 0
 );
 
 -- One row per page/slide/sheet/section of a resource's extracted text

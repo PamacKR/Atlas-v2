@@ -1,6 +1,6 @@
 # Remote attachment reading (Drive now, Gmail later) — specification
 
-Status: **draft for review, nothing built yet.**
+Status: **built and verified 2026-07-29.** See STATUS.md's Handoff section for what the user needs to do (reconnect Google Classroom for the new Drive scope) before it's live against real data.
 
 Extends Phase 4's page-aware extraction (`phase4-spec.md` §3) to files Atlas does **not** hold locally — Classroom attachments that live in the professor's Drive, and later Gmail attachments.
 

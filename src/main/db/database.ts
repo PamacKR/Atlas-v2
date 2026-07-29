@@ -106,6 +106,32 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('extracted_at')) {
     db.exec('ALTER TABLE resources ADD COLUMN extracted_at TEXT');
   }
+  // Remote-attachment reading (remote-attachments-spec.md §4) — see
+  // schema.sql for the full field-by-field reasoning.
+  if (!resourceColumns.includes('remote_source')) {
+    db.exec('ALTER TABLE resources ADD COLUMN remote_source TEXT');
+  }
+  if (!resourceColumns.includes('remote_ref')) {
+    db.exec('ALTER TABLE resources ADD COLUMN remote_ref TEXT');
+  }
+  if (!resourceColumns.includes('remote_mime_type')) {
+    db.exec('ALTER TABLE resources ADD COLUMN remote_mime_type TEXT');
+  }
+  if (!resourceColumns.includes('remote_fetched_version')) {
+    db.exec('ALTER TABLE resources ADD COLUMN remote_fetched_version TEXT');
+  }
+  if (!resourceColumns.includes('link_kind')) {
+    db.exec('ALTER TABLE resources ADD COLUMN link_kind TEXT');
+  }
+  if (!resourceColumns.includes('local_twin_id')) {
+    db.exec('ALTER TABLE resources ADD COLUMN local_twin_id INTEGER REFERENCES resources(id) ON DELETE SET NULL');
+  }
+  if (!resourceColumns.includes('parent_resource_id')) {
+    db.exec('ALTER TABLE resources ADD COLUMN parent_resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE');
+  }
+  if (!resourceColumns.includes('discovery_depth')) {
+    db.exec('ALTER TABLE resources ADD COLUMN discovery_depth INTEGER NOT NULL DEFAULT 0');
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS document_parts (

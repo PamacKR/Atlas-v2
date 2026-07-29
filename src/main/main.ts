@@ -8,6 +8,7 @@ import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir } from './p
 import { getPreview } from './preview';
 import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
 import { extractDocumentParts } from './textExtraction';
+import { processPendingRemoteResources } from './remoteSync';
 import { ensureCourseMemoryFile, ensureGeneralMemoryFile, deleteCourseMemoryFile } from './memoryFiles';
 import { toFtsQuery, getCourseBriefing } from './contextBuilder';
 import {
@@ -270,11 +271,21 @@ function resetExtractionForNewLogicVersion(): void {
     | undefined;
   if (Number(row?.value ?? 0) >= EXTRACTION_LOGIC_VERSION) return;
 
-  // Only 'extracted' parts are dropped — OCR results were reviewed and
-  // accepted by the user by hand and must never be silently discarded.
-  db.exec("DELETE FROM document_parts WHERE origin = 'extracted'");
+  // Only 'extracted' parts belonging to a *local* resource are dropped —
+  // OCR results were reviewed and accepted by the user by hand and must
+  // never be silently discarded, and a remote (Classroom/Drive) resource's
+  // extracted text has its own version-check cache (remote_fetched_version,
+  // remote-attachments-spec.md §6) rather than this local-extractor-logic
+  // versioning, so re-running its (potentially rate-limited) network fetch
+  // just because a *local* PDF/DOCX extractor improved would be both wrong
+  // and wasteful.
+  db.exec(`
+    DELETE FROM document_parts WHERE origin = 'extracted' AND resource_id IN (
+      SELECT id FROM resources WHERE remote_source IS NULL
+    )
+  `);
   db.exec(
-    "UPDATE resources SET extraction_status = 'pending', extraction_error = NULL, extracted_at = NULL WHERE extraction_status IN ('done','empty','failed')"
+    "UPDATE resources SET extraction_status = 'pending', extraction_error = NULL, extracted_at = NULL WHERE extraction_status IN ('done','empty','failed') AND remote_source IS NULL"
   );
   db.prepare(
     "INSERT INTO app_settings (key, value) VALUES ('extraction_logic_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
@@ -284,8 +295,14 @@ function resetExtractionForNewLogicVersion(): void {
 async function extractAllPendingResources(): Promise<void> {
   const db = getDb();
   resetExtractionForNewLogicVersion();
+  // remote_source IS NULL excludes Classroom Drive-link attachments — those
+  // have no real file_path to read locally and are handled entirely by
+  // processPendingRemoteResources (remoteSync.ts) instead
+  // (remote-attachments-spec.md). Without this exclusion, every
+  // driveFile-kind link resource would be marked 'unsupported' here before
+  // remote fetching ever got a chance to run.
   const pending = db
-    .prepare("SELECT id, kind, file_path FROM resources WHERE extraction_status = 'pending'")
+    .prepare("SELECT id, kind, file_path FROM resources WHERE extraction_status = 'pending' AND remote_source IS NULL")
     .all() as { id: number; kind: string; file_path: string }[];
   if (pending.length === 0) return;
 
@@ -788,6 +805,10 @@ app.whenReady().then(async () => {
   // pre-existing assignment rows (see upsertAssignment in googleClassroom.ts).
   void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
   void extractAllPendingResources();
+  // Independent of Classroom sync's own post-sync call (scanClassroomAndNotify)
+  // — covers a resource left 'pending' from a previous run when Classroom
+  // sync is set to Off, so remote attachments still get picked up on launch.
+  void runRemoteExtractionAndNotify();
   ensureGeneralMemoryFile();
   // Courses created before Phase 4 shipped never got a memory file, since
   // ensureCourseMemoryFile only runs at creation time — without this every
@@ -1342,12 +1363,39 @@ async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: Cla
     } else {
       recordSyncResult('classroom', true, null);
     }
+    // Runs after coursework sync completes, sequentially, never blocking it
+    // (remote-attachments-spec.md §8) — new Classroom attachments just
+    // discovered above are exactly what this reads.
+    void runRemoteExtractionAndNotify();
     return { changed, errors };
   } catch (err) {
     console.error('Google Classroom scan failed:', err);
     const message = err instanceof Error ? err.message : String(err);
     recordSyncResult('classroom', false, message);
     return { changed: false, errors: [{ courseId: -1, courseName: '', message }] };
+  }
+}
+
+// Fetches and extracts every pending Classroom Drive attachment (and follows
+// links discovered inside them), reusing the same visible-progress channel
+// as the local-file backfill (§8 — a silent multi-minute first sync is
+// exactly how the original hyperlink-destroying bug went unnoticed for
+// weeks, per STATUS.md). A hit discovery/fan-out cap is surfaced to the
+// console rather than swallowed — the spec's "never silent" rule (§5.5.3).
+async function runRemoteExtractionAndNotify(): Promise<void> {
+  try {
+    const { changed, capped } = await processPendingRemoteResources((progress) => {
+      if (mainWindow) mainWindow.webContents.send('extraction:backfillProgress', progress);
+    });
+    if (changed) {
+      rebuildSearchIndex();
+      if (mainWindow) mainWindow.webContents.send('resources:changed');
+    }
+    if (capped) {
+      console.warn('Remote attachment link-following stopped early: per-course discovery cap reached.');
+    }
+  } catch (err) {
+    console.error('Remote attachment extraction failed:', err);
   }
 }
 

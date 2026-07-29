@@ -43,11 +43,25 @@ const CLASSROOM_REFRESH_TOKEN_SETTING_KEY = 'google_classroom_refresh_token';
 // `.me` variant (unlike coursework) — it's the same scope for both teacher
 // and student contexts — needed once courseWorkMaterials.list (the
 // ungraded "Classwork" tab, open-questions.md #21) was added.
+//
+// drive.readonly was added 2026-07-29 (remote-attachments-spec.md §10.1,
+// revised): a Classroom attachment's underlying Drive file is shared by the
+// professor with whichever Google account is connected *to Classroom* — the
+// separate personal-account Drive connection (googleAuth.ts's other
+// DRIVE_SCOPES/getDriveClient) has no permission on it at all, even though
+// that connection also has drive.readonly. Google's Classroom API docs
+// confirm attachment content needs Drive scope granted on the *same* OAuth
+// token as the Classroom scopes. Any code fetching a Classroom-sourced
+// Drive file must use getClassroomClient(), never getDriveClient(). Adding
+// a scope doesn't retroactively apply to an already-issued refresh token
+// (same gotcha as when drive.file was added to DRIVE_SCOPES) — the user
+// needs to disconnect and reconnect Classroom once after this ships.
 const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
   'https://www.googleapis.com/auth/classroom.announcements.readonly',
   'https://www.googleapis.com/auth/classroom.courseworkmaterials.readonly',
+  'https://www.googleapis.com/auth/drive.readonly',
 ];
 
 interface GoogleClientCredentials {
