@@ -512,13 +512,24 @@ function reconcileWatchedFolder(courseId: number, folderPath: string): void {
     .all(courseId) as { id: number; file_path: string; watch_source_path: string }[];
 
   const normalizedFolder = path.resolve(folderPath) + path.sep;
+  // Only rebuild if something was actually deleted — this runs once per
+  // watched folder, every launch. Rebuilding unconditionally meant a full
+  // delete-and-reinsert of the *entire* (multi-thousand-row, at this app's
+  // real scale) search index once per folder, all synchronously back to
+  // back before the window could process a single message — the actual
+  // cause of a multi-second launch freeze, not the per-call-site rebuilds
+  // this function's sibling functions correctly still do unconditionally
+  // (those only run once, in response to a real user action, not in a
+  // per-folder/per-course startup loop).
+  let changed = false;
   for (const resource of resources) {
     if (!resource.watch_source_path.startsWith(normalizedFolder)) continue;
     if (fs.existsSync(resource.watch_source_path)) continue;
     fs.rmSync(resource.file_path, { force: true });
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
+    changed = true;
   }
-  rebuildSearchIndex();
+  if (changed) rebuildSearchIndex();
 }
 
 function startWatchingFolder(folderId: number, courseId: number, folderPath: string): void {
@@ -658,11 +669,17 @@ function reconcileCourseStorage(courseId: number): void {
   const resources = db
     .prepare("SELECT id, file_path FROM resources WHERE course_id = ? AND kind != 'link'")
     .all(courseId) as { id: number; file_path: string }[];
+  // Same fix as reconcileWatchedFolder above, same reason: this runs once
+  // per course at every launch, and an unconditional rebuild here meant one
+  // full index rebuild per course, back to back, before the window could
+  // respond to anything.
+  let changed = false;
   for (const resource of resources) {
     if (fs.existsSync(resource.file_path)) continue;
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
+    changed = true;
   }
-  rebuildSearchIndex();
+  if (changed) rebuildSearchIndex();
 }
 
 function startWatchingCourseStorage(courseId: number, folderName: string): void {

@@ -34,6 +34,8 @@ No new UI, no new IPC endpoints — every handler this needed was already built 
 
 All four verify suites (`verify`, `verify:mcp`, `verify:extraction`, `verify:remote`) re-run and pass after both changes.
 
+**A third, real bug found immediately after** — the user reported the packaged app opening as "Not Responding" (blank, unstyled Windows chrome) for a few seconds before rendering, when launched via the Start Menu shortcut against their real data. Root cause: `reconcileWatchedFolder()` and `reconcileCourseStorage()` (both run once per watched folder / per course at every launch, from the `app.whenReady()` startup loop) each called `rebuildSearchIndex()` **unconditionally** — so with the user's real course count, the *entire* multi-thousand-row search index was fully deleted and reinserted several times in a row, synchronously, before the window could process a single message. That's a genuine pre-existing bug (predates this session), just never visible until the packaging work ran startup against the real data directory for the first time instead of a small verify fixture. Fixed both functions to only call `rebuildSearchIndex()` when they actually deleted a resource, same principle as `searchIndexNeedsRebuild()` above. Re-ran all four verify suites; `atlas_list_resources reports part count` failed once and passed on 3 immediate reruns — confirmed the same pre-existing ordering flake already noted here, not caused by this change.
+
 ## Handoff — how the remote-attachments work landed
 
 **`remote-attachments-spec.md` is built and the user has reconnected Google Classroom** (the step needed for the new `drive.readonly` scope, see below). What shipped, in build order:
