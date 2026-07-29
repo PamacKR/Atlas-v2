@@ -61,6 +61,7 @@ export interface Note {
   is_handwritten: number;
   image_path: string | null;
   ocr_text: string | null;
+  generated_by_agent: number;
   created_at: string;
   updated_at: string;
 }
@@ -216,6 +217,8 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('courses:create', name, code, term),
   setCourseArchived: (courseId: number, archived: boolean): Promise<Course> =>
     ipcRenderer.invoke('courses:setArchived', courseId, archived),
+  exportCourseContext: (courseId: number): Promise<{ ok: true; filePath: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('courses:exportContext', courseId),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),

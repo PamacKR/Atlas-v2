@@ -52,6 +52,7 @@ interface Note {
   is_handwritten: number;
   image_path: string | null;
   ocr_text: string | null;
+  generated_by_agent: number;
   created_at: string;
   updated_at: string;
 }
@@ -287,6 +288,7 @@ interface AtlasApi {
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
   setCourseArchived: (courseId: number, archived: boolean) => Promise<Course>;
+  exportCourseContext: (courseId: number) => Promise<{ ok: true; filePath: string } | { ok: false; error: string }>;
   deleteResource: (resourceId: number) => Promise<void>;
   getPreview: (resourceId: number) => Promise<Preview>;
   setResourceZoom: (resourceId: number, zoom: number) => Promise<void>;
@@ -720,6 +722,7 @@ function setShowArchivedCourses(value: boolean): void {
 let resourcesKindFilter = ''; // '' = all; otherwise a comma-separated list of kinds
 let resourcesCourseFilterId: number | null = null; // null = all courses
 let notesCourseFilterId: number | null = null; // null = all courses
+let showOnlyAgentNotes = false; // Phase 4 Part B filter — agent-generated notes only
 
 function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTMLLIElement {
   const li = document.createElement('li');
@@ -1039,6 +1042,16 @@ function noteGroupLabel(note: NoteWithCourse): 'Today' | 'This week' | 'Older' {
   return 'Older';
 }
 
+// Shared "who made this" prefix — handwritten (✍️) and agent-generated (🤖)
+// are orthogonal signals (a typed, imported, or scanned note is all
+// "user-made" alike), so both can in principle apply; agent-made is checked
+// first since it's the rarer, more surprising case worth flagging first.
+function noteTitlePrefix(note: Note): string {
+  if (note.generated_by_agent) return '🤖 ';
+  if (note.is_handwritten) return '✍️ ';
+  return '';
+}
+
 function renderAllNotesList(notes: NoteWithCourse[]): void {
   const container = document.getElementById('all-notes-list')!;
   container.innerHTML = '';
@@ -1076,7 +1089,7 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
 
       const title = document.createElement('div');
       title.className = 'note-item-title';
-      title.textContent = note.is_handwritten ? `✍️ ${note.title}` : note.title;
+      title.textContent = `${noteTitlePrefix(note)}${note.title}`;
       li.appendChild(title);
 
       const meta = document.createElement('div');
@@ -1105,9 +1118,18 @@ async function renderNotesPage(): Promise<void> {
   });
 
   const allNotes = await atlasApi.listAllNotes();
-  const notes =
+  let notes =
     notesCourseFilterId === null ? allNotes : allNotes.filter((n) => n.course_id === notesCourseFilterId);
+  if (showOnlyAgentNotes) notes = notes.filter((n) => n.generated_by_agent);
   renderAllNotesList(notes);
+}
+
+function setShowOnlyAgentNotes(value: boolean): void {
+  showOnlyAgentNotes = value;
+  const button = document.getElementById('toggle-agent-notes')!;
+  button.textContent = value ? 'Show all notes' : 'Show only agent notes';
+  button.classList.toggle('active', value);
+  void renderNotesPage();
 }
 
 // `due_at` is 'YYYY-MM-DD' (date only) or 'YYYY-MM-DDTHH:MM' (date + optional
@@ -2812,6 +2834,19 @@ function updateCourseDetailArchiveButton(course: Course): void {
   button.textContent = course.archived === 1 ? 'Unarchive course' : 'Archive course';
 }
 
+// Phase 4 Part E fallback (phase4-spec.md §7) — for pasting into an AI tool
+// that can't use the MCP server (Part D) directly. Reveals the written file
+// in the OS file manager (main.ts's shell.showItemInFolder) since there's no
+// in-app viewer for it — the point is a plain file to open elsewhere.
+async function exportSelectedCourseContext(): Promise<void> {
+  if (!selectedCourse) return;
+  const statusEl = document.getElementById('course-detail-export-status')!;
+  statusEl.hidden = false;
+  statusEl.textContent = 'Exporting…';
+  const result = await atlasApi.exportCourseContext(selectedCourse.id);
+  statusEl.textContent = result.ok ? `Saved to ${result.filePath}` : result.error;
+}
+
 async function toggleSelectedCourseArchived(): Promise<void> {
   if (!selectedCourse) return;
   const updated = await atlasApi.setCourseArchived(selectedCourse.id, selectedCourse.archived !== 1);
@@ -2843,6 +2878,7 @@ async function selectCourse(course: Course): Promise<void> {
   avatarSlot.appendChild(makeCourseAvatar(course));
 
   updateCourseDetailArchiveButton(course);
+  document.getElementById('course-detail-export-status')!.hidden = true;
 
   // Reaching this detail page from the archived view means this specific
   // course is itself archived — pass that through so the lookup below finds
@@ -3153,7 +3189,7 @@ async function renderCourseDetailPreviews(courseId: number): Promise<void> {
   } else {
     for (const note of notes.slice(0, COURSE_DETAIL_PREVIEW_LIMIT)) {
       const li = document.createElement('li');
-      li.textContent = note.is_handwritten ? `✍️ ${note.title}` : note.title;
+      li.textContent = `${noteTitlePrefix(note)}${note.title}`;
       li.addEventListener('click', () => openNoteEditor(note));
       noteList.appendChild(li);
     }
@@ -3885,6 +3921,9 @@ async function init(): Promise<void> {
   });
 
   document.getElementById('course-detail-back')!.addEventListener('click', backToCourseList);
+  document.getElementById('course-detail-export-context')!.addEventListener('click', () => {
+    void exportSelectedCourseContext();
+  });
   document.getElementById('course-detail-archive-toggle')!.addEventListener('click', () => {
     void toggleSelectedCourseArchived();
   });
@@ -4030,6 +4069,7 @@ async function init(): Promise<void> {
 
   document.getElementById('new-note-button')!.addEventListener('click', () => openCoursePicker('note'));
   document.getElementById('import-scan-button')!.addEventListener('click', () => openCoursePicker('scan'));
+  document.getElementById('toggle-agent-notes')!.addEventListener('click', () => setShowOnlyAgentNotes(!showOnlyAgentNotes));
 
   document.getElementById('note-run-ocr')!.addEventListener('click', runNoteOcr);
   document.getElementById('note-ocr-discard')!.addEventListener('click', discardNoteOcr);

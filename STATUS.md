@@ -2,7 +2,18 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-29 (Atlas-v2, Phase 4 Part A — page-aware text extraction — built and verified)
+**Last updated:** 2026-07-29 (Atlas-v2, Phase 4 Parts A–E all built and verified — MCP server live, see `mcp-setup.md`)
+
+## Session 2026-07-29 (continued) — Phase 4 Parts B–E: memory, agent notes, query layer, MCP server, export
+
+Built straight through after Part A, per the user's go-ahead to keep going without pausing between parts, verifying at the end. Full detail in `phase4-spec.md`; this is the summary.
+
+- **Part C — persistent memory as files**: `src/main/memoryFiles.ts`. Plain Markdown, one file per course plus one general (`_general.md`), in `Atlas-Storage/course-profiles/` — never shown in the Atlas UI, never parsed by Atlas. Seeded at course creation (all three creation paths: manual, Classroom mapping, Ashoka import), deleted alongside a course's files when the course itself is deleted (not archived).
+- **Part B — agent-generated notes**: `notes.generated_by_agent` column. A 🤖 badge (orthogonal to the existing ✍️ handwritten badge — a note can in principle be neither, either, or both signal-wise, though not simultaneously in practice) plus a "Show only agent notes" filter on the Notes page.
+- **Part D (query layer) — `src/main/contextBuilder.ts`**: the actual logic behind all 9 tools from the spec, as plain functions over a `better-sqlite3` `Database` instance with zero Electron dependency — shared verbatim by the MCP server (a separate process) and the static export (runs in-process). Course lookup accepts either a numeric id or a name (exact match, then unique substring; ambiguous names return candidates rather than guessing).
+- **Part D (MCP server) — `src/main/mcpServer.ts`**: uses the official `@modelcontextprotocol/sdk`, stdio transport. Exposes exactly the 9 tools from the spec with the same response-size limits (search excerpts capped, `atlas_read_document` capped per-call). **Real bug found while building this, not guessed**: `contextBuilder.ts` was supposed to have zero Electron dependency, but transitively imported `paths.ts`, which calls `electron`'s `app.getPath()` — and `app` is `undefined` when the server runs under `ELECTRON_RUN_AS_NODE=1` (required so `better-sqlite3`'s native binding matches Electron's Node ABI; a plain `node` launch fails with a `NODE_MODULE_VERSION` mismatch, confirmed directly). Fixed by making `getDataDir()` fall back to the OS-default Downloads path when `app` isn't available. See `mcp-setup.md` for exactly how to point Claude Code/Codex/Cursor at it.
+- **Part E — static export**: "Export for AI" button on course detail, writes a plain-Markdown dump to `Atlas-Storage/exports/` via the same `contextBuilder.ts` the MCP server uses, for AI tools that can't do MCP.
+- **Verification**: new `npm run verify:mcp` (`scripts/verify-mcp.js`) drives the real MCP server over the real protocol via the SDK's own client — not a mock — against a seeded temp database, asserting all 9 tools' actual behavior (search returns excerpts not full text, an agent-created note is immediately searchable, the agent can create but never touch the user's own note, an unmatched course name returns an error rather than a guess). Full `npm run verify` (Playwright/Electron) also re-run and passing, since this touched course creation/deletion, notes, and search across several files.
 
 ## Session 2026-07-29 — Phase 4 Part A: page-aware text extraction
 

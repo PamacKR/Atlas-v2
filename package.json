@@ -8,7 +8,9 @@
     "build": "tsc -b && tsc --noEmit -p tsconfig.renderer.json && node scripts/build-renderer.js && node scripts/copy-assets.js",
     "start": "npm run build && electron .",
     "watch": "tsc -b -w",
-    "verify": "npm run build && node scripts/verify-app.js"
+    "verify": "npm run build && node scripts/verify-app.js",
+    "mcp:server": "node scripts/run-mcp-server.js",
+    "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
@@ -24,6 +26,7 @@
   "dependencies": {
     "@milkdown/crepe": "^7.21.3",
     "@milkdown/kit": "^7.21.3",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@napi-rs/canvas": "^1.0.2",
     "adm-zip": "^0.6.0",
     "better-sqlite3": "^11.7.0",

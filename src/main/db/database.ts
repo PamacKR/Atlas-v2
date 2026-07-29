@@ -132,6 +132,9 @@ function migrate(db: Database.Database): void {
   if (!noteColumns.includes('drive_file_id')) {
     db.exec('ALTER TABLE notes ADD COLUMN drive_file_id TEXT');
   }
+  if (!noteColumns.includes('generated_by_agent')) {
+    db.exec('ALTER TABLE notes ADD COLUMN generated_by_agent INTEGER NOT NULL DEFAULT 0');
+  }
 
   const deadlineColumns = (
     db.prepare('PRAGMA table_info(deadlines)').all() as { name: string }[]

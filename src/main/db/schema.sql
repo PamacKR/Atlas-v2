@@ -140,7 +140,13 @@ CREATE TABLE IF NOT EXISTS notes (
   exported_path TEXT,
   -- Drive file ID this note was imported from — mirrors
   -- resources.drive_file_id. NULL for anything not sourced from Drive.
-  drive_file_id TEXT
+  drive_file_id TEXT,
+  -- Set when an AI agent created this note (Phase 4 Part B,
+  -- phase4-spec.md §4) rather than the user — typed, imported, and scanned
+  -- notes are all "user-made" alike, so this is orthogonal to is_handwritten.
+  -- Drives a badge + filter; agent-created notes can never be edited by the
+  -- agent afterward, only created fresh.
+  generated_by_agent INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS deadlines (

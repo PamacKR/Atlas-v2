@@ -1,6 +1,6 @@
 # Phase 4 — Context Builder & AI agent integration (specification)
 
-Status: **Part A (page-aware text extraction) built and verified 2026-07-29 — see STATUS.md.** Parts B–E not yet built.
+Status: **Parts A–E all built and verified 2026-07-29 — see STATUS.md.** Phase 4 is functionally complete; see `mcp-setup.md` to connect an AI tool.
 
 This is the detailed design for Phase 4, written before any code so the shape can be argued with cheaply. It expands `ROADMAP.md` Phase 4 and PRD §16/§18/§19/§21.
 
@@ -287,11 +287,11 @@ Extraction gets its own fixtures — a real multi-page PDF, a deck, a DOCX, and 
 | # | Piece | Size | Why here |
 |---|---|---|---|
 | 1 | Page-aware extraction + backfill (§3) | **Large** | **Built 2026-07-29.** Everything else is hollow without it. |
-| 2 | Memory files, course + general (§5) | Small | Self-contained; the query layer needs it. |
-| 3 | Agent-note flag, badge, filter (§4) | Small | Self-contained UI + one column. |
-| 4 | Query layer (§6.3 logic, no MCP yet) | Medium | Plain functions over SQLite, shared by the server and the export. |
-| 5 | MCP server + `verify:mcp` (§6) | Medium | The bridge. |
-| 6 | Static export (§7) | Small | Reuses #4. |
+| 2 | Memory files, course + general (§5) | Small | **Built 2026-07-29.** Self-contained; the query layer needs it. |
+| 3 | Agent-note flag, badge, filter (§4) | Small | **Built 2026-07-29.** Self-contained UI + one column. |
+| 4 | Query layer (§6.3 logic, no MCP yet) | Medium | **Built 2026-07-29** as `src/main/contextBuilder.ts`. Plain functions over SQLite, shared by the server and the export. |
+| 5 | MCP server + `verify:mcp` (§6) | Medium | **Built 2026-07-29** as `src/main/mcpServer.ts`. The bridge. See `mcp-setup.md`. |
+| 6 | Static export (§7) | Small | **Built 2026-07-29** as the "Export for AI" button on course detail. Reuses #4. |
 
 ## 10. Open items
 

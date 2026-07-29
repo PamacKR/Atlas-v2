@@ -51,11 +51,12 @@ Reordered again 2026-07-28 (user decision, `open-questions.md` #28): the two rem
 **Moved ahead of the Gmail adapter (2026-07-28 user decision, `open-questions.md` #28).** The user's primary want from Gmail — surfacing what they missed in a flood of college email — is a Phase 4 capability by definition and can't be delivered by an email adapter alone. Phase 4 is also still entirely unbuilt while being the product's stated purpose (PRD §16/§18/§21), and everything already in Atlas (courses, notes, deadlines, resources, Classroom data) is already worth querying — so it delivers value immediately, with or without email. Building Gmail's storage shape first would also risk designing it before knowing how the agent actually queries.
 
 - [x] Page-aware text extraction: every PDF/PPTX/DOCX/XLSX resource's text is pulled into per-page/slide/sheet/section parts (not filename-only search), extracted on import and backfilled for existing files. See `phase4-spec.md` §3 and `STATUS.md` (2026-07-29).
-- Context Builder query layer: relevance-based retrieval per task type (assignment help, exam revision, lecture summary, concept explanation)
-- Course AI profiles (section 19): explanation style, detail level, reasoning depth, formatting, math derivation use, citation preferences
-- Local MCP server exposing the Context Builder to any MCP-compatible AI agent
-- Static context-file export as a fallback path for non-MCP AI tools
-- "Fresh conversation" flow: any connected AI agent can pick up full course context with no manual explanation from the user
+- [x] Persistent agent memory: plain-Markdown files per course + one general file, in `Atlas-Storage/course-profiles/`, read/written directly by the AI agent — not just presentation preferences (PRD §19) but familiarity/weak spots, how a course runs, and work already done. Never shown in the Atlas UI or parsed by Atlas itself. See `phase4-spec.md` §5.
+- [x] Agent-generated notes: an agent can create (never edit/overwrite) notes, flagged and badged distinctly from the user's own typed/imported/scanned notes, with a Notes-page filter. See `phase4-spec.md` §4.
+- [x] Context Builder query layer (`src/main/contextBuilder.ts`): plain functions — overview, course briefing, search, list resources/deadlines, read a document page range or a note, write memory, create a note — shared by the MCP server and the static export. See `phase4-spec.md` §6.3.
+- [x] Local MCP server (`src/main/mcpServer.ts`) exposing all of the above to any MCP-compatible AI agent (Claude Code, Codex, Cursor) over stdio. See `mcp-setup.md` for connecting a tool and `phase4-spec.md` §6.
+- [x] Static context-file export ("Export for AI" on course detail) as a fallback path for non-MCP AI tools. See `phase4-spec.md` §7.
+- "Fresh conversation" flow (`atlas_overview`) already lets a connected agent pick up full context with no manual explanation — course AI profiles (PRD §19's original narrower scope) are folded into the memory files above rather than a separate settings form.
 
 ## Phase 5 — Lifecycle & polish
 

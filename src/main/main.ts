@@ -4,10 +4,12 @@ import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
 import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
-import { getFilesDir, getNoteImagesDir, getScanImagesDir } from './paths';
+import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir } from './paths';
 import { getPreview } from './preview';
 import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
 import { extractDocumentParts } from './textExtraction';
+import { ensureCourseMemoryFile, ensureGeneralMemoryFile, deleteCourseMemoryFile } from './memoryFiles';
+import { toFtsQuery, getCourseBriefing } from './contextBuilder';
 import {
   isGoogleDriveConnected,
   authorizeGoogleDrive,
@@ -758,6 +760,7 @@ app.whenReady().then(async () => {
   // pre-existing assignment rows (see upsertAssignment in googleClassroom.ts).
   void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
   void extractAllPendingResources();
+  ensureGeneralMemoryFile();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -779,20 +782,6 @@ app.on('window-all-closed', () => {
 });
 
 // --- IPC: global search (FTS5, PRD §14) ---
-
-// User input isn't valid FTS5 query syntax as-is (bare `"`, `-`, `*`, `(` etc.
-// all mean something to FTS5's own query grammar and would either error or
-// do something the user didn't intend). Quoting each whitespace-separated
-// word as its own phrase and appending `*` gives simple, predictable
-// prefix-matching per word ("dat str" matches "Data Structures") without
-// exposing FTS5's full query syntax to the search box.
-function toFtsQuery(userInput: string): string {
-  return userInput
-    .trim()
-    .split(/\s+/)
-    .map((word) => `"${word.replace(/"/g, '""')}"*`)
-    .join(' ');
-}
 
 ipcMain.handle('search:query', (_event, query: string) => {
   if (!query.trim()) return [];
@@ -905,6 +894,49 @@ ipcMain.handle('courses:setArchived', (_event, courseId: number, archived: boole
   return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
 
+// Phase 4 Part E (phase4-spec.md §7) — a plain-Markdown dump of one course's
+// context (memory, deadlines, announcements, resource/note inventory) for
+// pasting into an AI tool that can't use the MCP server (Part D) directly.
+// Reuses getCourseBriefing rather than querying separately, so this and the
+// MCP server's atlas_course_briefing can never drift apart on what "a
+// course's context" means.
+ipcMain.handle('courses:exportContext', (_event, courseId: number) => {
+  const db = getDb();
+  const briefing = getCourseBriefing(db, courseId);
+  if (!briefing.ok) return { ok: false as const, error: briefing.error };
+
+  const lines: string[] = [
+    `# ${briefing.course.name}${briefing.course.code ? ` (${briefing.course.code})` : ''}`,
+  ];
+  if (briefing.course.term) lines.push(`Term: ${briefing.course.term}`);
+  lines.push('', '## Memory (what your AI agent has learned about this course)', briefing.memory ?? '_Nothing recorded yet._');
+  lines.push('', '## Upcoming deadlines');
+  lines.push(
+    ...(briefing.upcomingDeadlines.length
+      ? briefing.upcomingDeadlines.map((d) => `- ${d.title} (${d.kind}) — due ${d.due_at}`)
+      : ['_None._'])
+  );
+  lines.push('', '## Recent announcements');
+  lines.push(
+    ...(briefing.recentAnnouncements.length
+      ? briefing.recentAnnouncements.map((a) => `- ${a.title} (${a.posted_at})`)
+      : ['_None._'])
+  );
+  lines.push('', '## Resource inventory');
+  lines.push(...briefing.resourceCountsByKind.map((rc) => `- ${rc.kind}: ${rc.count}`));
+  lines.push('', '## Recent resources (id — title — kind — extraction status)');
+  lines.push(...briefing.recentResources.map((r) => `- [#${r.id}] ${r.title} (${r.kind}, extraction: ${r.extraction_status})`));
+  lines.push('', '## Notes');
+  lines.push(...briefing.recentNotes.map((n) => `- [#${n.id}] ${n.title}${n.generated_by_agent ? ' (agent-generated)' : ''}`));
+
+  const exportsDir = path.join(getDataDir(), 'exports');
+  fs.mkdirSync(exportsDir, { recursive: true });
+  const filePath = path.join(exportsDir, `atlas-context-${sanitizeFolderName(briefing.course.name)}.md`);
+  fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
+  shell.showItemInFolder(filePath);
+  return { ok: true as const, filePath };
+});
+
 // Cross-course listings for the global Resources/Notes pages (§7/§8) — the
 // per-course listResources/listNotes handlers still exist for course-scoped
 // callers (deadline mentions, dashboard drill-through), these two just add
@@ -994,6 +1026,7 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
   const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
   db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
   startWatchingCourseStorage(Number(courseId), folderName);
+  ensureCourseMemoryFile(name);
 
   return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
@@ -1314,6 +1347,7 @@ ipcMain.handle(
     const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
     db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
     startWatchingCourseStorage(Number(courseId), folderName);
+    ensureCourseMemoryFile(name);
 
     removePendingClassroomCourse(classroomCourseId);
     const { errors } = await scanClassroomAndNotify();
@@ -1442,6 +1476,7 @@ ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidat
     const folderName = uniqueCourseFolderName(sanitizeFolderName(candidate.title), getFilesDir());
     db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
     startWatchingCourseStorage(Number(courseId), folderName);
+    ensureCourseMemoryFile(candidate.title);
 
     created.push(db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId));
   }
@@ -1640,7 +1675,7 @@ ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
 ipcMain.handle('courses:delete', (_event, courseId: number) => {
   const db = getDb();
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId) as
-    | { folder_name: string }
+    | { folder_name: string; name: string }
     | undefined;
   // The resources themselves cascade-delete below via the FK, which would
   // otherwise leave their Drive preview copies (if any) orphaned in Atlas's
@@ -1666,6 +1701,7 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
   if (course) {
     const courseFilesDir = path.join(getFilesDir(), course.folder_name);
     fs.rmSync(courseFilesDir, { recursive: true, force: true });
+    deleteCourseMemoryFile(course.name);
   }
   db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
   rebuildSearchIndex();

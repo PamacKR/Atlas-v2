@@ -168,8 +168,13 @@
               <h2 id="course-detail-heading"></h2>
               <p id="course-detail-meta" class="muted"></p>
             </div>
+            <!-- Phase 4 Part E fallback (phase4-spec.md §7) — a plain-Markdown
+                 dump of this course's context, for pasting into an AI tool
+                 that can't use the MCP server directly. -->
+            <button id="course-detail-export-context" type="button" class="link-button">Export for AI</button>
             <button id="course-detail-archive-toggle" type="button" class="link-button">Archive course</button>
           </div>
+          <p id="course-detail-export-status" class="muted" hidden></p>
 
           <!-- Tabbed layout (replaces the old single long-scroll page) —
                Overview/Deadlines/Files always shown; Announcements/
@@ -326,6 +331,10 @@
           <aside class="split-rail">
             <h4>Courses</h4>
             <ul id="notes-course-rail"></ul>
+            <!-- Filters to just the notes an AI agent generated (Phase 4 Part
+                 B) vs. everything the user made themselves (typed, imported,
+                 or scanned — all "user-made" alike). -->
+            <button id="toggle-agent-notes" type="button" class="link-button">Show only agent notes</button>
           </aside>
           <div class="split-list" id="notes-list-pane">
             <div id="all-notes-list"></div>
