@@ -21,6 +21,9 @@ export interface CourseRow {
   code: string | null;
   term: string | null;
   archived: number;
+  // The unique, filesystem-safe, never-renamed identifier this course's
+  // storage folder and memory file are both keyed by — see memoryFiles.ts.
+  folder_name: string;
 }
 
 export type CourseLookup =
@@ -130,7 +133,7 @@ export function getCourseBriefing(db: Database.Database, ref: string | number) {
   return {
     ok: true as const,
     course: { id: course.id, name: course.name, code: course.code, term: course.term },
-    memory: readMemory(course.name),
+    memory: readMemory(course.folder_name),
     upcomingDeadlines: deadlines,
     recentAnnouncements: announcements,
     resourceCountsByKind: resourceCounts,
@@ -184,8 +187,27 @@ export function searchAtlas(
   }
 
   const limit = Math.min(opts.limit ?? SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT);
+
+  // Course/type filtering MUST happen inside the SQL, before LIMIT — doing
+  // it in JavaScript afterwards was a real bug: a course-scoped search would
+  // silently return nothing whenever the globally top-ranked N hits all
+  // belonged to other courses, even though real matches existed in the
+  // requested one. That's precisely the "agent confidently answers from a
+  // partial view" failure phase4-spec.md §6.4 exists to prevent.
+  const conditions = ['search_index MATCH ?'];
+  const params: (string | number)[] = [toFtsQuery(query)];
+  if (courseId !== null) {
+    conditions.push('search_index.course_id = ?');
+    params.push(courseId);
+  }
+  if (opts.types && opts.types.length > 0) {
+    conditions.push(`search_index.entity_type IN (${opts.types.map(() => '?').join(',')})`);
+    params.push(...opts.types);
+  }
   // Over-fetch by one so truncation can be detected without a second COUNT
   // query, then trim back down to the real limit before returning.
+  params.push(limit + 1);
+
   const rows = db
     .prepare(
       `SELECT search_index.entity_type AS entityType,
@@ -196,18 +218,14 @@ export function searchAtlas(
               snippet(search_index, 4, '', '', '…', 20) AS snippet
        FROM search_index
        JOIN courses ON courses.id = search_index.course_id
-       WHERE search_index MATCH ?
+       WHERE ${conditions.join(' AND ')}
        ORDER BY rank
        LIMIT ?`
     )
-    .all(toFtsQuery(query), limit + 1) as SearchHit[];
+    .all(...params) as SearchHit[];
 
-  const filtered = rows
-    .filter((r) => courseId === null || r.courseId === courseId)
-    .filter((r) => !opts.types || opts.types.includes(r.entityType))
-    .map((r) => ({ ...r, snippet: r.snippet.slice(0, SEARCH_EXCERPT_MAX_CHARS) }));
-
-  return { hits: filtered.slice(0, limit), truncated: filtered.length > limit };
+  const hits = rows.slice(0, limit).map((r) => ({ ...r, snippet: r.snippet.slice(0, SEARCH_EXCERPT_MAX_CHARS) }));
+  return { hits, truncated: rows.length > limit };
 }
 
 const LIST_DEFAULT_LIMIT = 50;
@@ -283,13 +301,25 @@ export function readDocument(db: Database.Database, resourceId: number, from?: n
   const requestedEnd = to ?? start + READ_PART_LIMIT - 1;
   const end = Math.min(requestedEnd, start + READ_PART_LIMIT - 1);
 
+  // Prefer the real text layer, fall back to OCR. Restricting this to
+  // origin = 'extracted' was a real bug: a scanned textbook the user ran OCR
+  // on would appear in search results (search indexes both origins) but
+  // return zero content when the agent tried to actually read the page it
+  // had just been pointed at. Chosen per-resource rather than per-ordinal
+  // because a PDF either has a usable text layer or it doesn't — mixing the
+  // two sources within one document would make page numbering incoherent.
+  const hasExtracted = db
+    .prepare("SELECT 1 FROM document_parts WHERE resource_id = ? AND origin = 'extracted' LIMIT 1")
+    .get(resourceId);
+  const origin = hasExtracted ? 'extracted' : 'ocr';
+
   const parts = db
     .prepare(
       `SELECT ordinal, label, text FROM document_parts
-       WHERE resource_id = ? AND origin = 'extracted' AND ordinal BETWEEN ? AND ?
+       WHERE resource_id = ? AND origin = ? AND ordinal BETWEEN ? AND ?
        ORDER BY ordinal`
     )
-    .all(resourceId, start, end) as { ordinal: number; label: string; text: string }[];
+    .all(resourceId, origin, start, end) as { ordinal: number; label: string; text: string }[];
 
   let usedChars = 0;
   const included: typeof parts = [];
@@ -326,7 +356,7 @@ export function writeCourseOrGeneralMemory(db: Database.Database, course: string
   }
   const lookup = findCourse(db, course);
   if (!lookup.ok) return lookup;
-  writeMemory(lookup.course.name, content);
+  writeMemory(lookup.course.folder_name, content);
   return { ok: true as const };
 }
 

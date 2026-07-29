@@ -56,13 +56,45 @@ function seedTestData(dataDir) {
   );
   db.prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (?, 'My own notes', 'stuff I wrote')").run(courseId);
 
+  // --- Regression fixtures for three bugs found while auditing Phase 4 ---
+
+  // (1) A second course whose display name is IDENTICAL to the first (same
+  // subject, different term) — these must not share one memory file.
+  db.prepare(
+    "INSERT INTO courses (name, code, term, folder_name) VALUES ('Microeconomics', 'ECON101', 'Spring', 'Microeconomics (2)')"
+  ).run();
+  const duplicateNameCourseId = db.prepare("SELECT id FROM courses WHERE term = 'Spring'").get().id;
+
+  // (2) A course whose matches are all out-ranked globally — course-scoped
+  // search must still find its one real hit rather than returning nothing.
+  db.prepare("INSERT INTO courses (name, code, term, folder_name) VALUES ('Statistics', 'STAT1', 'Fall', 'Statistics')").run();
+  const statsCourseId = db.prepare("SELECT id FROM courses WHERE name = 'Statistics'").get().id;
+  for (let i = 1; i <= 20; i++) {
+    db.prepare(
+      "INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES ('document_part', ?, ?, ?, ?)"
+    ).run(1000 + i, courseId, `Page ${i}`, `elasticity discussion number ${i}`);
+  }
+  db.prepare(
+    "INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES ('document_part', ?, ?, ?, ?)"
+  ).run(2001, statsCourseId, 'Page 99', 'elasticity in a statistics context');
+
+  // (3) A scanned resource with ONLY OCR-derived parts — must be readable,
+  // not just searchable.
+  db.prepare(
+    "INSERT INTO resources (course_id, title, kind, file_path, extraction_status) VALUES (?, 'ScannedBook.pdf', 'pdf', '/tmp/scan.pdf', 'done')"
+  ).run(courseId);
+  const scannedResourceId = db.prepare("SELECT id FROM resources WHERE title = 'ScannedBook.pdf'").get().id;
+  db.prepare(
+    "INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, 1, 'Page 1', 'recovered scanned text', 'ocr')"
+  ).run(scannedResourceId);
+
   db.close();
-  return { courseId, resourceId };
+  return { courseId, resourceId, duplicateNameCourseId, statsCourseId, scannedResourceId };
 }
 
 async function main() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-verify-mcp-'));
-  const { courseId, resourceId } = seedTestData(dataDir);
+  const { courseId, resourceId, duplicateNameCourseId, statsCourseId, scannedResourceId } = seedTestData(dataDir);
 
   const transport = new StdioClientTransport({
     command: electronPath,
@@ -82,14 +114,24 @@ async function main() {
 
   const overview = await callTool('atlas_overview', {});
   assert(overview.courses.some((c) => c.name === 'Microeconomics'), 'atlas_overview lists the seeded course');
-  assert(overview.resourceCount === 1, 'atlas_overview counts the seeded resource');
+  assert(overview.resourceCount === 2, 'atlas_overview counts the seeded resources');
 
-  const briefing = await callTool('atlas_course_briefing', { course: 'micro' });
-  assert(briefing.ok === true, 'atlas_course_briefing resolves a course by substring name');
-  assert(briefing.upcomingDeadlines.length === 1, 'atlas_course_briefing lists the seeded deadline');
+  const briefing = await callTool('atlas_course_briefing', { course: 'statist' });
+  assert(briefing.ok === true, 'atlas_course_briefing resolves a course by unique substring name');
+
+  const fallBriefingById = await callTool('atlas_course_briefing', { course: courseId });
+  assert(fallBriefingById.upcomingDeadlines.length === 1, 'atlas_course_briefing lists the seeded deadline');
 
   const missingCourse = await callTool('atlas_course_briefing', { course: 'nonexistent course' });
   assert(missingCourse.ok === false, 'atlas_course_briefing reports an error for an unmatched course, not a guess');
+
+  // Two courses are genuinely named "Microeconomics" here — the agent must be
+  // told which ones matched rather than silently answering about the wrong one.
+  const ambiguous = await callTool('atlas_course_briefing', { course: 'Microeconomics' });
+  assert(
+    ambiguous.ok === false && Array.isArray(ambiguous.candidates) && ambiguous.candidates.length === 2,
+    'an ambiguous course name returns the candidates instead of guessing one'
+  );
 
   const search = await callTool('atlas_search', { query: 'chapter 5' });
   assert(search.hits.length === 1 && search.hits[0].title === 'Page 5', 'atlas_search finds the right page, not just the file');
@@ -118,6 +160,31 @@ async function main() {
     content_markdown: '# Study guide\nCovers supply and demand.',
   });
   assert(noteResult.ok === true, 'atlas_create_note succeeds');
+
+  // --- Regressions for the three bugs found auditing Phase 4 ---
+
+  // (1) Two courses sharing a display name must have independent memory.
+  await callTool('atlas_write_memory', { course: duplicateNameCourseId, content: '# Spring term memory' });
+  const springBriefing = await callTool('atlas_course_briefing', { course: duplicateNameCourseId });
+  const fallBriefing = await callTool('atlas_course_briefing', { course: courseId });
+  assert(
+    springBriefing.memory.includes('Spring term memory') && fallBriefing.memory.includes('comfortable with elasticity'),
+    'two courses with the same name keep separate memory files (not one shared/overwritten file)'
+  );
+
+  // (2) Course-scoped search must not be starved by higher-ranked hits elsewhere.
+  const scopedSearch = await callTool('atlas_search', { query: 'elasticity', course: statsCourseId });
+  assert(
+    scopedSearch.hits.length === 1 && scopedSearch.hits[0].title === 'Page 99',
+    'course-scoped search finds a match even when other courses dominate the global ranking'
+  );
+
+  // (3) An OCR'd scan must be readable, not merely searchable.
+  const scannedRead = await callTool('atlas_read_document', { resource_id: scannedResourceId, from: 1, to: 1 });
+  assert(
+    scannedRead.parts.length === 1 && scannedRead.parts[0].text.includes('recovered scanned text'),
+    "an OCR'd scanned PDF can actually be read, not just found in search"
+  );
 
   const dbCheck = new Database(path.join(dataDir, 'atlas.db'));
   const createdNote = dbCheck.prepare('SELECT generated_by_agent FROM notes WHERE id = ?').get(noteResult.noteId);

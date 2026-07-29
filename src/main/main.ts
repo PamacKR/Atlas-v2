@@ -1026,7 +1026,7 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
   const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
   db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
   startWatchingCourseStorage(Number(courseId), folderName);
-  ensureCourseMemoryFile(name);
+  ensureCourseMemoryFile(folderName, name);
 
   return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
 });
@@ -1347,7 +1347,7 @@ ipcMain.handle(
     const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
     db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
     startWatchingCourseStorage(Number(courseId), folderName);
-    ensureCourseMemoryFile(name);
+    ensureCourseMemoryFile(folderName, name);
 
     removePendingClassroomCourse(classroomCourseId);
     const { errors } = await scanClassroomAndNotify();
@@ -1476,7 +1476,7 @@ ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidat
     const folderName = uniqueCourseFolderName(sanitizeFolderName(candidate.title), getFilesDir());
     db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
     startWatchingCourseStorage(Number(courseId), folderName);
-    ensureCourseMemoryFile(candidate.title);
+    ensureCourseMemoryFile(folderName, candidate.title);
 
     created.push(db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId));
   }
@@ -1701,7 +1701,7 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
   if (course) {
     const courseFilesDir = path.join(getFilesDir(), course.folder_name);
     fs.rmSync(courseFilesDir, { recursive: true, force: true });
-    deleteCourseMemoryFile(course.name);
+    deleteCourseMemoryFile(course.folder_name);
   }
   db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
   rebuildSearchIndex();

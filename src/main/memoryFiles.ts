@@ -10,19 +10,16 @@ import { getMemoryFilesDir } from './paths';
 
 export const GENERAL_MEMORY_NAME = '_general';
 
-// Windows forbids \ / : * ? " < > | in filenames — same restriction
-// sanitizeFolderName in main.ts already works around for course storage
-// folders, duplicated here in miniature rather than imported, since pulling
-// in main.ts here would create a circular import (main.ts calls into this
-// module too).
-function sanitizeFilenameStem(name: string): string {
-  const cleaned = name.replace(/[\\/:*?"<>|]/g, '-').trim().replace(/[. ]+$/, '');
-  return cleaned || 'course';
-}
-
-function memoryFilePath(courseName: string | null): string {
-  const stem = courseName === null ? GENERAL_MEMORY_NAME : sanitizeFilenameStem(courseName);
-  return path.join(getMemoryFilesDir(), `${stem}.md`);
+// Keyed by the course's `folder_name`, NOT its display name. folder_name is
+// already sanitized for the filesystem, computed once at course creation,
+// guaranteed unique across courses (uniqueCourseFolderName in main.ts
+// disambiguates collisions as "Name (2)"), and deliberately stable even if
+// the course is renamed later. Using the display name instead was a real
+// bug: two courses genuinely named the same thing (e.g. the same subject in
+// two different terms) silently shared one memory file, so writing memory
+// for one overwrote the other's, and deleting either destroyed both.
+function memoryFilePath(folderName: string | null): string {
+  return path.join(getMemoryFilesDir(), `${folderName ?? GENERAL_MEMORY_NAME}.md`);
 }
 
 function seedTemplate(courseName: string | null): string {
@@ -51,10 +48,10 @@ Suggested things worth keeping track of, entirely up to the agent and you:
 // start rather than only appearing the first time an agent happens to write
 // to it. Idempotent — does nothing if the file already exists, so it's also
 // safe to call defensively before a read.
-export function ensureCourseMemoryFile(courseName: string): void {
+export function ensureCourseMemoryFile(folderName: string, courseName: string): void {
   const dir = getMemoryFilesDir();
   fs.mkdirSync(dir, { recursive: true });
-  const filePath = memoryFilePath(courseName);
+  const filePath = memoryFilePath(folderName);
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, seedTemplate(courseName), 'utf-8');
   }
@@ -69,11 +66,11 @@ export function ensureGeneralMemoryFile(): void {
   }
 }
 
-// Reads a memory file's raw content — courseName === null reads the general
+// Reads a memory file's raw content — folderName === null reads the general
 // file. Returns null if it doesn't exist yet rather than throwing, since a
 // brand-new course/install may not have one until ensure*/write* is called.
-export function readMemory(courseName: string | null): string | null {
-  const filePath = memoryFilePath(courseName);
+export function readMemory(folderName: string | null): string | null {
+  const filePath = memoryFilePath(folderName);
   try {
     return fs.readFileSync(filePath, 'utf-8');
   } catch {
@@ -84,19 +81,18 @@ export function readMemory(courseName: string | null): string | null {
 // Full-replace write, used by the MCP server's atlas_write_memory tool
 // (phase4-spec.md §6.3) — the agent sends back the complete file each time,
 // not a diff, since Atlas never parses or merges this content (§5.2).
-export function writeMemory(courseName: string | null, content: string): void {
+export function writeMemory(folderName: string | null, content: string): void {
   const dir = getMemoryFilesDir();
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(memoryFilePath(courseName), content, 'utf-8');
+  fs.writeFileSync(memoryFilePath(folderName), content, 'utf-8');
 }
 
 // Deletes a course's memory file when the course itself is deleted (not
-// archived — archiving keeps everything, deletion is the permanent action)
+// archived — archiving keeps everything, deletion is the permanent action),
 // mirroring how courses:delete already removes the course's files/ folder.
-// No rename equivalent exists yet because Atlas has no course-rename feature
-// at all today — whoever adds one should rename this file alongside the
-// course's own logic, the same way file-folder renaming would need to.
-export function deleteCourseMemoryFile(courseName: string): void {
-  const filePath = memoryFilePath(courseName);
+// Keyed by folder_name, which never changes for the life of a course, so
+// this can't miss the file even if the course was renamed in between.
+export function deleteCourseMemoryFile(folderName: string): void {
+  const filePath = memoryFilePath(folderName);
   fs.rmSync(filePath, { force: true });
 }
