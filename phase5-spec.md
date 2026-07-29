@@ -57,24 +57,20 @@ Real impact, measured: searching "growth" against the user's data returns 5 resu
 | `announcement` | `openClassroomItemDetail()` — exists, used by the course-detail Announcements tab |
 | `assignment` | `openAssignmentDetail()` — exists, jumps to the mirrored deadline viewer |
 
-### 2.3 Ranking: courses, then names, then content (the user's explicit ask)
+### 2.3 Ranking: courses, then names, then content — **done 2026-07-29**
 
-> "arrange it so that the file names that contain the search result show on top and only then you include the results where the word will be in the body"
+> "arrange it so that the file names that contain the search result show on top and only then you include the results where the word will be in the body" ... "i said i want the search ordering to be courses first. then files. then content in the files."
 
 Implemented as a **hard partition into sections**, not a soft relevance weight — a weight would still let a strong body match outrank a weak title match, which is exactly what the user asked not to happen.
 
-**Course name matches added 2026-07-29** (the user hit this directly — typing a course name into search returned nothing, since courses were never a searchable entity at all): a plain `courses.name LIKE` match, ranked **above every other section**, since a course is the coarsest, most useful jump a search can make. Built and shipped (`main.ts`'s `search:query`, `openSearchResult` in `renderer.ts`) — not gated on the rest of this section's redesign, since it's small and self-contained.
+**Built and shipped** (`main.ts`'s `search:query`), four sections, in this fixed order, each its own SQL query with its own `LIMIT` so a flood of page hits can never push name matches off the list:
 
-Four sections, in fixed order:
+1. **Courses** — a plain `courses.name LIKE` match. Courses were never a searchable entity at all before this (typing a course name returned nothing unless that text also happened to appear in a title/body) — the user hit this directly. Archived courses included on purpose, same as everywhere else in search (`open-questions.md` #4).
+2. **Names** — files and notes whose *title* matches, via FTS5's column-filter syntax (`search_index MATCH 'title:...'`) so a resource that only matches somewhere in its *body* doesn't land here.
+3. **Content** — page/slide/sheet hits (`document_part` rows always land here, they have nothing but body text to match on) plus any resource/note that matched by body but not title (excluded from Names above, so not lost — just moved here). De-duplicated against Names by `entityType:entityId` so nothing appears twice.
+4. **Classroom** — announcements and assignments, one section regardless of whether the match was in the title or body.
 
-**Courses** — course name matches, always first.
-**A. Names** — files and notes whose *title* matches.
-**B. Inside content** — page/slide/sheet hits and note-body hits.
-**C. Classroom** — announcements and assignments.
-
-Each section is its own SQL query with its own `LIMIT`, so a flood of page hits can never push name matches off the list. Within a section, ordering stays FTS5's `rank`.
-
-Section A restricts to `entity_type IN ('resource','note')` and matches the `title` column only (`search_index MATCH 'title:...'`). Section B's rows carry labels like `"Page 5"` in their title column, which is meaningless to match a name against — so those are excluded from A by construction.
+**What this does *not* yet do** (still `phase5-spec.md` §2.4/§2.5, deferred): no visual section headers/labels in the results dropdown separating the four groups — the ordering is correct, but nothing in the UI marks where one section ends and the next begins, since adding that is a UI change and the standing rule (`AGENTS.md`) is not to patch the current UI ahead of the Phase 6 redesign. Also still flat, one row per page hit — the grouping/collapsing described in §2.4 below hasn't been built.
 
 ### 2.4 Crowding: collapse page hits under their file
 

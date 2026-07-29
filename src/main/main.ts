@@ -925,18 +925,23 @@ app.on('window-all-closed', () => {
 
 // --- IPC: global search (FTS5, PRD §14) ---
 
-// Course name matches are ranked above every other result type — the
-// user's explicit ask. Courses aren't part of the FTS5 search_index (that
-// table only holds resource/note/announcement/assignment/document_part
-// rows), so this is a plain substring match on courses.name, queried and
-// prepended separately rather than folded into the FTS query below.
-// Archived courses are included on purpose, same as everywhere else in
-// search — see open-questions.md #4, archived courses stay searchable.
+// Hard-partitioned into four sections, in this fixed order (the user's
+// explicit ask, phase5-spec.md §2.3): courses, then file/note *names*, then
+// *content* (page/slide/sheet hits and note bodies), then Classroom items.
+// A hard partition rather than a relevance weight, on purpose — a strong
+// content match must never outrank a weak name match by landing earlier in
+// a single blended ranking.
 ipcMain.handle('search:query', (_event, query: string) => {
   const trimmed = query.trim();
   if (!trimmed) return [];
   const db = getDb();
+  const ftsQuery = toFtsQuery(query);
 
+  // Courses aren't part of the FTS5 search_index at all (that table only
+  // holds resource/note/announcement/assignment/document_part rows) — a
+  // course name was never searchable before this, at all. Archived courses
+  // are included on purpose, same as everywhere else in search (see
+  // open-questions.md #4 — archived courses stay searchable).
   const courseMatches = (
     db
       .prepare('SELECT id, name FROM courses WHERE name LIKE ? ORDER BY name LIMIT 10')
@@ -951,26 +956,62 @@ ipcMain.handle('search:query', (_event, query: string) => {
     resourceId: null,
   }));
 
-  const otherMatches = db
-    .prepare(
-      `SELECT search_index.entity_type AS entityType,
+  const searchIndexColumns = `search_index.entity_type AS entityType,
               search_index.entity_id AS entityId,
               search_index.course_id AS courseId,
               search_index.title AS title,
               courses.name AS courseName,
               snippet(search_index, 4, '<mark>', '</mark>', '…', 12) AS snippet,
-              document_parts.resource_id AS resourceId
-       FROM search_index
+              document_parts.resource_id AS resourceId`;
+  const searchIndexJoins = `FROM search_index
        JOIN courses ON courses.id = search_index.course_id
        LEFT JOIN document_parts
-         ON search_index.entity_type = 'document_part' AND document_parts.id = search_index.entity_id
-       WHERE search_index MATCH ?
-       ORDER BY rank
-       LIMIT 30`
-    )
-    .all(toFtsQuery(query));
+         ON search_index.entity_type = 'document_part' AND document_parts.id = search_index.entity_id`;
 
-  return [...courseMatches, ...otherMatches];
+  // "Names" — a file's or note's own title, not anything found inside it.
+  // FTS5's column-filter syntax (`title:`) restricts the match to that one
+  // column, so a resource whose *body* happens to contain the query but
+  // whose title doesn't never lands in this section.
+  const nameMatches = db
+    .prepare(
+      `SELECT ${searchIndexColumns}
+       ${searchIndexJoins}
+       WHERE search_index.entity_type IN ('resource', 'note') AND search_index MATCH 'title:' || ?
+       ORDER BY rank
+       LIMIT 20`
+    )
+    .all(ftsQuery) as { entityType: string; entityId: number }[];
+  const namedIds = new Set(nameMatches.map((r) => `${r.entityType}:${r.entityId}`));
+
+  // "Inside content" — everything else the query matches: page/slide/sheet
+  // hits (always land here, they have nothing but body text to match on),
+  // plus a resource/note that matched somewhere in its body but not its
+  // title (excluded above from Names, so it isn't lost — just moved here).
+  const contentMatches = (
+    db
+      .prepare(
+        `SELECT ${searchIndexColumns}
+       ${searchIndexJoins}
+       WHERE search_index.entity_type IN ('resource', 'note', 'document_part') AND search_index MATCH ?
+       ORDER BY rank
+       LIMIT 40`
+      )
+      .all(ftsQuery) as { entityType: string; entityId: number }[]
+  ).filter((r) => !namedIds.has(`${r.entityType}:${r.entityId}`));
+
+  // "Classroom" — announcements and assignments, one section regardless of
+  // whether the match was in the title or the body.
+  const classroomMatches = db
+    .prepare(
+      `SELECT ${searchIndexColumns}
+       ${searchIndexJoins}
+       WHERE search_index.entity_type IN ('announcement', 'assignment') AND search_index MATCH ?
+       ORDER BY rank
+       LIMIT 20`
+    )
+    .all(ftsQuery);
+
+  return [...courseMatches, ...nameMatches, ...contentMatches, ...classroomMatches];
 });
 
 // --- IPC: dashboard (PRD §13) ---
