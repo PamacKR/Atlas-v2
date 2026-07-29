@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Atlas — Dashboard (Direction A: continuous)</title>
+<title>Atlas — Courses (Direction A: continuous)</title>
 <style>
 /* ---------------------------------------------------------------
    Atlas UI overhaul — Direction A, "continuous"
@@ -406,6 +406,122 @@ h2 {
   transition: color var(--transition), background var(--transition);
 }
 .more:hover { color: var(--text); background: var(--bg-hover); }
+
+/* --- Courses page ------------------------------------------------ */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--space-6);
+}
+.toolbar-spacer { flex: 1; }
+.sort {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.sort:hover { color: var(--text); }
+.sort.active { color: var(--text); font-weight: 500; }
+.toggle-archived {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.toggle-archived:hover { color: var(--text); }
+
+.termgroup + .termgroup { margin-top: var(--space-7); }
+.term-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.term-count { font-size: var(--text-xs); color: var(--text-faint); }
+
+/* Course row: full width, no card. Widened alongside the rest of the
+   page — the stats block especially, now that it's only two columns
+   instead of three, gets real room rather than being crowded. */
+.course-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-3);
+  margin: 0 calc(var(--space-3) * -1);
+  border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.termgroup .course-row:last-child { border-bottom: none; }
+.course-row:hover { background: var(--bg-hover); }
+
+.course-main { min-width: 0; }
+.course-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+.course-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.course-code {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  padding-left: 20px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.course-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  text-align: right;
+}
+.stat-n {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: block;
+}
+.stat-n.is-urgent { color: var(--urgent); }
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  display: block;
+  margin-top: 1px;
+}
+
+.course-next {
+  grid-column: 1 / -1;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding-left: 20px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height var(--transition), opacity var(--transition), margin-top var(--transition);
+}
+.course-row:hover .course-next { max-height: 20px; opacity: 1; margin-top: 4px; }
+.course-next .accent { color: var(--text); }
+
+.more {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) calc(var(--space-3) * -1) 0;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.more:hover { color: var(--text); background: var(--bg-hover); }
 </style>
 </head>
 <body>
@@ -414,12 +530,12 @@ h2 {
   <aside id="sidebar">
     <div class="wordmark"><span class="wm-a">A</span><span class="wm-rest">tlas</span></div>
     <nav>
-      <div class="nav-item active" title="Dashboard">
+      <div class="nav-item" title="Dashboard">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5a1 1 0 0 0 1 1H9a1 1 0 0 0 1-1V15a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4.5a1 1 0 0 0 1 1h2.5a1 1 0 0 0 1-1V10"/></svg></span>
         <span class="nav-label">Dashboard</span>
         <span class="dot"></span>
       </div>
-      <div class="nav-item" title="Courses">
+      <div class="nav-item active" title="Courses">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span>
         <span class="nav-label">Courses</span>
         <span class="dot"></span>
@@ -455,200 +571,110 @@ h2 {
       Agent connected
     </div>
   </aside>
-
   <main id="main">
     <div class="topline">
-      <h1>Wednesday <span class="dim">29 July</span></h1>
+      <h1>Courses <span class="dim">5</span></h1>
       <input class="search" placeholder="Search everything…  Ctrl L" />
     </div>
 
-    <div class="signals">
-      <div class="signal is-urgent"><span class="n">7</span><span class="t">due this week</span></div>
-      <div class="signal"><span class="n">2</span><span class="t">new announcements</span></div>
-      <div class="signal is-warn"><span class="n">9</span><span class="t">files need OCR</span></div>
+    <!-- User's feedback, addressed directly:
+         - Local "Filter courses" box removed — search is one universal
+           thing, top-right, same on every page. A second, page-scoped
+           search box next to it was a real inconsistency.
+         - The readiness bar/fraction (41/47 etc.) is gone. It didn't
+           mean anything at a glance and wasn't worth defending.
+         - Empty side space: rows now use the same widened #main (was
+           1090px, now 1260px) as the dashboard, and the two remaining
+           stat columns (files/due) are given real width + bigger type
+           rather than being squeezed into the leftover space next to a
+           now-removed third column. -->
+    <div class="toolbar">
+      <span class="sort active">Term</span>
+      <span class="sort">Name</span>
+      <span class="sort">Files</span>
+      <div class="toolbar-spacer"></div>
+      <span class="toggle-archived">Show archived</span>
     </div>
 
-    <!-- COURSES: full-width strip, the way into everything --------- -->
-    <section class="courses">
-      <div class="section-head">
-        <h2>Courses</h2>
-        <span class="section-action">Manage →</span>
-      </div>
-      <div class="coursegrid">
-        <div class="course-cell">
-          <div class="cname"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Finance</span></div>
-          <div class="ccode">FIN-3563</div>
-          <div class="cmeta">47 files · <span class="due">6 due</span></div>
-        </div>
-        <div class="course-cell">
-          <div class="cname"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></div>
-          <div class="ccode">ECO-3500</div>
-          <div class="cmeta">62 files · <span class="due">3 due</span></div>
-        </div>
-        <div class="course-cell">
-          <div class="cname"><span class="swatch" style="background:#f59e0b"></span><span>Economics of Gender</span></div>
-          <div class="ccode">ECO-3660</div>
-          <div class="cmeta">28 files · <span class="due">3 due</span></div>
-        </div>
-        <div class="course-cell">
-          <div class="cname"><span class="swatch" style="background:#10b981"></span><span>Technology Law and Policy</span></div>
-          <div class="ccode">POL-2120</div>
-          <div class="cmeta">21 files · <span class="due">2 due</span></div>
-        </div>
-        <div class="course-cell">
-          <div class="cname"><span class="swatch" style="background:#ec4899"></span><span>Corporate Finance &amp; Banking</span></div>
-          <div class="ccode">FIN-3555</div>
-          <div class="cmeta">38 files · <span class="due">7 due</span></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Back to the v2 structure the user preferred: Up next and
-         Announcements stacked in the left column, Recent as its own
-         right column — but Recent trimmed to 6, not 15. The previous
-         pass's "everything full-width" version buried Recent as an
-         afterthought below the fold instead of a peer to deadlines. -->
-    <div class="columns">
-      <div>
-        <section>
-          <div class="section-head">
-            <h2>Up next</h2>
-            <span class="section-action">Calendar →</span>
-          </div>
-          <div class="row deadline is-today">
-            <span class="day">Today</span>
-            <span class="title">Reading: Ch. 7 — Growth Models</span>
-            <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
-            <span class="time">18:29</span>
-          </div>
-          <div class="row deadline">
-            <span class="day">Thu</span>
-            <span class="title">Reading Response</span>
-            <span class="course"><span class="swatch" style="background:#10b981"></span><span>Tech Law</span></span>
-            <span class="time">—</span>
-          </div>
-          <div class="row deadline">
-            <span class="day">Fri</span>
-            <span class="title">Quiz 1</span>
-            <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
-            <span class="time">10:00</span>
-          </div>
-          <div class="row deadline">
-            <span class="day">Sat</span>
-            <span class="title">Problem Set 1</span>
-            <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
-            <span class="time">23:59</span>
-          </div>
-          <div class="row deadline">
-            <span class="day">Sun</span>
-            <span class="title">Problem Set 3</span>
-            <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
-            <span class="time">23:59</span>
-          </div>
-          <div class="more">9 more in the next fortnight →</div>
-        </section>
-
-        <!-- "What did I miss" is a real reason to open Atlas in a burst.
-             Trimmed to 4 — this is a peek, not the full list. Unread
-             carry a marker; opening one clears it. -->
-        <section class="section">
-          <div class="section-head">
-            <h2>Announcements</h2>
-            <span class="section-action">Mark all read</span>
-          </div>
-          <div class="row recent is-unread">
-            <span class="ago"><span class="unread"></span></span>
-            <span class="title">Readings for 2 April — Ch. 7 and Weil</span>
-            <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
-          </div>
-          <div class="row recent is-unread">
-            <span class="ago"><span class="unread"></span></span>
-            <span class="title">Quiz 1 venue changed to AC-04-LR-201</span>
-            <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
-          </div>
-          <div class="row recent">
-            <span class="ago"></span>
-            <span class="title">Group allocations for the case study</span>
-            <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
-          </div>
-          <div class="row recent">
-            <span class="ago"></span>
-            <span class="title">No class on Friday — makeup TBA</span>
-            <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
-          </div>
-          <div class="more">All 152 announcements →</div>
-        </section>
+    <div class="termgroup">
+      <div class="term-head">
+        <h2>Monsoon 26</h2>
+        <span class="term-count">3 courses</span>
       </div>
 
-      <!-- Right column: Recent + Notes, wrapped together so grid
-           auto-placement can't scatter them — .columns has exactly 2
-           direct children (this div and the left one above), each
-           stacking its own sections via normal flow. Recent trimmed
-           to 6 (was 15): beyond a handful you'd search or open
-           Resources instead, a longer list adds length, not utility. -->
-      <div>
-      <section>
-        <div class="section-head">
-          <h2>Recent</h2>
-          <span class="section-action">All 196 files →</span>
+      <div class="course-row">
+        <div class="course-main">
+          <div class="course-name"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Finance</span></div>
+          <div class="course-code">FIN-3563 / ECO-3563 / FIN-4563 / ECO-4563</div>
+          <div class="course-next">Next: <span class="accent">Problem Set 1</span> — due Saturday 23:59</div>
         </div>
-        <div class="row recent">
-          <span class="ago">2h</span>
-          <span class="title">W12 — Solow Growth Model.pdf</span>
-          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+        <div class="course-stats">
+          <div><span class="stat-n">47</span><span class="stat-label">files</span></div>
+          <div><span class="stat-n is-urgent">6</span><span class="stat-label">due</span></div>
         </div>
-        <div class="row recent">
-          <span class="ago">5h</span>
-          <span class="title">Case study brief.docx</span>
-          <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
-        </div>
-        <div class="row recent">
-          <span class="ago">1d</span>
-          <span class="title">ECO 2202 course index</span>
-          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
-        </div>
-        <div class="row recent">
-          <span class="ago">2d</span>
-          <span class="title">Gender &amp; labour markets.pdf</span>
-          <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
-        </div>
-        <div class="row recent">
-          <span class="ago">3d</span>
-          <span class="title">Lecture 9 slides.pptx</span>
-          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
-        </div>
-        <div class="more">All 196 files →</div>
-      </section>
+      </div>
 
-      <!-- Fills the gap under a shortened Recent. Only 2 notes exist
-           today, so this is genuinely thin content, not padding —
-           notes currently have zero presence anywhere on the
-           dashboard, which is its own small gap this closes. -->
-      <section class="section">
-        <div class="section-head">
-          <h2>Notes</h2>
-          <span class="section-action">New note →</span>
+      <div class="course-row">
+        <div class="course-main">
+          <div class="course-name"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></div>
+          <div class="course-code">ECO-3500</div>
+          <div class="course-next">Next: <span class="accent">Reading: Ch. 7 — Growth Models</span> — due today 18:29</div>
         </div>
-        <div class="row recent">
-          <span class="ago">2d</span>
-          <span class="title">W3L2 — growth model notes</span>
-          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+        <div class="course-stats">
+          <div><span class="stat-n">62</span><span class="stat-label">files</span></div>
+          <div><span class="stat-n is-urgent">3</span><span class="stat-label">due</span></div>
         </div>
-        <div class="row recent">
-          <span class="ago">1w</span>
-          <span class="title">Case study — talking points</span>
-          <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
+      </div>
+
+      <div class="course-row">
+        <div class="course-main">
+          <div class="course-name"><span class="swatch" style="background:#f59e0b"></span><span>Economics of Gender</span></div>
+          <div class="course-code">ECO-3660</div>
+          <div class="course-next">Next: <span class="accent">Quiz 1</span> — due Friday 10:00</div>
         </div>
-      </section>
+        <div class="course-stats">
+          <div><span class="stat-n">28</span><span class="stat-label">files</span></div>
+          <div><span class="stat-n is-urgent">3</span><span class="stat-label">due</span></div>
+        </div>
       </div>
     </div>
+
+    <div class="termgroup">
+      <div class="term-head">
+        <h2>Spring 27</h2>
+        <span class="term-count">2 courses</span>
+      </div>
+
+      <div class="course-row">
+        <div class="course-main">
+          <div class="course-name"><span class="swatch" style="background:#10b981"></span><span>Technology Law and Policy</span></div>
+          <div class="course-code">ENT-2032 / POL-2120 / IR-2070</div>
+          <div class="course-next">Next: <span class="accent">Reading Response</span> — due tomorrow</div>
+        </div>
+        <div class="course-stats">
+          <div><span class="stat-n">21</span><span class="stat-label">files</span></div>
+          <div><span class="stat-n">2</span><span class="stat-label">due</span></div>
+        </div>
+      </div>
+
+      <div class="course-row">
+        <div class="course-main">
+          <div class="course-name"><span class="swatch" style="background:#ec4899"></span><span>The Theory of Corporate Finance and Banking</span></div>
+          <div class="course-code">FIN-3555 / FIN-4555</div>
+          <div class="course-next">Next: <span class="accent">Case Study Submission</span> — due Monday 23:59</div>
+        </div>
+        <div class="course-stats">
+          <div><span class="stat-n">38</span><span class="stat-label">files</span></div>
+          <div><span class="stat-n is-urgent">7</span><span class="stat-label">due</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="more">Show 2 archived courses →</div>
   </main>
 
 </div>
 <script>
-  // Demo-only: toggles the collapsed icon-rail state. In the real app this
-  // would persist to app_settings the same way the existing sidebar
-  // collapse toggle already does.
   document.getElementById('sidebar-toggle').addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('collapsed');
   });
