@@ -21,6 +21,44 @@ Two gaps found while auditing, both worse than expected:
 2. **Unless a local copy already exists** because the user imported it themselves — then use that copy and don't fetch anything.
 3. Design so **Gmail attachments** can reuse the same machinery when the Gmail adapter is built, if that costs little now.
 4. The experience must be **seamless**: no silent failures, no silent long waits.
+5. **Follow links *inside* documents.** A professor may share a single Google Sheet that is really an index of the whole course — notes, syllabus, practice questions all as links within it. One Classroom attachment can be the entry point to dozens of real documents.
+6. **Attachment count grows through the semester** and will "not be less" — especially where notes are posted after every class. Incremental, not one-shot.
+7. **Exam-scale access.** During midterms/finals the user may ask the agent to work across *every file in a course* — a mix of local files, Classroom links, Drive links, and (later) Gmail attachments — to produce notes or practice questions.
+
+### 2.1 Evidence: a real course index (ECO-2202, Spring 2026)
+
+The user shared the actual spreadsheet a professor used. Inspected directly:
+
+- **4 sheets** — `Daily Plan`, `Appointments`, `Assessments`, `Attendance`.
+- **21 embedded hyperlinks**, 19 of them in `Daily Plan`, one per class session.
+- **Mixed link targets**, all in one file:
+  - `docs.google.com/document/…` → Google Doc (practice questions)
+  - `docs.google.com/presentation/…` → Google Slides (lecture topics)
+  - `drive.google.com/file/d/…` → binary PDFs (syllabus, textbook chapters)
+  - `data.worldbank.org/…` → external web, not Drive
+  - `zoom.us/…` → external, not course content at all
+- **Sparse but wide ranges** — `Daily Plan` is `A1:F1042` and `Attendance` is `A1:AD1041`, mostly empty.
+
+This single file is the strongest argument for §5 (link-following): treated as one attachment it yields a wall of context-free labels; treated as an index it yields the entire course.
+
+---
+
+## 2.2 Prerequisite bug: current extraction destroys every hyperlink
+
+**Found by running Atlas's existing extractor against the real file above.** Verified directly: the extracted text contains *no* `drive.google` or `docs.google` URL at all. What survives is `"Course Syllabus"` — the link text — with the target silently dropped.
+
+The cause is per-format, and affects code already shipped in Phase 4:
+
+| Format | Where links are lost |
+|---|---|
+| **XLSX** | `sheet_to_csv()` reads cell *values*; a hyperlink lives in `cell.l.Target`, a separate property never touched. |
+| **DOCX** | `mammoth` emits real `<a href>` tags, then `extractDocxParts`'s `replace(/<[^>]+>/g, ' ')` strips the whole tag, href included. |
+| **PDF** | `getTextContent()` returns glyphs only; link annotations live in `page.getAnnotations()`, never called. |
+| **PPTX** | Slide XML relationship targets (`slideN.xml.rels`) are never read. |
+
+This is a standalone defect worth fixing regardless of remote fetching: right now, **any** document whose value is its links is being flattened into meaningless labels. It is also a hard prerequisite — nothing can follow a link that extraction already threw away.
+
+**Fix:** each extractor emits links alongside text, and the link URL is inlined into the stored part text (`Course Syllabus (https://drive.google.com/file/d/…)`), so it is searchable and visible to the agent *even when Atlas cannot fetch it* — which is exactly the right outcome for the Zoom and World Bank links, since the agent may have its own web access.
 
 ## 3. Key decisions
 
@@ -92,12 +130,94 @@ As always, `schema.sql` and `migrate()` in `database.ts` change together.
 
 **Export path** (§10.3): try `files.get({fields: 'exportLinks'})` and fetch from the returned URL first — not subject to the 10 MB cap `files.export()` has. Fall back to `files.export()` directly only if `exportLinks` is missing. This means the "too large" failure state below should be rare in practice, not routine.
 
-Other constraints to design around:
+### 5.1 The 10 MB cap does **not** apply to PDFs
+
+Worth stating plainly, because it's easy to over-generalise: **the ~10 MB limit is a property of `files.export()`, which only exists for Google-native formats** (Docs/Sheets/Slides — files that have no native bytes and must be *converted* on Google's servers).
+
+A PDF, DOCX, PPTX or XLSX is a real binary file, fetched with `files.get({alt: 'media'})`, which has **no such cap**. A 200 MB textbook PDF downloads fine.
+
+Large PDFs pose different problems, and they're about resources, not permissions:
+
+| Concern | Mitigation |
+|---|---|
+| Memory — buffering a very large PDF in RAM | Stream to a **temp file in the OS temp dir** above a threshold (~40 MB), extract from there, delete immediately. Not `Atlas-Storage/files/`, so requirement 1 holds. |
+| Time — an 800-page textbook takes minutes to extract | Background, sequential, with visible progress (§8). Never blocks the app or a sync. |
+| Text volume | ~800 pages ≈ 2–3 MB of text. Comfortable for SQLite; no special handling. |
+
+So: a big Google Doc is a real constraint (handled by `exportLinks`, §5); a big PDF is just slow, not blocked.
+
+### 5.2 Other constraints
 
 - **Drive shortcuts** (`application/vnd.google-apps.shortcut`) must be resolved to their target before fetching.
-- **`files.export()`'s ~10 MB output cap** still applies as a fallback-path failure if `exportLinks` is ever unavailable — kept as an explicit status, not a generic error.
+- **`files.export()`'s ~10 MB cap** remains only as a fallback-path failure if `exportLinks` is unavailable — kept as an explicit status, not a generic error.
 
 Google-native handling also fixes the Drive *inbox* blind spot (§1) as a side benefit, since both paths will share the fetch/export helper.
+
+## 5.5 Following links inside documents (requirement 5)
+
+The ECO-2202 case (§2.1) is the whole justification: one Classroom attachment, 19 links, an entire course behind them.
+
+### 5.5.1 Discovery
+
+Once §2.2 lands, extraction returns discovered links alongside text:
+
+```ts
+interface ExtractionResult {
+  status; parts; error?;
+  discoveredLinks?: { text: string; url: string; partOrdinal: number }[];
+}
+```
+
+Two independent things then happen to each link, and keeping them separate is the key design point:
+
+1. **Always** — the URL is inlined into the stored part text, so it is searchable and the agent can see it. This covers World Bank, Zoom, and anything else Atlas can't fetch. Atlas isn't judging what matters; it's preserving what's there.
+2. **Only if it's a Drive link** — a child resource is created and queued for extraction.
+
+### 5.5.2 Child resources
+
+```sql
+parent_resource_id INTEGER REFERENCES resources(id) ON DELETE CASCADE,
+discovery_depth INTEGER NOT NULL DEFAULT 0
+```
+
+Child resources belong to the **same course** as their parent — no inference required, which is why this doesn't need the review-panel treatment the Drive inbox has (there, the course genuinely is ambiguous; here it isn't).
+
+### 5.5.3 Limits, because this is a graph and graphs explode
+
+| Guard | Default | Why |
+|---|---|---|
+| Max depth | **2** | ECO-2202 needs 1 (sheet → doc). Depth 2 covers a doc that links onward. Beyond that is almost certainly drift, not course material. |
+| Max children per parent | 100 | A runaway index shouldn't queue thousands of fetches. |
+| Max total per course per sync | 300 | Bounds worst-case sync time. |
+| Cycle detection | Drive file ID seen-set | A links to B links to A must terminate. |
+| Dedupe | By Drive file ID | The same doc linked from five rows is fetched once. |
+
+Hitting a cap is **surfaced, never silent** — "stopped after 100 linked documents" is information the user needs, not an implementation detail to swallow.
+
+### 5.5.4 Visibility and control
+
+- Discovered children are marked as such in the UI and show their parent, so it's always clear *why* Atlas has a file the user never added.
+- A per-course toggle to disable link-following, and the ability to prune a discovered subtree.
+- Progress reports discovery separately: "reading 19 linked documents from *Daily Plan*."
+
+---
+
+## 5.6 Exam-scale access (requirement 7)
+
+"Access every single file for the course" is a different access pattern from "find me the elasticity chapter", and the current tool limits weren't designed for it. With link-following, one course could plausibly reach 60+ documents and several thousand pages.
+
+The architecture holds — search-then-targeted-read is exactly right at this scale, and far better than dumping everything — but three limits need changing, and one affordance is missing:
+
+| Gap | Change |
+|---|---|
+| `atlas_course_briefing` caps its inventory at 20 items | Return a **total count** plus the first N, so the agent knows more exists and can paginate via `atlas_list_resources` |
+| No way to see a document's structure without reading it | **`atlas_read_document` with no `from`/`to` returns an outline** — part labels and total count, no text. Cheap navigation: the agent can see "847 pages, Chapter 5 starts at 214" before pulling anything. Costs nothing to add and makes broad work tractable. |
+| Search caps at 25 hits | Raise the ceiling for course-scoped searches; 25 is thin when sweeping a whole semester. |
+| Nothing tells the agent a course is *large* | Briefing reports resource/part totals, so the agent can choose to sample broadly rather than read deeply. |
+
+**Deliberately not building:** a "give me everything" bulk-dump tool. It cannot fit in context, it would make answers worse, and it recreates the manual-dump problem this project exists to remove.
+
+---
 
 ## 6. Caching — never re-fetch unchanged files
 
@@ -177,14 +297,19 @@ No red flags — nothing here suggests reconsidering the feature. Two concrete i
 | # | Piece | Size | Notes |
 |---|---|---|---|
 | 0 | ~~Spike the three unknowns~~ | — | **Done 2026-07-29** (research-only, §10). No blocker found; two design refinements folded in. Only open item is attachment volume (§10.4), needed from the user before sizing fetch batching. |
-| 1 | Stop discarding attachment type + Drive file ID (§1) | Small | Nothing else can work without it. |
-| 2 | Schema + migration (§4) | Small | |
-| 3 | Fetcher interface + Drive impl, incl. export branch (§3.4, §5) | **Large** | The bulk of the work. |
-| 4 | Local-copy-first resolution (§3.3) | Medium | Requirement 2. |
-| 5 | Wire into sync + backfill + progress (§6, §8) | Medium | |
-| 6 | Failure states + UI surfacing (§7) | Medium | |
-| 7 | Verification (§9) | Medium | |
-| 8 | Gmail fetcher | — | Deferred to the Gmail adapter; interface exists from #3. |
+| 1 | **Preserve hyperlinks in extraction (§2.2)** | Medium | **Standalone bug fix, ships value on its own.** Hard prerequisite for #6. Do first. |
+| 2 | Stop discarding attachment type + Drive file ID (§1) | Small | Nothing remote can work without it. |
+| 3 | Schema + migration (§4, §5.5.2) | Small | |
+| 4 | Fetcher interface + Drive impl, incl. export/`exportLinks` branch (§3.4, §5) | **Large** | The bulk of the work. |
+| 5 | Local-copy-first resolution (§3.3) | Medium | Requirement 2. |
+| 6 | Link-following + limits + visibility (§5.5) | **Large** | Requirement 5. Needs #1 and #4. |
+| 7 | Wire into sync + backfill + progress (§6, §8) | Medium | |
+| 8 | Failure states + UI surfacing (§7) | Medium | |
+| 9 | Exam-scale tool changes (§5.6) | Small | Cheap, and the payoff is high during finals. |
+| 10 | Verification (§9) | Medium | |
+| 11 | Gmail fetcher | — | Deferred to the Gmail adapter; interface exists from #4. |
+
+**Suggested split:** #1 is independently valuable and low-risk — worth shipping alone first, since it fixes a live defect and can be verified against the real ECO-2202 file. #2–#5 are the remote-fetch core. #6 is the ambitious part and should follow only once fetching is proven.
 
 ## 12. Out of scope
 
