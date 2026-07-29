@@ -88,11 +88,14 @@ As always, `schema.sql` and `migrate()` in `database.ts` change together.
 | Google **Sheet** | `files.export()` | `text/csv` (first sheet only — a documented limitation of export) |
 | Google **Form** | — | `unsupported` (a form structure, not a document) |
 
-Known constraints to design around, not discover later:
+**Before any fetch attempt** (§10.2): a cheap metadata-only `files.get({fields: 'capabilities(canDownload)'})`. If `false`, skip straight to `failed: "restricted by the file's owner"` — no wasted fetch, no ambiguous error to parse afterwards.
 
-- **`files.export()` has a ~10 MB output cap.** Large Google Docs fail outright; must surface as a clear "too large to read" status, not a generic error.
+**Export path** (§10.3): try `files.get({fields: 'exportLinks'})` and fetch from the returned URL first — not subject to the 10 MB cap `files.export()` has. Fall back to `files.export()` directly only if `exportLinks` is missing. This means the "too large" failure state below should be rare in practice, not routine.
+
+Other constraints to design around:
+
 - **Drive shortcuts** (`application/vnd.google-apps.shortcut`) must be resolved to their target before fetching.
-- **Restricted files** — a professor can disable copy/download for viewers, which can block export. Needs a distinct, honest status; this is a permission fact, not a bug.
+- **`files.export()`'s ~10 MB output cap** still applies as a fallback-path failure if `exportLinks` is ever unavailable — kept as an explicit status, not a generic error.
 
 Google-native handling also fixes the Drive *inbox* blind spot (§1) as a side benefit, since both paths will share the fetch/export helper.
 
@@ -112,7 +115,7 @@ Result: the first sync after this ships does real work; subsequent syncs do almo
 | Fetched and extracted | `done` | — |
 | Fetched, no text found | `empty` | Offer OCR, same as a local scanned PDF. |
 | YouTube / plain link / Form | `unsupported` | Never retried. |
-| No permission / restricted | `failed` + reason | Shown in the UI with the real Google message. |
+| Restricted (`canDownload: false`) | `failed` + reason | Caught by the §10.2 pre-check before any fetch is attempted — never a raw API error. |
 | Over size/export cap | `failed` + reason | Explicit "too large", not a generic failure. |
 | Network/quota error | `pending` | Retried with backoff. |
 
@@ -137,19 +140,43 @@ Extends `scripts/verify-mcp.js` and adds fixtures:
 
 Google API calls are stubbed at the fetcher interface, so this runs offline and deterministically in CI.
 
-## 10. Prove these early (highest-uncertainty items)
+## 10. Spike findings (2026-07-29, research only — no code run, no live Google/Atlas access)
 
-Before building the full pipeline, verify against **one real course**:
+Researched against current Google documentation rather than testing against a real course, per the user's request not to execute anything yet.
 
-1. Does `files.export()` actually succeed on a professor-owned Doc shared with a student, or does sharing policy block it? **This is the single biggest unknown** — if export is commonly blocked, the value of the whole feature drops and the design should be reconsidered rather than pushed through.
-2. Does `drive.readonly` cover Classroom attachments without any new scope? (Expected yes — no disconnect/reconnect — but confirm before promising it.)
-3. How many attachments does a real course actually have? Determines whether sequential fetching is fine or needs batching.
+### 10.1 Scope — resolved, no new risk
+
+`drive.readonly` already covers this. A Classroom attachment is a regular Drive file the professor has shared with the student (Viewer access) — reading it is identical to reading any file shared via a normal Drive share link. Atlas already relies on exactly this access model for the existing Drive inbox feature, so nothing new is being asked of the OAuth grant.
+
+The **7-day refresh-token expiry** is real but is Atlas's existing, already-accepted testing-mode tradeoff (`googleAuth.ts`, `open-questions.md` #19) — a consequence of not submitting for Google's verification review, not something this feature introduces. The user already reconnects periodically today.
+
+### 10.2 Per-file download restriction — confirmed, and there's a cheap pre-check
+
+A file owner *can* disable download/copy independently of sharing access (Drive's "Disable download, print, and copy" toggle) — this is the real, expected failure mode for a restricted attachment, exactly as §7 anticipated.
+
+**Refinement:** Drive exposes this as `capabilities.canDownload` in a metadata-only `files.get` call — cheap, and answerable *before* attempting a fetch. **Plan updated:** check `capabilities.canDownload` first; a `false` result goes straight to `failed: "restricted by the file's owner"` without ever attempting the actual fetch/export. Cleaner than parsing a raw API error after the fact.
+
+### 10.3 The 10 MB export cap — confirmed, but there's a known workaround
+
+`files.export()` (Google-native → PDF/text/csv) hard-caps at ~10 MB and throws `exportSizeLimitExceeded` above that — this validates §5's size concern.
+
+**But:** requesting the `exportLinks` field via a plain `files.get` call returns pre-signed per-format URLs that are **not subject to the same 10 MB cap**, per Google's own issue tracker guidance for exactly this limitation.
+
+**Plan updated:** try `files.get({fields: 'exportLinks'})` → fetch from the returned URL as the primary path, falling back to `files.export()` only if `exportLinks` is absent for some reason. This removes the 10 MB ceiling as a default failure case rather than just labeling it clearly (§5's original "large file" status becomes rare instead of routine) — worth confirming end-to-end against one real large Google Doc before relying on it, since community reports aren't the same as verifying it against Atlas's actual OAuth client.
+
+### 10.4 Still unresolved — needs you, not research
+
+**How many attachments does a real course actually have?** This determines whether sequential, one-at-a-time fetching (§3.4/§8) is fine or needs batching/pagination. I can't answer this from documentation, and checking it myself would mean either running a script against your real Classroom data or querying your real database — both of which you asked me not to do right now. Rough ballpark from you (a handful per course? dozens?) is enough to size this correctly before I build it.
+
+### 10.5 Net effect on the plan
+
+No red flags — nothing here suggests reconsidering the feature. Two concrete improvements (§10.2's cheap pre-check, §10.3's `exportLinks` path) are folded into §5/§7 below. The only remaining gate is §10.4, and it only affects fetch batching, not the core design.
 
 ## 11. Build order
 
 | # | Piece | Size | Notes |
 |---|---|---|---|
-| 0 | Spike the three unknowns in §10 | Small | Gate. If export is blocked, stop and rethink. |
+| 0 | ~~Spike the three unknowns~~ | — | **Done 2026-07-29** (research-only, §10). No blocker found; two design refinements folded in. Only open item is attachment volume (§10.4), needed from the user before sizing fetch batching. |
 | 1 | Stop discarding attachment type + Drive file ID (§1) | Small | Nothing else can work without it. |
 | 2 | Schema + migration (§4) | Small | |
 | 3 | Fetcher interface + Drive impl, incl. export branch (§3.4, §5) | **Large** | The bulk of the work. |
