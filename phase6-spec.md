@@ -6,11 +6,23 @@ The functional product is essentially complete (Phases 0–5 plus the MCP/Contex
 
 ---
 
+## 0. How this gets built — read this before touching any UI file
+
+**This is a wholesale replacement, not a series of improvements.** The user was explicit (2026-07-29):
+
+> *"i do not want you editing the current ui files to make small fixes. i want a complete overhaul. i dont care if it takes time im willing to sit through it and make sure the new ui looks good, is far more polished, and something i would be excited to use on a day to day basis."*
+
+Three standing rules follow from that, and they apply from now until the redesign ships:
+
+1. **Don't patch the current UI.** If something in `styles.css`/`index.html` looks wrong or off-theme, note it as input for the redesign rather than fixing it in place. Incremental polish on a stylesheet that is about to be replaced is wasted work twice over — once writing it, once reconciling it. (This supersedes the previous default of "match the existing per-ID button styling convention" — that guidance was correct while the current UI was the target, and is now only relevant for the small number of pre-redesign changes that are genuinely unavoidable.)
+2. **Time is not the constraint; quality is.** The user has said directly they're willing to sit through a long build. So don't optimize this phase for speed, don't propose a minimum-viable redesign, and don't cut scope to finish faster. The bar is "something I'd be excited to use daily."
+3. **Do not start without the user's design framework.** They will supply direction — reference material, structure, possibly output from other AI/design tools — and have said they won't ask to proceed without giving something concrete to work from (§8). Starting early from my own guesses would produce exactly the generic result this phase exists to avoid.
+
 ## 1. UI overhaul — and the one architectural decision that matters
 
 The user's ask: *"A complete redesign of the ui to make it more modern and personalized. right now the ui looks functional sure, but still very basic."*
 
-That's a fair description — `AGENTS.md` has always said Atlas's own UI is functional-first and not yet polished. The redesign itself is a design problem, not an engineering one, and needs the user's visual direction (§8).
+That's a fair description — `AGENTS.md` has always said Atlas's own UI is functional-first and not yet polished. The redesign itself is a design problem, not an engineering one, and the user is supplying the visual direction (§8).
 
 But there **is** one engineering decision inside it that has to be made correctly the first time, because getting it wrong means doing the entire redesign twice.
 
@@ -156,11 +168,11 @@ Keep `Launch Atlas.bat` for development, but add a dev-only fast path for when n
 "start:fast": "electron ."
 ```
 
-### 4.3 The old Atlas v1 shortcut — not touching it without confirmation
+### 4.3 The old Atlas v1 shortcut — v1 is retired, name is free
 
-The user suggested deleting the existing Atlas (v1) desktop shortcut so v2 can simply be called "Atlas". Reasonable, but that's a real file outside this repo, and the v1 app may still be installed and in use.
+**Confirmed by the user 2026-07-29: Atlas v1 is retired.** Their concern was only practical — two desktop entries both called "Atlas" would be confusing.
 
-**This spec does not delete anything.** The installer will create its own correctly-named, correctly-iconed entry; whether the old v1 shortcut (or the v1 app itself) gets removed is a separate, explicit decision for the user to make and act on. Worth confirming v1 is genuinely retired first — it has its own separate `Atlas-Storage` expectations and its own repo.
+So `productName: "Atlas"` is safe to claim. The v1 shortcut should be removed before or alongside installing v2, but **that removal is the user's action to take, not something this project's build does** — it's a file outside this repo, and an installer that deletes unrelated desktop shortcuts would be doing something no installer should.
 
 ---
 
@@ -247,12 +259,21 @@ Phase 5 (`phase5-spec.md`) and this phase overlap on two surfaces, and the order
 
 ---
 
-## 8. What this spec deliberately does not decide — needs the user
+## 8. What the user is supplying — don't pre-empt it
 
-The redesign itself can't be specced further from here without direction:
+The redesign and the logo both wait on the user, **by their own explicit choice**, not because this spec failed to decide something:
 
-1. **Visual direction.** Reference apps the user likes the look of, screenshots, or a rough mockup would settle more in one message than paragraphs of description. (This worked well before — the Calendar page and Dashboard "Upcoming" widget were both built from screenshots the user shared.)
-2. **Which parts of the current UI they dislike specifically.** *"aspects of it that i do not like"* — knowing which aspects prevents redesigning things that were fine.
-3. **Logo concept.** Needs to work as a 16px taskbar icon and a 256px installer icon. Deliverable is a `.ico` (multi-resolution) plus an SVG master. Can be drafted here for the user to react to, or supplied by the user.
-4. **Which design styles to actually ship** in §3, and whether the default should stay close to today's look or change entirely.
-5. **Whether Atlas v1 is retired** (§4.3), before anything touches its shortcut.
+> *"I also will share you details on the redesign… we will sit through it patiently. i will consult other ai models and maybe some design tools to give you the best possible idea of what i would want so you dont worry about that. i wont tell you to proceed without giving you a framework and an idea to work with."*
+>
+> *"Same with the logo as well. it would need lot of thought put into it to come up with something i like and i wont tell you to just go and make something without giving you an idea."*
+
+So the correct behavior next session is: **wait for the framework, then build against it.** Don't propose mockups unprompted, don't draft a logo speculatively, and don't treat the absence of direction as a blocker to raise — it's a deliberate, communicated pause.
+
+When the direction does arrive, these are the things it will need to resolve, listed so the work can start immediately rather than round-tripping:
+
+1. **Visual direction** — reference apps/screenshots/mockups, and the intended overall feel.
+2. **Which parts of the current UI are actually disliked** (*"aspects of it that i do not like"*), so things that were fine aren't churned.
+3. **Logo concept** — the technical requirement is that it reads at 16px (taskbar) and 256px (installer); deliverable is a multi-resolution `.ico` plus an SVG master.
+4. **Which design styles to ship** in §3, and whether the *default* style stays close to today's look or changes entirely.
+
+Everything else in this spec (§4 packaging, §5 startup, §6.1–6.6) is **independent of the visual direction and can be built at any time** — see §7's build order, where packaging and startup deliberately come first for exactly that reason.

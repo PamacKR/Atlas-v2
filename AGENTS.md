@@ -53,6 +53,16 @@ The user (2026-07-23) asked for this to be trackable so they can audit whether a
 
 Rule of thumb: `STATUS.md` and `open-questions.md` should get touched almost every session; `ARCHITECTURE.md`/`ROADMAP.md` only on structural changes; `AGENTS.md`/`README.md` only on workflow or setup changes.
 
+## Standing rule: the UI is being replaced wholesale — don't patch it
+
+**Added 2026-07-29 at the user's explicit instruction.** Phase 6 (`phase6-spec.md`) is a complete UI overhaul, not a series of improvements. Until it ships:
+
+- **Don't make cosmetic fixes to `styles.css`/`index.html`.** If something looks wrong, off-theme, or misaligned, record it as input for the redesign (`phase6-spec.md` §8) instead of fixing it in place. The user's words: *"i do not want you editing the current ui files to make small fixes. i want a complete overhaul."*
+- **Don't start the redesign without the user's design framework.** They are supplying visual direction and the logo concept themselves, deliberately and on their own schedule, and have said they won't ask to proceed without giving something concrete to work from. Absence of direction is a communicated pause, not a blocker to escalate.
+- **Don't optimize this phase for speed.** The user has explicitly said they're willing to sit through a long build for a result they'd be excited to use daily. Don't propose a reduced-scope redesign to finish sooner.
+
+Functional/logic changes to renderer code are still fine — this rule is about *visual* churn on a stylesheet that's about to be replaced. Non-UI work (packaging, startup performance, data layers) is unaffected and can proceed normally.
+
 ## Testing UI changes yourself, don't just ask the user
 
 Atlas is an Electron desktop app, not a website — there's no browser tab to preview it in. But it doesn't have to be manual-only: `npm run verify` (`scripts/verify-app.js`) launches the actual built app via Playwright's Electron driver, drives the real DOM (click, fill, read text), and saves a screenshot — read that screenshot to visually confirm the change yourself. It runs against a throwaway temp data directory (`ATLAS_DATA_DIR` env override in `src/main/paths.ts`), never the user's real `Downloads/Atlas-Storage`, so it's safe to run freely.
