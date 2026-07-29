@@ -87,9 +87,10 @@ body {
    since an icon-only rail reads as a row of buttons and buttons
    asked for softer corners specifically. */
 #sidebar {
+  position: relative;
   width: 224px;
   flex-shrink: 0;
-  padding: var(--space-7) var(--space-4) var(--space-5) var(--space-7);
+  padding: var(--space-7) var(--space-4) var(--space-8) var(--space-7);
   display: flex;
   flex-direction: column;
   transition: width var(--transition), padding var(--transition);
@@ -166,11 +167,19 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-spacer { flex: 1; }
 
 .sidebar-toggle {
+  /* Absolutely positioned at a fixed offset from #sidebar's own
+     border box (position:relative on #sidebar above) rather than laid
+     out in the flex flow - the sidebar's own left padding differs
+     between expanded (56px) and collapsed (18px) states, so even a
+     "constant" margin-left still shifted the button's true x position
+     by the padding delta. Anchoring to the sidebar edge directly is the
+     only way the click target truly never moves when toggling. */
+  position: absolute;
+  left: 24px;
+  bottom: var(--space-5);
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  align-self: flex-start;
-  margin-left: var(--space-2);
   padding: 6px 10px;
   border: none;
   border-radius: var(--radius-md);
@@ -183,7 +192,6 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 }
 .sidebar-toggle:hover { color: var(--text); background: var(--bg-hover); }
 .sidebar-toggle svg { width: 14px; height: 14px; transition: transform var(--transition); }
-#sidebar.collapsed .sidebar-toggle { align-self: center; margin-left: 0; }
 #sidebar.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 #sidebar.collapsed .sidebar-toggle .toggle-label { display: none; }
 
@@ -202,10 +210,11 @@ nav { display: flex; flex-direction: column; gap: 2px; }
    real columns/gaps and bigger type, not into stretching a fixed-width
    row until a gap opens in the middle of it, which is what happened
    the first time this was tried. */
+/* clamp(), not a fixed px cap — see dashboard-a.html's identical comment. */
 #main {
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
-  max-width: 1260px;
+  max-width: clamp(1080px, 86vw, 1560px);
 }
 
 .topline {
@@ -562,14 +571,14 @@ h2 {
       </div>
     </nav>
     <div class="nav-spacer"></div>
-    <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse sidebar">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
-      <span class="toggle-label">Collapse</span>
-    </button>
     <div class="nav-meta">
       Synced 2h ago<br />
       Agent connected
     </div>
+    <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      <span class="toggle-label">Collapse</span>
+    </button>
   </aside>
   <main id="main">
     <div class="topline">
