@@ -789,6 +789,17 @@ app.whenReady().then(async () => {
   void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
   void extractAllPendingResources();
   ensureGeneralMemoryFile();
+  // Courses created before Phase 4 shipped never got a memory file, since
+  // ensureCourseMemoryFile only runs at creation time — without this every
+  // pre-existing course reports `memory: null` to the agent forever.
+  // Idempotent (skips any file that already exists), so it costs nothing to
+  // run on every launch and also self-heals a file deleted by hand.
+  for (const course of db.prepare('SELECT name, folder_name FROM courses').all() as {
+    name: string;
+    folder_name: string;
+  }[]) {
+    ensureCourseMemoryFile(course.folder_name, course.name);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
