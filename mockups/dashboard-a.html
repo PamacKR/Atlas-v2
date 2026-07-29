@@ -13,12 +13,22 @@
    rules; every section is exactly as tall as its content, so
    columns can never fail to "align" — there is nothing boxed to
    align. Density comes from a strict rhythm, not from packing.
+
+   v2 changes (deadlines were dominating the page):
+   - Day-group headers removed. Each row carries its own day in the
+     gutter instead. Five labelled groups with their own rules and
+     margins cost more vertical space than the rows themselves did.
+   - Deadlines scoped to the near horizon only; the Calendar page
+     owns the full one.
+   - Courses promoted to a full-width strip: they're the navigation
+     spine, and "get me to a file" is a top reason to open Atlas.
+   - "Changed today" and "Recently added" merged. They answered the
+     same question twice.
    --------------------------------------------------------------- */
 
 :root {
-  /* These are deliberately written as tokens already — this is the
-     layer the design-style themes (brutalist/neomorphic/etc.) will
-     later swap wholesale. */
+  /* Written as tokens from the start — this is the layer the
+     design-style themes (brutalist/neomorphic/etc.) swap wholesale. */
   --bg:            #0f0f0e;
   --bg-hover:      #1a1a17;
   --text:          #ecebe6;
@@ -112,10 +122,13 @@ nav { display: flex; flex-direction: column; gap: 1px; }
 }
 
 /* --- Main ------------------------------------------------------ */
+/* Narrower than the window on purpose: at full 1440px the columns
+   stretched wide enough that a large dead gap opened between each
+   row's title and its course. Horizontal emptiness is emptiness too. */
 #main {
   flex: 1;
   padding: var(--space-6) var(--space-7) var(--space-8) var(--space-6);
-  max-width: 1180px;
+  max-width: 1090px;
 }
 
 .topline {
@@ -123,7 +136,7 @@ nav { display: flex; flex-direction: column; gap: 1px; }
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-5);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-5);
 }
 
 h1 {
@@ -155,7 +168,6 @@ h1 .dim { color: var(--text-faint); font-weight: 400; }
   gap: var(--space-5);
   padding-bottom: var(--space-5);
   border-bottom: 1px solid var(--rule);
-  margin-bottom: var(--space-6);
   font-size: var(--text-md);
 }
 .signal { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
@@ -165,16 +177,7 @@ h1 .dim { color: var(--text-faint); font-weight: 400; }
 .signal.is-urgent .n { color: var(--urgent); }
 .signal.is-warn .n { color: var(--accent); }
 
-/* --- Two columns, deliberately unequal and un-aligned ---------- */
-.columns {
-  display: grid;
-  grid-template-columns: 1fr 268px;
-  gap: var(--space-8);
-  align-items: start;
-}
-
-.section + .section { margin-top: var(--space-7); }
-
+/* --- Section furniture ----------------------------------------- */
 .section-head {
   display: flex;
   align-items: baseline;
@@ -196,37 +199,70 @@ h2 {
 }
 .section-action:hover { color: var(--text); }
 
-/* --- Deadline rows --------------------------------------------- */
-.daygroup + .daygroup { margin-top: var(--space-5); }
-
-.daylabel {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin-bottom: var(--space-1);
-  display: flex;
-  align-items: center;
+/* --- Course strip: the navigation spine, full width ------------- */
+.courses {
+  padding: var(--space-5) 0;
+  border-bottom: 1px solid var(--rule);
+}
+.coursegrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-3);
 }
-.daylabel::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--rule);
+.course-cell {
+  padding: var(--space-3);
+  margin: calc(var(--space-3) * -1) 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
 }
-.daylabel.today { color: var(--urgent); }
+.course-cell:hover { background: var(--bg-hover); transform: translateY(-1px); }
+.course-cell .cname {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.course-cell .cname span:last-child {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.course-cell .ccode {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  padding-left: 14px;
+  margin-bottom: var(--space-2);
+}
+.course-cell .cmeta {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding-left: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.course-cell .cmeta .due { color: var(--text); }
 
-/* The hover wash bleeds past the text on both sides via negative
-   margin, so rows feel like a continuous surface rather than a
-   stack of separate hit targets. */
-/* Fixed columns, not `auto` — with `auto` the course/kind block
-   right-aligns to a different point on every row depending on text
-   length, which reads as ragged. Everything sits on a real grid. */
+/* --- Two balanced lists ---------------------------------------- */
+/* Columns are free to be different heights — that's the whole point of
+   having no boxes. Nothing needs to align, so each list runs exactly as
+   long as it's worth running. */
+.columns {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: var(--space-7);
+  align-items: start;
+  padding-top: var(--space-6);
+}
+
+.section + .section { margin-top: var(--space-6); }
+
+/* Hover wash bleeds past the text via negative margin, so rows feel
+   like one continuous surface rather than separate hit targets. */
 .row {
   display: grid;
-  grid-template-columns: 46px 1fr 210px 78px;
-  gap: var(--space-4);
+  gap: var(--space-3);
   align-items: baseline;
-  padding: 7px var(--space-3);
+  padding: 6px var(--space-3);
   margin: 0 calc(var(--space-3) * -1);
   border-radius: 5px;
   cursor: pointer;
@@ -234,17 +270,21 @@ h2 {
 }
 .row:hover { background: var(--bg-hover); transform: translateX(2px); }
 
-.row .time {
+/* Fixed columns, not `auto` — with `auto` each row right-aligns to a
+   different point depending on text length, which reads as ragged. */
+.row.deadline { grid-template-columns: 42px 1fr 128px 40px; }
+.row.recent   { grid-template-columns: 30px 1fr 128px; }
+
+.row .day {
   font-size: var(--text-sm);
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+.row.is-today .day { color: var(--urgent); font-weight: 500; }
 .row .title {
   font-size: var(--text-md);
   font-weight: 450;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .row .course {
   font-size: var(--text-sm);
@@ -252,61 +292,40 @@ h2 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  overflow: hidden;
-  white-space: nowrap;
+  overflow: hidden; white-space: nowrap;
 }
 .row .course span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.row .time, .row .ago {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.row .ago { text-align: left; }
+
 .swatch { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
 
-.kind {
-  font-size: var(--text-xs);
-  color: var(--text-faint);
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
+/* Unread announcements: a marker in the same gutter the timestamps
+   use, so read and unread rows still sit on one grid. */
+.unread {
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
 }
+.row.is-unread .title { font-weight: 500; }
 
-/* --- Right rail ------------------------------------------------- */
-.courserow {
+.more {
   display: block;
-  padding: 7px var(--space-3);
-  margin: 0 calc(var(--space-3) * -1);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background var(--transition);
-}
-.courserow:hover { background: var(--bg-hover); }
-.courserow .name {
-  display: flex; align-items: center; gap: var(--space-2);
-  font-size: var(--text-md);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* Always visible, not hover-revealed: hiding it left the rail
-   looking empty, and empty is the thing we're trying to avoid. */
-.courserow .meta {
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-1) calc(var(--space-3) * -1) 0;
   font-size: var(--text-sm);
   color: var(--text-faint);
-  padding-left: 14px;
-  transition: color var(--transition);
-}
-.courserow:hover .meta { color: var(--text-muted); }
-
-.recentrow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 6px var(--space-3);
-  margin: 0 calc(var(--space-3) * -1);
   border-radius: 5px;
   cursor: pointer;
-  transition: background var(--transition);
+  transition: color var(--transition), background var(--transition);
 }
-.recentrow:hover { background: var(--bg-hover); }
-.recentrow .f {
-  font-size: var(--text-sm);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.recentrow .w { font-size: var(--text-xs); color: var(--text-faint); flex-shrink: 0; }
+.more:hover { color: var(--text); background: var(--bg-hover); }
 </style>
 </head>
 <body>
@@ -341,155 +360,199 @@ h2 {
       <div class="signal is-warn"><span class="n">9</span><span class="t">files need OCR</span></div>
     </div>
 
+    <!-- COURSES: full-width strip, the way into everything --------- -->
+    <section class="courses">
+      <div class="section-head">
+        <h2>Courses</h2>
+        <span class="section-action">Manage →</span>
+      </div>
+      <div class="coursegrid">
+        <div class="course-cell">
+          <div class="cname"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Finance</span></div>
+          <div class="ccode">FIN-3563</div>
+          <div class="cmeta">47 files · <span class="due">6 due</span></div>
+        </div>
+        <div class="course-cell">
+          <div class="cname"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></div>
+          <div class="ccode">ECO-3500</div>
+          <div class="cmeta">62 files · <span class="due">3 due</span></div>
+        </div>
+        <div class="course-cell">
+          <div class="cname"><span class="swatch" style="background:#f59e0b"></span><span>Economics of Gender</span></div>
+          <div class="ccode">ECO-3660</div>
+          <div class="cmeta">28 files · <span class="due">3 due</span></div>
+        </div>
+        <div class="course-cell">
+          <div class="cname"><span class="swatch" style="background:#10b981"></span><span>Technology Law and Policy</span></div>
+          <div class="ccode">POL-2120</div>
+          <div class="cmeta">21 files · <span class="due">2 due</span></div>
+        </div>
+        <div class="course-cell">
+          <div class="cname"><span class="swatch" style="background:#ec4899"></span><span>Corporate Finance &amp; Banking</span></div>
+          <div class="ccode">FIN-3555</div>
+          <div class="cmeta">38 files · <span class="due">7 due</span></div>
+        </div>
+      </div>
+    </section>
+
     <div class="columns">
-      <!-- LEFT ------------------------------------------------- -->
       <div>
-        <section class="section">
-          <div class="section-head">
-            <h2>Up next</h2>
-            <span class="section-action">Calendar →</span>
-          </div>
+      <!-- UP NEXT: near horizon only. Calendar owns the full one. -->
+      <section>
+        <div class="section-head">
+          <h2>Up next</h2>
+          <span class="section-action">Calendar →</span>
+        </div>
+        <div class="row deadline is-today">
+          <span class="day">Today</span>
+          <span class="title">Reading: Ch. 7 — Growth Models</span>
+          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+          <span class="time">18:29</span>
+        </div>
+        <div class="row deadline">
+          <span class="day">Thu</span>
+          <span class="title">Reading Response</span>
+          <span class="course"><span class="swatch" style="background:#10b981"></span><span>Tech Law</span></span>
+          <span class="time">—</span>
+        </div>
+        <div class="row deadline">
+          <span class="day">Fri</span>
+          <span class="title">Quiz 1</span>
+          <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
+          <span class="time">10:00</span>
+        </div>
+        <div class="row deadline">
+          <span class="day">Sat</span>
+          <span class="title">Problem Set 1</span>
+          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+          <span class="time">23:59</span>
+        </div>
+        <div class="row deadline">
+          <span class="day">Sun</span>
+          <span class="title">Problem Set 3</span>
+          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+          <span class="time">23:59</span>
+        </div>
+        <div class="row deadline">
+          <span class="day">Mon</span>
+          <span class="title">Case Study Submission</span>
+          <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
+          <span class="time">23:59</span>
+        </div>
+        <div class="more">8 more in the next fortnight →</div>
+      </section>
 
-          <div class="daygroup">
-            <div class="daylabel today">Today</div>
-            <div class="row">
-              <span class="time">18:29</span>
-              <span class="title">Reading: Ch. 7 — Growth Models</span>
-              <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></span>
-              <span class="kind">reading</span>
-            </div>
-          </div>
-
-          <div class="daygroup">
-            <div class="daylabel">Tomorrow</div>
-            <div class="row">
-              <span class="time">—</span>
-              <span class="title">Reading Response</span>
-              <span class="course"><span class="swatch" style="background:#10b981"></span><span>Technology Law and Policy</span></span>
-              <span class="kind">reading</span>
-            </div>
-          </div>
-
-          <div class="daygroup">
-            <div class="daylabel">Friday 31 July</div>
-            <div class="row">
-              <span class="time">10:00</span>
-              <span class="title">Quiz 1</span>
-              <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Economics of Gender</span></span>
-              <span class="kind">quiz</span>
-            </div>
-          </div>
-
-          <div class="daygroup">
-            <div class="daylabel">This weekend</div>
-            <div class="row">
-              <span class="time">23:59</span>
-              <span class="title">Problem Set 1</span>
-              <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Finance</span></span>
-              <span class="kind">assignment</span>
-            </div>
-            <div class="row">
-              <span class="time">23:59</span>
-              <span class="title">Problem Set 3</span>
-              <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></span>
-              <span class="kind">assignment</span>
-            </div>
-          </div>
-
-          <div class="daygroup">
-            <div class="daylabel">Next week</div>
-            <div class="row">
-              <span class="time">23:59</span>
-              <span class="title">Case Study Submission</span>
-              <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Finance and Banking</span></span>
-              <span class="kind">assignment</span>
-            </div>
-            <div class="row">
-              <span class="time">17:00</span>
-              <span class="title">Response Paper 2</span>
-              <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Economics of Gender</span></span>
-              <span class="kind">assignment</span>
-            </div>
-            <div class="row">
-              <span class="time">18:00</span>
-              <span class="title">Policy Brief Draft</span>
-              <span class="course"><span class="swatch" style="background:#10b981"></span><span>Technology Law and Policy</span></span>
-              <span class="kind">assignment</span>
-            </div>
-            <div class="row">
-              <span class="time">14:00</span>
-              <span class="title">Lab Exercise</span>
-              <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Finance</span></span>
-              <span class="kind">lab</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="section">
-          <div class="section-head">
-            <h2>Changed today</h2>
-          </div>
-          <div class="row">
-            <span class="time">14:02</span>
-            <span class="title">W12 — Solow Growth Model.pdf</span>
-            <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></span>
-            <span class="kind">added</span>
-          </div>
-          <div class="row">
-            <span class="time">11:47</span>
-            <span class="title">Readings for 2 April</span>
-            <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></span>
-            <span class="kind">announced</span>
-          </div>
-          <div class="row">
-            <span class="time">09:15</span>
-            <span class="title">Case study brief.docx</span>
-            <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Finance and Banking</span></span>
-            <span class="kind">added</span>
-          </div>
-        </section>
+      <!-- ANNOUNCEMENTS: "what did I miss" is a real reason to open
+           Atlas in a burst, and unread ones are the Dashboard v2 ask.
+           Unread carry a marker; opening one clears it. -->
+      <section class="section">
+        <div class="section-head">
+          <h2>Announcements</h2>
+          <span class="section-action">Mark all read</span>
+        </div>
+        <div class="row recent is-unread">
+          <span class="ago"><span class="unread"></span></span>
+          <span class="title">Readings for 2 April — Ch. 7 and the Weil chapter</span>
+          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+        </div>
+        <div class="row recent is-unread">
+          <span class="ago"><span class="unread"></span></span>
+          <span class="title">Quiz 1 venue changed to AC-04-LR-201</span>
+          <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago"></span>
+          <span class="title">Group allocations for the case study</span>
+          <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago"></span>
+          <span class="title">No class on Friday — makeup TBA</span>
+          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+        </div>
+        <div class="more">All 152 announcements →</div>
+      </section>
       </div>
 
-      <!-- RIGHT ------------------------------------------------ -->
-      <div>
-        <section class="section">
-          <div class="section-head">
-            <h2>Courses</h2>
-            <span class="section-action">All →</span>
-          </div>
-          <div class="courserow">
-            <div class="name"><span class="swatch" style="background:#3b82f6"></span>Behavioral Finance</div>
-            <div class="meta">47 files · 6 due · FIN-3563</div>
-          </div>
-          <div class="courserow">
-            <div class="name"><span class="swatch" style="background:#8b5cf6"></span>Development Economics</div>
-            <div class="meta">62 files · 3 due · ECO-3500</div>
-          </div>
-          <div class="courserow">
-            <div class="name"><span class="swatch" style="background:#f59e0b"></span>Economics of Gender</div>
-            <div class="meta">28 files · 3 due · ECO-3660</div>
-          </div>
-          <div class="courserow">
-            <div class="name"><span class="swatch" style="background:#10b981"></span>Technology Law and Policy</div>
-            <div class="meta">21 files · 2 due · POL-2120</div>
-          </div>
-          <div class="courserow">
-            <div class="name"><span class="swatch" style="background:#ec4899"></span>Corporate Finance and Banking</div>
-            <div class="meta">38 files · 7 due · FIN-3555</div>
-          </div>
-        </section>
-
-        <section class="section">
-          <div class="section-head">
-            <h2>Recently added</h2>
-          </div>
-          <div class="recentrow"><span class="f">W12 — Solow Growth Model.pdf</span><span class="w">2h</span></div>
-          <div class="recentrow"><span class="f">Case study brief.docx</span><span class="w">5h</span></div>
-          <div class="recentrow"><span class="f">ECO 2202 course index</span><span class="w">1d</span></div>
-          <div class="recentrow"><span class="f">Gender &amp; labour markets.pdf</span><span class="w">2d</span></div>
-          <div class="recentrow"><span class="f">Lecture 9 slides.pptx</span><span class="w">3d</span></div>
-        </section>
-      </div>
+      <!-- RECENT: "changed today" and "recently added" were the same
+           question asked twice. One section. -->
+      <section>
+        <div class="section-head">
+          <h2>Recent</h2>
+          <span class="section-action">All files →</span>
+        </div>
+        <div class="row recent">
+          <span class="ago">2h</span>
+          <span class="title">W12 — Solow Growth Model.pdf</span>
+          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">3h</span>
+          <span class="title">Readings for 2 April</span>
+          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">5h</span>
+          <span class="title">Case study brief.docx</span>
+          <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">1d</span>
+          <span class="title">ECO 2202 course index</span>
+          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">1d</span>
+          <span class="title">Group debate — brief</span>
+          <span class="course"><span class="swatch" style="background:#10b981"></span><span>Tech Law</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">2d</span>
+          <span class="title">Gender &amp; labour markets.pdf</span>
+          <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">3d</span>
+          <span class="title">Lecture 9 slides.pptx</span>
+          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">3d</span>
+          <span class="title">Problem set 2 — solutions.pdf</span>
+          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">4d</span>
+          <span class="title">Behavioural biases — reading list.pdf</span>
+          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">4d</span>
+          <span class="title">Platform regulation — EU AI Act.pdf</span>
+          <span class="course"><span class="swatch" style="background:#10b981"></span><span>Tech Law</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">5d</span>
+          <span class="title">Capital structure — lecture notes.docx</span>
+          <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">6d</span>
+          <span class="title">W11 — Convergence and catch-up.pdf</span>
+          <span class="course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">6d</span>
+          <span class="title">Intra-household bargaining.pdf</span>
+          <span class="course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
+        </div>
+        <div class="row recent">
+          <span class="ago">1w</span>
+          <span class="title">Syllabus — Monsoon 26.pdf</span>
+          <span class="course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+        </div>
+        <div class="more">All 196 files →</div>
+      </section>
     </div>
   </main>
 
