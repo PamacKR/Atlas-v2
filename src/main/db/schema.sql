@@ -75,8 +75,37 @@ CREATE TABLE IF NOT EXISTS resources (
   -- file changed since and the cached copy needs re-uploading.
   drive_preview_file_id TEXT,
   drive_preview_synced_size INTEGER,
-  drive_preview_synced_mtime_ms INTEGER
+  drive_preview_synced_mtime_ms INTEGER,
+  -- Page-aware text extraction for the Phase 4 Context Builder
+  -- (phase4-spec.md §3) — 'pending' until a background extraction pass
+  -- completes, 'done' once document_parts rows exist, 'empty' when the file
+  -- parsed but yielded no text (the scan-detection signal that drives the
+  -- existing "Run OCR" button), 'unsupported' for kinds with no extractor
+  -- (image/zip/other/link), 'failed' on a genuine parse error.
+  extraction_status TEXT NOT NULL DEFAULT 'pending',
+  extraction_error TEXT,
+  extracted_at TEXT
 );
+
+-- One row per page/slide/sheet/section of a resource's extracted text
+-- (phase4-spec.md §3.2/3.3) — kept separate from one blob per file so the
+-- Context Builder can point the AI agent at "page 214" instead of handing
+-- over an entire 600-page textbook. `origin` distinguishes text pulled
+-- straight from the file ('extracted') from text recovered via the existing
+-- opt-in OCR review flow ('ocr') — see resources:saveOcrText in main.ts.
+CREATE TABLE IF NOT EXISTS document_parts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  resource_id INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL, -- 1-based, in document order
+  label TEXT NOT NULL,     -- 'Page 214', 'Slide 12', 'Sheet: Q3 Results'
+  text TEXT NOT NULL,
+  origin TEXT NOT NULL DEFAULT 'extracted', -- 'extracted' | 'ocr'
+  -- Not just (resource_id, ordinal): a PDF can genuinely have both an
+  -- 'extracted' Page 1 (from its real text layer, if any) and later an
+  -- 'ocr' Page 1 (if the user runs OCR anyway) without colliding.
+  UNIQUE(resource_id, ordinal, origin)
+);
+CREATE INDEX IF NOT EXISTS idx_document_parts_resource ON document_parts(resource_id);
 
 -- User-designated folders Atlas watches for new files, mapped explicitly to
 -- one course each (deliberately not auto-guessed — see open-questions.md

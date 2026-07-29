@@ -92,6 +92,33 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('drive_preview_synced_mtime_ms')) {
     db.exec('ALTER TABLE resources ADD COLUMN drive_preview_synced_mtime_ms INTEGER');
   }
+  // Page-aware text extraction (phase4-spec.md §3). Existing resources
+  // predate this column and would otherwise default to 'pending' forever —
+  // extractAllPendingResources() in main.ts is what actually processes them,
+  // gated by its own app_settings flag so it only runs its one-time backfill
+  // pass once.
+  if (!resourceColumns.includes('extraction_status')) {
+    db.exec("ALTER TABLE resources ADD COLUMN extraction_status TEXT NOT NULL DEFAULT 'pending'");
+  }
+  if (!resourceColumns.includes('extraction_error')) {
+    db.exec('ALTER TABLE resources ADD COLUMN extraction_error TEXT');
+  }
+  if (!resourceColumns.includes('extracted_at')) {
+    db.exec('ALTER TABLE resources ADD COLUMN extracted_at TEXT');
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS document_parts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      resource_id INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      text TEXT NOT NULL,
+      origin TEXT NOT NULL DEFAULT 'extracted',
+      UNIQUE(resource_id, ordinal, origin)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_document_parts_resource ON document_parts(resource_id)');
 
   const noteColumns = (db.prepare('PRAGMA table_info(notes)').all() as { name: string }[]).map(
     (c) => c.name

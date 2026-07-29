@@ -3,6 +3,7 @@ import * as path from 'path';
 import { createWorker } from 'tesseract.js';
 import type { Worker } from 'tesseract.js';
 import { createCanvas } from '@napi-rs/canvas';
+import { loadPdfjs } from './pdfjsLoader';
 
 // Vendored locally (see scripts/copy-assets.js) so OCR never reaches out to a
 // CDN for the English language model or pdfjs's standard-14 font metrics —
@@ -39,6 +40,11 @@ export async function endOcrBatch(): Promise<void> {
   await worker.terminate();
 }
 
+// Exported so callers that need the individual pages back (main.ts's
+// resources:saveOcrText, for document_parts — phase4-spec.md §3.7) can split
+// on the exact same separator this module joins with, rather than guessing.
+export const OCR_PAGE_SEPARATOR = '\n\n---\n\n';
+
 function isPdf(filePath: string): boolean {
   return path.extname(filePath).toLowerCase() === '.pdf';
 }
@@ -47,25 +53,6 @@ async function recognizeImage(input: Buffer | string): Promise<string> {
   const worker = await getWorker();
   const { data } = await worker.recognize(input);
   return data.text.trim();
-}
-
-// pdfjs-dist ships ESM-only as of v6 (no CJS build) — same ERR_REQUIRE_ESM
-// constraint already documented on `marked` in preview.ts, but here the fix
-// is a dynamic import rather than pinning an older major version, since
-// there's no CJS-compatible pdfjs-dist release with this API shape.
-//
-// A plain `await import(...)` doesn't work: tsc compiling to CommonJS
-// rewrites it to `Promise.resolve().then(() => require(...))`, and `require`
-// can't load an ESM-only module (ERR_REQUIRE_ESM) — confirmed by inspecting
-// the actual compiler output. Routing the import through `new Function(...)`
-// hides the `import()` call from TypeScript's static transform entirely, so
-// it reaches Node as a genuine dynamic import at runtime.
-const dynamicImport = new Function('specifier', 'return import(specifier)') as (
-  specifier: string
-) => Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')>;
-
-async function loadPdfjs() {
-  return dynamicImport('pdfjs-dist/legacy/build/pdf.mjs');
 }
 
 async function extractTextFromPdf(
@@ -95,7 +82,7 @@ async function extractTextFromPdf(
     const text = await recognizeImage(canvas.toBuffer('image/png'));
     pageTexts.push(text);
   }
-  return pageTexts.join('\n\n---\n\n');
+  return pageTexts.join(OCR_PAGE_SEPARATOR);
 }
 
 // One imported file = one note (see ARCHITECTURE.md §3 / STATUS.md Phase 2

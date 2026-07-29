@@ -1,6 +1,6 @@
 # Phase 4 — Context Builder & AI agent integration (specification)
 
-Status: **draft for review, nothing built yet.**
+Status: **Part A (page-aware text extraction) built and verified 2026-07-29 — see STATUS.md.** Parts B–E not yet built.
 
 This is the detailed design for Phase 4, written before any code so the shape can be argued with cheaply. It expands `ROADMAP.md` Phase 4 and PRD §16/§18/§19/§21.
 
@@ -286,7 +286,7 @@ Extraction gets its own fixtures — a real multi-page PDF, a deck, a DOCX, and 
 
 | # | Piece | Size | Why here |
 |---|---|---|---|
-| 1 | Page-aware extraction + backfill (§3) | **Large** | Everything else is hollow without it. Riskiest, so first — including proving `pdfjs-dist` runs under plain Node on day one. |
+| 1 | Page-aware extraction + backfill (§3) | **Large** | **Built 2026-07-29.** Everything else is hollow without it. |
 | 2 | Memory files, course + general (§5) | Small | Self-contained; the query layer needs it. |
 | 3 | Agent-note flag, badge, filter (§4) | Small | Self-contained UI + one column. |
 | 4 | Query layer (§6.3 logic, no MCP yet) | Medium | Plain functions over SQLite, shared by the server and the export. |

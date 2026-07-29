@@ -21,7 +21,7 @@ function escapeHtml(value: string): string {
 // itself already XML-entity-escaped (e.g. a literal "&" is stored as
 // "&amp;") — decode that first, or escapeHtml would double-escape it into
 // "&amp;amp;" and the browser would display the literal entity text.
-function decodeXmlEntities(value: string): string {
+export function decodeXmlEntities(value: string): string {
   return value
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')

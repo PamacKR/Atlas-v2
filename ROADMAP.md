@@ -50,6 +50,7 @@ Reordered again 2026-07-28 (user decision, `open-questions.md` #28): the two rem
 
 **Moved ahead of the Gmail adapter (2026-07-28 user decision, `open-questions.md` #28).** The user's primary want from Gmail — surfacing what they missed in a flood of college email — is a Phase 4 capability by definition and can't be delivered by an email adapter alone. Phase 4 is also still entirely unbuilt while being the product's stated purpose (PRD §16/§18/§21), and everything already in Atlas (courses, notes, deadlines, resources, Classroom data) is already worth querying — so it delivers value immediately, with or without email. Building Gmail's storage shape first would also risk designing it before knowing how the agent actually queries.
 
+- [x] Page-aware text extraction: every PDF/PPTX/DOCX/XLSX resource's text is pulled into per-page/slide/sheet/section parts (not filename-only search), extracted on import and backfilled for existing files. See `phase4-spec.md` §3 and `STATUS.md` (2026-07-29).
 - Context Builder query layer: relevance-based retrieval per task type (assignment help, exam revision, lecture summary, concept explanation)
 - Course AI profiles (section 19): explanation style, detail level, reasoning depth, formatting, math derivation use, citation preferences
 - Local MCP server exposing the Context Builder to any MCP-compatible AI agent

@@ -29,6 +29,12 @@ interface Resource {
   added_at: string;
   synced_at: string | null;
   ocr_text: string | null;
+  extraction_status: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
+}
+
+interface ExtractionBackfillProgress {
+  done: number;
+  total: number;
 }
 
 interface WatchedFolder {
@@ -288,6 +294,7 @@ interface AtlasApi {
   saveResourceOcrText: (resourceId: number, text: string) => Promise<void>;
   onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void) => void;
   openResourceInGoogleDrive: (resourceId: number) => Promise<void>;
+  onExtractionBackfillProgress: (handler: (progress: ExtractionBackfillProgress) => void) => void;
   onResourceDriveOpenStart: (handler: (resourceId: number) => void) => void;
   onResourceDriveOpenSuccess: (handler: (resourceId: number) => void) => void;
   onResourceDriveOpenError: (handler: (resourceId: number, error: string) => void) => void;
@@ -3245,7 +3252,14 @@ async function openPreview(resource: Resource): Promise<void> {
   // left showing on whatever resource was previewed last.
   ocrButton.hidden = resource.kind !== 'pdf';
   ocrButton.disabled = false;
-  document.getElementById('preview-ocr-status')!.textContent = '';
+  // extraction_status 'empty' means the file parsed but Atlas's own text
+  // extraction (textExtraction.ts) found nothing — the scan-detection signal
+  // (phase4-spec.md §3.7) that this PDF is very likely a photographed/scanned
+  // book with no real text layer, so OCR is the way to make it searchable.
+  document.getElementById('preview-ocr-status')!.textContent =
+    resource.kind === 'pdf' && resource.extraction_status === 'empty'
+      ? "This looks like a scanned PDF with no readable text — run OCR to make it searchable."
+      : '';
   discardResourceOcr();
 
   driveButton.hidden = !OFFICE_PREVIEW_KINDS.has(resource.kind);
@@ -4095,6 +4109,18 @@ async function init(): Promise<void> {
     if (resourceId !== currentPreviewResourceId) return;
     (document.getElementById('preview-open-in-drive') as HTMLButtonElement).disabled = false;
     document.getElementById('preview-drive-status')!.textContent = error;
+  });
+
+  atlasApi.onExtractionBackfillProgress((progress) => {
+    const el = document.getElementById('extraction-status');
+    if (!el) return;
+    if (progress.total === 0) {
+      el.textContent = '';
+    } else if (progress.done < progress.total) {
+      el.textContent = `Reading your existing files… ${progress.done} of ${progress.total}`;
+    } else {
+      el.textContent = `Done — ${progress.total} file${progress.total === 1 ? '' : 's'} read.`;
+    }
   });
   document.addEventListener('keydown', (e) => {
     // Ctrl+L jumps to search from anywhere, same convention as a browser's

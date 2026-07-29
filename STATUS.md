@@ -2,7 +2,19 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-28 (Atlas-v2, Calendar-page refresh gap fixed)
+**Last updated:** 2026-07-29 (Atlas-v2, Phase 4 Part A — page-aware text extraction — built and verified)
+
+## Session 2026-07-29 — Phase 4 Part A: page-aware text extraction
+
+Built against `phase4-spec.md` §3 (see that file for the full design). Every PDF/PPTX/DOCX/XLSX resource now gets its text pulled into `document_parts` — one row per page/slide/sheet/section, each with a human-readable label ("Page 214", "Slide 12", "Sheet: Q3 Results") — instead of being searchable by filename only. This is the foundation the rest of Phase 4 (memory files, MCP server) builds on.
+
+- New `src/main/textExtraction.ts`: per-format extraction (`pdfjs-dist`'s real text layer for PDF, the existing PPTX-outline regex repurposed to return raw per-slide text, `mammoth`+heading-split for DOCX, `xlsx` per-sheet for XLSX, fixed-size chunking for TXT/MD). Reuses a new shared `src/main/pdfjsLoader.ts` (the ESM dynamic-import workaround, previously duplicated only in `ocr.ts`).
+- Runs automatically on every import (manual upload, folder watching, course-storage watching) via `scheduleExtraction()` in `main.ts`, in the background so a large textbook doesn't block the import. `resources.extraction_status` tracks `pending` → `done`/`empty`/`unsupported`/`failed`.
+- **Backfill**: `extractAllPendingResources()` runs once at launch, catching every resource that predates this feature (all default to `pending` via the migration). No one-time flag needed — once processed, a resource's status is never `pending` again, so re-running on every launch naturally does nothing once caught up. Progress is shown live in Settings (`#extraction-status`) since a real library's first backfill could take minutes, and silent multi-minute background work is exactly how the Classroom sync bug went unnoticed for weeks.
+- **OCR made page-aware**: `resources:saveOcrText` now splits the already-reviewed OCR text back into one `document_parts` row per page (`origin = 'ocr'`), instead of one blob. Safe because the review step is display-only (`textContent`, not editable), so the page separator `ocr.ts` joined with is guaranteed intact.
+- The existing "Run OCR" button now shows a hint automatically when `extraction_status = 'empty'` — Atlas's own text extraction found nothing, which is the actual signal that a PDF is a scan.
+- **Real bug caught by `npm run verify`, not guessed**: `document_parts`'s unique constraint was `(resource_id, ordinal)`, but a PDF can legitimately have both an `extracted` Page 1 (from a real text layer) and an `ocr` Page 1 (if OCR is run anyway) without colliding — fixed to `(resource_id, ordinal, origin)`.
+- Verified extraction logic directly against real generated fixture files (a hand-built 2-page PDF, a minimal PPTX/DOCX/XLSX) before running the full suite — confirmed correct page/slide/sheet/section labels, and confirmed a genuinely text-free PDF page correctly reports `empty` (not `done` or `failed`).
 
 ## Session 2026-07-28 (continued) — fixed the Calendar-page refresh gap
 

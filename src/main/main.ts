@@ -6,7 +6,8 @@ import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
 import { getFilesDir, getNoteImagesDir, getScanImagesDir } from './paths';
 import { getPreview } from './preview';
-import { extractTextFromScan, endOcrBatch } from './ocr';
+import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
+import { extractDocumentParts } from './textExtraction';
 import {
   isGoogleDriveConnected,
   authorizeGoogleDrive,
@@ -142,6 +143,20 @@ function rebuildSearchIndex(): void {
   for (const assignment of assignments) {
     insert.run('assignment', assignment.id, assignment.course_id, assignment.title, assignment.description ?? '');
   }
+
+  // Page-aware parts (phase4-spec.md §3.8) — indexed alongside their parent
+  // resource so a hit can point the AI agent at "page 214" specifically
+  // rather than just the resource's title. entity_id is the document_parts
+  // row id, not the resource id, since a search hit resolves to one part.
+  const parts = db
+    .prepare(
+      `SELECT document_parts.id, document_parts.label, document_parts.text, resources.course_id
+       FROM document_parts JOIN resources ON resources.id = document_parts.resource_id`
+    )
+    .all() as { id: number; label: string; text: string; course_id: number }[];
+  for (const part of parts) {
+    insert.run('document_part', part.id, part.course_id, part.label, part.text);
+  }
 }
 
 // Subfolder (inside each course's own managed-storage folder) where notes
@@ -181,6 +196,104 @@ function uniqueDestPath(dir: string, filename: string): string {
     counter++;
   }
   return path.join(dir, candidate);
+}
+
+// Kinds textExtraction.ts knows how to read. Everything else (image, zip,
+// other, link) is marked 'unsupported' immediately rather than left
+// 'pending' forever — 'pending' is meant to mean "extraction hasn't run
+// yet," not "never will."
+const EXTRACTABLE_KINDS = new Set(['pdf', 'pptx', 'xlsx', 'docx', 'text', 'markdown']);
+
+// Runs extraction in the background after a resource is inserted (import is
+// not blocked on a large textbook's extraction) and writes the result back —
+// document_parts rows plus resources.extraction_status, so the Context
+// Builder (phase4-spec.md §3) and the "Run OCR" auto-suggest (§3.7) both see
+// it. Fire-and-forget: callers don't await this, matching every other
+// upload/import call site's existing non-blocking shape.
+function scheduleExtraction(resourceId: number, kind: string, filePath: string): void {
+  const db = getDb();
+  if (!EXTRACTABLE_KINDS.has(kind)) {
+    db.prepare("UPDATE resources SET extraction_status = 'unsupported', extracted_at = datetime('now') WHERE id = ?").run(
+      resourceId
+    );
+    return;
+  }
+
+  void extractDocumentParts(kind, filePath).then((result) => {
+    const db2 = getDb();
+    const insertPart = db2.prepare(
+      'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
+    );
+    db2.transaction(() => {
+      db2.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resourceId);
+      for (const part of result.parts) {
+        insertPart.run(resourceId, part.ordinal, part.label, part.text, 'extracted');
+      }
+      db2
+        .prepare(
+          "UPDATE resources SET extraction_status = ?, extraction_error = ?, extracted_at = datetime('now') WHERE id = ?"
+        )
+        .run(result.status, result.error ?? null, resourceId);
+    })();
+    rebuildSearchIndex();
+    if (mainWindow) mainWindow.webContents.send('resources:extractionUpdated', resourceId);
+  });
+}
+
+// Catches up any resource whose extraction never ran — pre-existing
+// resources from before this column existed (all default to 'pending' via
+// the migration) and anything left 'pending' by a crash mid-extraction.
+// Needs no one-time app_settings flag the way repairClassroomResourceAddedAtOnce
+// does: once a resource is processed its status is no longer 'pending', so
+// re-running this on every launch naturally finds nothing left to do.
+// Sequential rather than parallel — pdfjs/mammoth aren't known to be safe
+// to run many-at-once, and this only ever runs once per resource in
+// practice, so throughput doesn't matter. Progress is sent to the renderer
+// since a real library's first backfill could take minutes, and silent
+// multi-minute background work is exactly how the Classroom sync bug went
+// unnoticed for weeks (STATUS.md).
+async function extractAllPendingResources(): Promise<void> {
+  const db = getDb();
+  const pending = db
+    .prepare("SELECT id, kind, file_path FROM resources WHERE extraction_status = 'pending'")
+    .all() as { id: number; kind: string; file_path: string }[];
+  if (pending.length === 0) return;
+
+  const insertPart = db.prepare(
+    'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
+  );
+
+  for (let i = 0; i < pending.length; i++) {
+    const resource = pending[i];
+    if (mainWindow) {
+      mainWindow.webContents.send('extraction:backfillProgress', { done: i, total: pending.length });
+    }
+
+    if (!EXTRACTABLE_KINDS.has(resource.kind)) {
+      db.prepare("UPDATE resources SET extraction_status = 'unsupported', extracted_at = datetime('now') WHERE id = ?").run(
+        resource.id
+      );
+      continue;
+    }
+
+    const result = await extractDocumentParts(resource.kind, resource.file_path);
+    db.transaction(() => {
+      db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resource.id);
+      for (const part of result.parts) {
+        insertPart.run(resource.id, part.ordinal, part.label, part.text, 'extracted');
+      }
+      db
+        .prepare(
+          "UPDATE resources SET extraction_status = ?, extraction_error = ?, extracted_at = datetime('now') WHERE id = ?"
+        )
+        .run(result.status, result.error ?? null, resource.id);
+    })();
+  }
+
+  rebuildSearchIndex();
+  if (mainWindow) {
+    mainWindow.webContents.send('extraction:backfillProgress', { done: pending.length, total: pending.length });
+  }
 }
 
 // Shared by manual upload and folder watching: copies a source file into the
@@ -223,6 +336,7 @@ function importFileIntoCourse(
     );
 
   rebuildSearchIndex();
+  scheduleExtraction(Number(insertResult.lastInsertRowid), kindFromExtension(originalFilename), destPath);
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 }
 
@@ -266,6 +380,7 @@ function importBufferIntoCourse(
     );
 
   rebuildSearchIndex();
+  scheduleExtraction(Number(insertResult.lastInsertRowid), kindFromExtension(originalFilename), destPath);
   return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
 }
 
@@ -467,11 +582,15 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
     const already = db.prepare('SELECT id FROM resources WHERE file_path = ?').get(filePath);
     if (already) return;
 
-    db.prepare(
-      `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename)
-       VALUES (?, ?, ?, 'manual', ?, ?)`
-    ).run(courseId, path.basename(filePath), kindFromExtension(filePath), filePath, path.basename(filePath));
+    const kind = kindFromExtension(filePath);
+    const insertResult = db
+      .prepare(
+        `INSERT INTO resources (course_id, title, kind, source, file_path, original_filename)
+         VALUES (?, ?, ?, 'manual', ?, ?)`
+      )
+      .run(courseId, path.basename(filePath), kind, filePath, path.basename(filePath));
     rebuildSearchIndex();
+    scheduleExtraction(Number(insertResult.lastInsertRowid), kind, filePath);
     if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
   });
 
@@ -638,6 +757,7 @@ app.whenReady().then(async () => {
   // this same sync having just backfilled assignments.posted_at for any
   // pre-existing assignment rows (see upsertAssignment in googleClassroom.ts).
   void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
+  void extractAllPendingResources();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1409,6 +1529,28 @@ ipcMain.handle('resources:runOcr', async (event, resourceId: number) => {
 ipcMain.handle('resources:saveOcrText', (_event, resourceId: number, text: string) => {
   const db = getDb();
   db.prepare('UPDATE resources SET ocr_text = ? WHERE id = ?').run(text, resourceId);
+
+  // Split back into one document_parts row per page (phase4-spec.md §3.7) —
+  // safe because the review step the user just accepted is display-only
+  // (preview-ocr-review-text uses textContent, not an editable field), so
+  // the separator ocr.ts joined with is guaranteed to still be intact here.
+  // A single recognized image (no separator present) becomes one part.
+  const insertPart = db.prepare(
+    'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
+  );
+  const pages = text.split(OCR_PAGE_SEPARATOR).map((t) => t.trim());
+  db.transaction(() => {
+    db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'ocr'").run(resourceId);
+    let ordinal = 1;
+    for (const pageText of pages) {
+      if (!pageText) continue;
+      insertPart.run(resourceId, ordinal, `Page ${ordinal}`, pageText, 'ocr');
+      ordinal++;
+    }
+    db.prepare("UPDATE resources SET extraction_status = 'done', extracted_at = datetime('now') WHERE id = ?").run(
+      resourceId
+    );
+  })();
   rebuildSearchIndex();
 });
 

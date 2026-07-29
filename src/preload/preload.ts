@@ -31,6 +31,12 @@ export interface Resource {
   added_at: string;
   synced_at: string | null;
   ocr_text: string | null;
+  extraction_status: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
+}
+
+export interface ExtractionBackfillProgress {
+  done: number;
+  total: number;
 }
 
 export interface WatchedFolder {
@@ -307,6 +313,9 @@ contextBridge.exposeInMainWorld('atlas', {
   },
   openResourceInGoogleDrive: (resourceId: number): Promise<void> =>
     ipcRenderer.invoke('resources:openInGoogleDrive', resourceId),
+  onExtractionBackfillProgress: (handler: (progress: ExtractionBackfillProgress) => void): void => {
+    ipcRenderer.on('extraction:backfillProgress', (_event, progress: ExtractionBackfillProgress) => handler(progress));
+  },
   onResourceDriveOpenStart: (handler: (resourceId: number) => void): void => {
     ipcRenderer.on('resources:driveOpenStart', (_event, resourceId: number) => handler(resourceId));
   },
