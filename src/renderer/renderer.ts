@@ -51,7 +51,9 @@ interface WatchedFolder {
 
 interface Note {
   id: number;
-  course_id: number;
+  // NULL means "unsorted" — a quick-capture note (see createUnsortedNote in
+  // main.ts) that hasn't been assigned to a course yet.
+  course_id: number | null;
   title: string;
   content_markdown: string;
   is_handwritten: number;
@@ -324,6 +326,9 @@ interface AtlasApi {
   onResourcesChanged: (handler: (courseId: number) => void) => void;
   listNotes: (courseId: number) => Promise<Note[]>;
   createNote: (courseId: number) => Promise<Note>;
+  createUnsortedNote: () => Promise<Note>;
+  assignNoteCourse: (noteId: number, courseId: number) => Promise<Note>;
+  onQuickCaptureNote: (handler: (note: Note) => void) => void;
   updateNoteContent: (noteId: number, contentMarkdown: string) => Promise<{ title: string | null } | null>;
   updateNoteTitle: (noteId: number, title: string) => Promise<void>;
   deleteNote: (noteId: number) => Promise<void>;
@@ -384,6 +389,7 @@ interface AtlasApi {
 // actually works (bullet-heavy notes, Notion-like typing feel) and verified
 // working correctly in Crepe before switching. Crepe also bundles KaTeX math
 // rendering out of the box, which the user needs for academic notes.
+import { ShortcutRegistry, ShortcutAction, normalizeBinding } from './shortcuts';
 import { Crepe } from '@milkdown/crepe';
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
@@ -861,11 +867,15 @@ function renderCourseRail(
 // were more than a couple of courses. Shared between the Upload and New Note
 // flows via `mode`; Upload additionally carries a drag-and-drop zone.
 
-type CoursePickerMode = 'upload' | 'note' | 'scan';
+type CoursePickerMode = 'upload' | 'note' | 'scan' | 'assign';
 
 let coursePickerMode: CoursePickerMode = 'upload';
 let coursePickerCourses: Course[] = [];
 let coursePickerSelectedId: number | null = null;
+// Set only for 'assign' mode — which note is being moved into a course (see
+// openAssignNoteCoursePicker). Quick-capture notes (createUnsortedNote in
+// main.ts) start with no course; this is how the user picks one afterward.
+let assigningNoteId: number | null = null;
 // Set when the picker was opened from a file already dropped onto the
 // Resources page directly (not the Upload button) — in that case the course
 // is the only thing left to choose, so clicking one uploads immediately
@@ -953,6 +963,20 @@ async function selectCoursePickerCourse(courseId: number): Promise<void> {
     return;
   }
 
+  if (coursePickerMode === 'assign') {
+    const noteId = assigningNoteId;
+    closeCoursePicker();
+    assigningNoteId = null;
+    if (noteId === null) return;
+    const updated = await atlasApi.assignNoteCourse(noteId, courseId);
+    // Re-render whatever's showing this note so its "Unsorted" label and
+    // filename move to the newly-assigned course immediately, not just on
+    // next reload.
+    if (currentNoteId === updated.id) await openNoteEditor(updated);
+    if (currentPage === 'notes') await renderNotesPage();
+    return;
+  }
+
   if (coursePickerPendingFile) {
     const file = coursePickerPendingFile;
     closeCoursePicker();
@@ -990,6 +1014,9 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
   if (mode === 'note') {
     title.textContent = 'New note';
     dropzone.hidden = true;
+  } else if (mode === 'assign') {
+    title.textContent = 'Move note to course';
+    dropzone.hidden = true;
   } else if (file) {
     title.textContent = `Upload "${file.name}" to…`;
     dropzone.hidden = true;
@@ -1010,6 +1037,14 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
   renderCoursePickerList('');
   document.getElementById('course-picker-overlay')!.hidden = false;
   searchInput.focus();
+}
+
+// The "select which course to put it in later" half of quick capture
+// (createUnsortedNote in main.ts) — reuses the same course-picker modal
+// rather than a separate UI, same as note/upload/scan already do.
+function openAssignNoteCoursePicker(noteId: number): void {
+  assigningNoteId = noteId;
+  void openCoursePicker('assign');
 }
 
 type ResourcesSort = 'name' | 'recent' | 'kind' | 'course';
@@ -2476,6 +2511,10 @@ async function goToDashboardActivityItem(item: DashboardActivityItem): Promise<v
 
 let noteEditorInstance: Crepe | null = null;
 let currentNoteId: number | null = null;
+// Tracks whether the currently-open note has a course yet — drives the
+// "Assign to course" button's visibility (see openNoteEditor). NULL means
+// unsorted (a quick-capture note, createUnsortedNote in main.ts).
+let currentNoteCourseId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let noteTitleBeforeEdit = '';
 // The note's markdown right after it finished opening (post-Crepe-mount, not
@@ -2590,6 +2629,13 @@ async function mountNoteEditor(note: Note): Promise<void> {
   root.innerHTML = '';
 
   const saveImage = async (file: File): Promise<string> => {
+    // Embedding an image needs a real course folder to store it under — an
+    // unsorted quick-capture note doesn't have one yet. Assigning a course
+    // first (the "Assign to course…" button) unlocks this, same as it
+    // unlocks the .md export.
+    if (note.course_id === null) {
+      throw new Error('Assign this note to a course before adding images.');
+    }
     const buffer = await file.arrayBuffer();
     const dot = file.name.lastIndexOf('.');
     const extension = dot >= 0 ? file.name.slice(dot) : '';
@@ -2638,9 +2684,15 @@ async function openNoteEditor(note: Note): Promise<void> {
   const statusEl = document.getElementById('note-save-status')!;
 
   currentNoteId = note.id;
+  currentNoteCourseId = note.course_id;
   titleInput.value = note.title;
   statusEl.textContent = '';
   overlay.hidden = false;
+
+  // Only an unsorted (quick-capture) note needs this — a note already in a
+  // course doesn't need a way back out of one.
+  const assignButton = document.getElementById('note-assign-course') as HTMLButtonElement;
+  assignButton.hidden = note.course_id !== null;
 
   // "View original scan"/"Run OCR" only make sense for a handwritten note —
   // both start collapsed/reset on open, even if left open on whatever note
@@ -3971,6 +4023,299 @@ function setSidebarCollapsed(collapsed: boolean, persist = true): void {
   if (persist) atlasApi.setSetting('sidebarCollapsed', collapsed ? '1' : '0');
 }
 
+// --- Keyboard shortcuts (src/renderer/shortcuts.ts, ROADMAP.md Phase 5) ---
+// The registry is the single source of truth for every app-wide binding —
+// see shortcuts.ts's own header comment. Ctrl+Shift+N (quick capture) is
+// deliberately NOT registered here: it's a global OS-wide shortcut
+// (Electron's globalShortcut, registered in main.ts) that never reaches the
+// renderer's own keydown handling at all, by design — it needs to work even
+// when Atlas isn't the focused window.
+
+const shortcutRegistry = new ShortcutRegistry();
+
+function courseDetailVisible(): boolean {
+  return currentPage === 'courses' && selectedCourse !== null && !(document.getElementById('courses-detail-view') as HTMLElement).hidden;
+}
+
+function isElementVisible(id: string): boolean {
+  const el = document.getElementById(id);
+  return el !== null && (el as HTMLElement).offsetParent !== null;
+}
+
+async function loadShortcutOverrides(): Promise<void> {
+  const raw = await atlasApi.getSetting('shortcuts_overrides');
+  let overrides: Record<string, string> = {};
+  if (raw) {
+    try {
+      overrides = JSON.parse(raw);
+    } catch {
+      overrides = {};
+    }
+  }
+  shortcutRegistry.setOverrides(overrides);
+}
+
+function registerAppShortcuts(): void {
+  const actions: ShortcutAction[] = [
+    // Navigation
+    { id: 'nav.dashboard', label: 'Go to Dashboard', group: 'Navigation', defaultBinding: 'Ctrl+1', run: () => showPage('dashboard') },
+    { id: 'nav.courses', label: 'Go to Courses', group: 'Navigation', defaultBinding: 'Ctrl+2', run: () => showPage('courses') },
+    { id: 'nav.resources', label: 'Go to Resources', group: 'Navigation', defaultBinding: 'Ctrl+3', run: () => showPage('resources') },
+    { id: 'nav.notes', label: 'Go to Notes', group: 'Navigation', defaultBinding: 'Ctrl+4', run: () => showPage('notes') },
+    { id: 'nav.calendar', label: 'Go to Calendar', group: 'Navigation', defaultBinding: 'Ctrl+5', run: () => showPage('calendar') },
+    { id: 'nav.settings', label: 'Go to Settings', group: 'Navigation', defaultBinding: ['Ctrl+6', 'Ctrl+,'], run: () => showPage('settings') },
+    {
+      id: 'nav.toggleSidebar',
+      label: 'Toggle sidebar',
+      group: 'Navigation',
+      defaultBinding: 'Ctrl+B',
+      run: () => setSidebarCollapsed(!document.getElementById('sidebar')!.classList.contains('collapsed')),
+    },
+    {
+      id: 'nav.backToCourseList',
+      label: 'Back to course list',
+      group: 'Navigation',
+      defaultBinding: ['Backspace', 'Alt+ArrowLeft'],
+      when: courseDetailVisible,
+      run: backToCourseList,
+    },
+
+    // Create
+    { id: 'create.note', label: 'New note', group: 'Create', defaultBinding: 'Ctrl+N', run: () => void openCoursePicker('note') },
+    { id: 'create.upload', label: 'Upload file', group: 'Create', defaultBinding: 'Ctrl+U', run: () => void openCoursePicker('upload') },
+    { id: 'create.scan', label: 'Import scan', group: 'Create', defaultBinding: 'Ctrl+Shift+U', run: () => void openCoursePicker('scan') },
+    {
+      id: 'create.deadline',
+      label: 'Add deadline',
+      group: 'Create',
+      defaultBinding: 'Ctrl+D',
+      when: () => isElementVisible('new-deadline-button'),
+      run: () => openDeadlineEditForm(null),
+    },
+
+    // Search & sync
+    { id: 'search.focus', label: 'Focus search', group: 'Search & sync', defaultBinding: ['Ctrl+L', 'Ctrl+F'], run: focusSearch },
+    { id: 'sync.now', label: 'Sync all now', group: 'Search & sync', defaultBinding: 'Ctrl+R', run: () => void syncAllNowClicked() },
+    {
+      id: 'app.showShortcuts',
+      label: 'Show all shortcuts',
+      group: 'Search & sync',
+      defaultBinding: 'Ctrl+/',
+      run: openShortcutsCheatSheet,
+    },
+
+    // Course detail tabs
+    { id: 'courseTab.overview', label: 'Course tab: Overview', group: 'Course detail', defaultBinding: 'Alt+1', when: courseDetailVisible, run: () => setCourseDetailTab('overview') },
+    { id: 'courseTab.deadlines', label: 'Course tab: Deadlines', group: 'Course detail', defaultBinding: 'Alt+2', when: courseDetailVisible, run: () => setCourseDetailTab('deadlines') },
+    {
+      id: 'courseTab.announcements',
+      label: 'Course tab: Announcements',
+      group: 'Course detail',
+      defaultBinding: 'Alt+3',
+      when: () => courseDetailVisible() && !(document.getElementById('course-tab-announcements') as HTMLElement).hidden,
+      run: () => setCourseDetailTab('announcements'),
+    },
+    {
+      id: 'courseTab.assignments',
+      label: 'Course tab: Assignments',
+      group: 'Course detail',
+      defaultBinding: 'Alt+4',
+      when: () => courseDetailVisible() && !(document.getElementById('course-tab-assignments') as HTMLElement).hidden,
+      run: () => setCourseDetailTab('assignments'),
+    },
+    {
+      id: 'courseTab.classwork',
+      label: 'Course tab: Classwork',
+      group: 'Course detail',
+      defaultBinding: 'Alt+5',
+      when: () => courseDetailVisible() && !(document.getElementById('course-tab-classwork') as HTMLElement).hidden,
+      run: () => setCourseDetailTab('classwork'),
+    },
+    { id: 'courseTab.files', label: 'Course tab: Files', group: 'Course detail', defaultBinding: 'Alt+6', when: courseDetailVisible, run: () => setCourseDetailTab('files') },
+
+    // View toggles
+    {
+      id: 'view.toggleListGrid',
+      label: 'Toggle list/grid view',
+      group: 'View',
+      defaultBinding: 'Ctrl+\\',
+      run: () => {
+        if (currentPage === 'courses' && !selectedCourse) setCourseViewMode(courseViewMode === 'grid' ? 'list' : 'grid');
+        else setViewMode(viewMode === 'grid' ? 'list' : 'grid');
+      },
+    },
+    {
+      id: 'view.toggleArchivedCourses',
+      label: 'Show archived courses',
+      group: 'View',
+      defaultBinding: 'Ctrl+Shift+A',
+      when: () => currentPage === 'courses' && !selectedCourse,
+      run: () => setShowArchivedCourses(!showArchivedCourses),
+    },
+
+    // Calendar page
+    { id: 'calendar.prevMonth', label: 'Previous month', group: 'Calendar', defaultBinding: '[', when: () => currentPage === 'calendar', run: () => changeCalendarMonth(-1) },
+    { id: 'calendar.nextMonth', label: 'Next month', group: 'Calendar', defaultBinding: ']', when: () => currentPage === 'calendar', run: () => changeCalendarMonth(1) },
+    { id: 'calendar.today', label: 'Jump to today', group: 'Calendar', defaultBinding: 'T', when: () => currentPage === 'calendar', run: goToCalendarToday },
+
+    // Open preview / note editor
+    {
+      id: 'view.fullscreen',
+      label: 'Fullscreen preview/note',
+      group: 'Preview & notes',
+      defaultBinding: 'F',
+      run: () => {
+        if (!(document.getElementById('preview-overlay') as HTMLElement).hidden) toggleFullscreenPreview();
+        else if (!(document.getElementById('note-overlay') as HTMLElement).hidden) toggleNoteTrueFullscreen();
+      },
+    },
+    {
+      id: 'app.closeOverlay',
+      label: 'Close overlay',
+      group: 'Preview & notes',
+      defaultBinding: 'Escape',
+      run: () => {
+        const active = document.activeElement;
+        // Two-stage Escape for the note editor: while actively typing (title
+        // input or the Milkdown surface), the first Escape just blurs out of
+        // editing — same instinct as any text editor, and avoids an
+        // in-progress selection vanishing along with the whole note. A
+        // second Escape, once nothing is focused, closes the note; if the
+        // note was only being viewed (nothing focused to begin with), the
+        // very first Escape closes it, same as the resource preview below.
+        const noteOverlay = document.getElementById('note-overlay') as HTMLElement;
+        if (!noteOverlay.hidden) {
+          const editingNote =
+            active instanceof HTMLElement &&
+            (active.id === 'note-title-input' || document.getElementById('note-editor-root')!.contains(active));
+          if (editingNote) active.blur();
+          else void closeNoteEditor();
+          return;
+        }
+
+        // Every other overlay/modal closes on Escape too, in preference order
+        // (innermost/most-recently-opened first) — deliberately not gated on
+        // typing state: unlike the note editor above, none of these need a
+        // "first Escape blurs, second closes" distinction.
+        const overlayCloseHandlers: [string, () => void][] = [
+          ['shortcuts-cheatsheet-overlay', closeShortcutsCheatSheet],
+          ['classroom-item-detail-overlay', closeClassroomItemDetail],
+          ['classroom-connect-overlay', closeClassroomConnectPicker],
+          ['classroom-review-overlay', closeClassroomReviewPanel],
+          ['drive-review-overlay', closeDriveReviewPanel],
+          ['ashoka-review-overlay', closeAshokaImportPanel],
+          ['deadline-editor-overlay', closeDeadlineEditor],
+          ['course-picker-overlay', closeCoursePicker],
+          ['preview-overlay', closePreview],
+          ['confirm-overlay', () => resolveConfirm(false)],
+        ];
+        for (const [id, close] of overlayCloseHandlers) {
+          const el = document.getElementById(id) as HTMLElement | null;
+          if (el && !el.hidden) {
+            close();
+            return;
+          }
+        }
+      },
+    },
+    {
+      id: 'preview.zoomIn',
+      label: 'Zoom in (image preview)',
+      group: 'Preview & notes',
+      defaultBinding: 'Ctrl+=',
+      when: () => isElementVisible('zoom-controls'),
+      run: () => setImageZoom(imageZoom + ZOOM_STEP),
+    },
+    {
+      id: 'preview.zoomOut',
+      label: 'Zoom out (image preview)',
+      group: 'Preview & notes',
+      defaultBinding: 'Ctrl+-',
+      when: () => isElementVisible('zoom-controls'),
+      run: () => setImageZoom(imageZoom - ZOOM_STEP),
+    },
+    {
+      id: 'preview.zoomReset',
+      label: 'Reset zoom (image preview)',
+      group: 'Preview & notes',
+      defaultBinding: 'Ctrl+0',
+      when: () => isElementVisible('zoom-controls'),
+      run: () => setImageZoom(1),
+    },
+    {
+      id: 'preview.runOcr',
+      label: 'Run OCR (resource preview)',
+      group: 'Preview & notes',
+      defaultBinding: 'O',
+      when: () => isElementVisible('preview-run-ocr'),
+      run: () => void runResourceOcr(),
+    },
+    {
+      id: 'preview.openInBrowser',
+      label: 'Open in browser (resource preview)',
+      group: 'Preview & notes',
+      defaultBinding: 'B',
+      when: () => !(document.getElementById('preview-overlay') as HTMLElement).hidden && currentPreviewResourceId !== null,
+      run: () => {
+        if (currentPreviewResourceId === null) return;
+        void atlasApi.getResourceBrowserUrl(currentPreviewResourceId).then((url) => atlasApi.openExternalUrl(url));
+      },
+    },
+    {
+      id: 'preview.openInDrive',
+      label: 'Open in Google Drive (resource preview)',
+      group: 'Preview & notes',
+      defaultBinding: 'G',
+      when: () => isElementVisible('preview-open-in-drive'),
+      run: openCurrentPreviewInGoogleDrive,
+    },
+  ];
+
+  for (const action of actions) shortcutRegistry.register(action);
+}
+
+function renderShortcutsCheatSheet(): void {
+  const body = document.getElementById('shortcuts-cheatsheet-body')!;
+  body.innerHTML = '';
+  const groups = new Map<string, ShortcutAction[]>();
+  for (const action of shortcutRegistry.all()) {
+    if (!groups.has(action.group)) groups.set(action.group, []);
+    groups.get(action.group)!.push(action);
+  }
+  for (const [groupName, groupActions] of groups) {
+    const section = document.createElement('div');
+    section.className = 'shortcuts-cheatsheet-group';
+    const header = document.createElement('h4');
+    header.textContent = groupName;
+    section.appendChild(header);
+    const ul = document.createElement('ul');
+    for (const action of groupActions) {
+      const li = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = action.label;
+      const key = document.createElement('span');
+      key.className = 'shortcuts-cheatsheet-key';
+      key.textContent = shortcutRegistry.primaryBindingFor(action);
+      li.appendChild(label);
+      li.appendChild(key);
+      ul.appendChild(li);
+    }
+    section.appendChild(ul);
+    body.appendChild(section);
+  }
+}
+
+function openShortcutsCheatSheet(): void {
+  renderShortcutsCheatSheet();
+  document.getElementById('shortcuts-cheatsheet-overlay')!.hidden = false;
+}
+
+function closeShortcutsCheatSheet(): void {
+  document.getElementById('shortcuts-cheatsheet-overlay')!.hidden = true;
+}
+
+registerAppShortcuts();
+
 async function init(): Promise<void> {
   const savedTheme = await atlasApi.getSetting('theme');
   applyTheme(savedTheme === 'light' ? 'light' : 'dark');
@@ -4035,6 +4380,10 @@ async function init(): Promise<void> {
     if (selectedCourse) openCourseEditModal(selectedCourse);
   });
   document.getElementById('course-edit-close')!.addEventListener('click', closeCourseEditModal);
+  document.getElementById('shortcuts-cheatsheet-close')!.addEventListener('click', closeShortcutsCheatSheet);
+  document.getElementById('shortcuts-cheatsheet-overlay')!.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeShortcutsCheatSheet();
+  });
   document.getElementById('course-edit-overlay')!.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeCourseEditModal();
   });
@@ -4255,6 +4604,17 @@ async function init(): Promise<void> {
   document.getElementById('note-close')!.addEventListener('click', closeNoteEditor);
   document.getElementById('note-fullscreen')!.addEventListener('click', toggleNoteTrueFullscreen);
   document.getElementById('note-view-scan')!.addEventListener('click', toggleNoteScanPanel);
+  document.getElementById('note-assign-course')!.addEventListener('click', () => {
+    if (currentNoteId !== null) openAssignNoteCoursePicker(currentNoteId);
+  });
+
+  // Quick capture (Ctrl+Shift+N, global — see main.ts's globalShortcut
+  // registration): the note already exists by the time this fires (created
+  // in the main process so it exists even if the window wasn't open yet),
+  // this just opens it for editing immediately.
+  atlasApi.onQuickCaptureNote((note) => {
+    void openNoteEditor(note);
+  });
 
   atlasApi.onNoteContextMenuDelete(async (noteId) => {
     if (!(await showConfirm("Delete this note? This can't be undone."))) return;
@@ -4302,92 +4662,23 @@ async function init(): Promise<void> {
       el.textContent = `Done — ${progress.total} file${progress.total === 1 ? '' : 's'} read.`;
     }
   });
+  void loadShortcutOverrides();
   document.addEventListener('keydown', (e) => {
-    // Ctrl+L jumps to search from anywhere, same convention as a browser's
-    // address bar — selects any existing text so typing immediately
-    // replaces it, matching that same browser behavior.
-    if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'l') {
-      e.preventDefault();
-      focusSearch();
-      return;
-    }
-
     const active = document.activeElement;
     const isTyping =
       active instanceof HTMLInputElement ||
       active instanceof HTMLTextAreaElement ||
       active instanceof HTMLSelectElement ||
       (active instanceof HTMLElement && active.isContentEditable);
+    const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
 
-    // "F" toggles fullscreen for whichever resource preview overlay or note
-    // editor pane is currently open, so the user doesn't have to reach for
-    // the fullscreen button. Guarded to only fire when focus isn't in a text
-    // field — the note editor's Milkdown surface is a contenteditable, so
-    // typing a literal "f" while actually writing a note is never hijacked,
-    // same as it isn't for a deadline title.
-    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.altKey && !e.metaKey && !isTyping) {
-      if (!(document.getElementById('preview-overlay') as HTMLElement).hidden) {
-        e.preventDefault();
-        toggleFullscreenPreview();
-        return;
-      }
-      if (!(document.getElementById('note-overlay') as HTMLElement).hidden) {
-        e.preventDefault();
-        toggleNoteTrueFullscreen();
-        return;
-      }
-    }
+    // A bare, unmodified key (no Ctrl/Alt) must stay typeable in any text
+    // field — Escape is the one exception, since it always needs to reach
+    // its own action below regardless of what's focused (that action's own
+    // run() decides what "typing" means for its two-stage note-editor case).
+    if (isTyping && !hasModifier && e.key !== 'Escape') return;
 
-    if (e.key !== 'Escape') return;
-
-    // Two-stage Escape for the note editor: while actively typing (title
-    // input or the Milkdown surface), the first Escape just blurs out of
-    // editing — same instinct as any text editor, and avoids an in-progress
-    // selection vanishing along with the whole note. A second Escape, once
-    // nothing is focused, closes the note; if the note was only being
-    // viewed (nothing focused to begin with), the very first Escape closes
-    // it, same as the resource preview below.
-    const noteOverlay = document.getElementById('note-overlay') as HTMLElement;
-    if (!noteOverlay.hidden) {
-      const editingNote =
-        active instanceof HTMLElement &&
-        (active.id === 'note-title-input' || document.getElementById('note-editor-root')!.contains(active));
-      if (editingNote) {
-        active.blur();
-      } else {
-        void closeNoteEditor();
-      }
-      return;
-    }
-
-    // Every other overlay/modal closes on Escape too, in preference order
-    // (innermost/most-recently-opened first, e.g. the Classroom connect
-    // picker over the course detail page it's layered on top of) — closing
-    // whichever one is actually visible rather than requiring the user to
-    // reach for its × button. Deliberately not gated on `isTyping`: unlike
-    // the note editor above, none of these need a "first Escape blurs, second
-    // closes" distinction — a mention-suggestions dropdown or the course
-    // picker's own search field already stopPropagation/handle Escape
-    // themselves before it would reach here, so this only ever runs when
-    // nothing more specific already claimed the keypress.
-    const overlayCloseHandlers: [string, () => void][] = [
-      ['classroom-item-detail-overlay', closeClassroomItemDetail],
-      ['classroom-connect-overlay', closeClassroomConnectPicker],
-      ['classroom-review-overlay', closeClassroomReviewPanel],
-      ['drive-review-overlay', closeDriveReviewPanel],
-      ['ashoka-review-overlay', closeAshokaImportPanel],
-      ['deadline-editor-overlay', closeDeadlineEditor],
-      ['course-picker-overlay', closeCoursePicker],
-      ['preview-overlay', closePreview],
-      ['confirm-overlay', () => resolveConfirm(false)],
-    ];
-    for (const [id, close] of overlayCloseHandlers) {
-      const el = document.getElementById(id) as HTMLElement | null;
-      if (el && !el.hidden) {
-        close();
-        return;
-      }
-    }
+    shortcutRegistry.dispatch(e);
   });
 
   document.getElementById('zoom-in')!.addEventListener('click', () => setImageZoom(imageZoom + ZOOM_STEP));

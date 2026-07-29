@@ -521,6 +521,7 @@
         <input id="note-title-input" type="text" placeholder="Untitled" />
         <div class="split-preview-actions">
           <span id="note-save-status" class="muted"></span>
+          <button id="note-assign-course" type="button" hidden>Assign to course…</button>
           <button id="note-view-scan" type="button" title="View original scan" aria-label="View original scan" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
           </button>
@@ -586,6 +587,23 @@
         </select>
         <button type="submit">Save</button>
       </form>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts cheat sheet (Ctrl+/) — generated from the shortcut
+       registry (src/renderer/shortcuts.ts) so it can never list a binding
+       that isn't actually wired up. Deliberately plain/unstyled beyond the
+       existing modal look — real visual design is Phase 6, this exists so
+       shortcuts are discoverable at all in the meantime. -->
+  <div id="shortcuts-cheatsheet-overlay" hidden>
+    <div id="shortcuts-cheatsheet-panel">
+      <div class="modal-header">
+        <h3>Keyboard shortcuts</h3>
+        <button id="shortcuts-cheatsheet-close" type="button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="shortcuts-cheatsheet-body"></div>
     </div>
   </div>
 

@@ -364,6 +364,12 @@ contextBridge.exposeInMainWorld('atlas', {
   },
   listNotes: (courseId: number): Promise<Note[]> => ipcRenderer.invoke('notes:listByCourse', courseId),
   createNote: (courseId: number): Promise<Note> => ipcRenderer.invoke('notes:create', courseId),
+  createUnsortedNote: (): Promise<Note> => ipcRenderer.invoke('notes:createUnsorted'),
+  assignNoteCourse: (noteId: number, courseId: number): Promise<Note> =>
+    ipcRenderer.invoke('notes:assignCourse', noteId, courseId),
+  onQuickCaptureNote: (handler: (note: Note) => void): void => {
+    ipcRenderer.on('notes:quickCapture', (_event, note: Note) => handler(note));
+  },
   updateNoteContent: (noteId: number, contentMarkdown: string): Promise<{ title: string | null } | null> =>
     ipcRenderer.invoke('notes:updateContent', noteId, contentMarkdown),
   updateNoteTitle: (noteId: number, title: string): Promise<void> =>

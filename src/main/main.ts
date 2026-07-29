@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
@@ -907,9 +907,30 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Quick capture (ROADMAP.md Phase 5, keyboard shortcuts) — the one
+  // genuinely global binding, registered OS-wide via Electron's
+  // globalShortcut rather than a renderer keydown handler, since its whole
+  // point is capturing a thought without first finding and focusing the
+  // Atlas window. Fails silently-but-loudly (a console.warn, not a crash)
+  // if another app already owns this combination — global shortcuts are
+  // seized OS-wide, so a collision is a real possibility, not a bug.
+  const quickCaptureRegistered = globalShortcut.register('CommandOrControl+Shift+N', () => {
+    const note = createUnsortedNote();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('notes:quickCapture', note);
+    }
+  });
+  if (!quickCaptureRegistered) {
+    console.warn('Quick capture (Ctrl+Shift+N) could not be registered — another app already owns that shortcut.');
+  }
 });
 
 app.on('window-all-closed', () => {
+  globalShortcut.unregisterAll();
   for (const folderId of activeWatchers.keys()) stopWatchingFolder(folderId);
   for (const courseId of activeCourseStorageWatchers.keys()) stopWatchingCourseStorage(courseId);
   stopLocalServer();
@@ -1177,13 +1198,16 @@ ipcMain.handle('resources:listAll', () => {
     .all();
 });
 
+// LEFT JOIN (not JOIN) so an unsorted quick-capture note (course_id NULL —
+// see notes:createUnsorted) still shows up here instead of silently
+// vanishing from the global Notes page until the user assigns it a course.
 ipcMain.handle('notes:listAll', () => {
   const db = getDb();
   return db
     .prepare(
-      `SELECT notes.*, courses.name AS course_name
+      `SELECT notes.*, COALESCE(courses.name, 'Unsorted') AS course_name
        FROM notes
-       JOIN courses ON courses.id = notes.course_id
+       LEFT JOIN courses ON courses.id = notes.course_id
        ORDER BY notes.updated_at DESC`
     )
     .all();
@@ -2182,6 +2206,44 @@ ipcMain.handle('notes:create', (_event, courseId: number) => {
     .prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (?, 'Untitled', '')")
     .run(courseId);
   const noteId = Number(insertResult.lastInsertRowid);
+  exportNoteToFile(noteId);
+  rebuildSearchIndex();
+  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+});
+
+// Quick capture (phase5-spec.md-equivalent shortcut work, 2026-07-29): the
+// whole point of a keyboard-shortcut note capture is skipping the "which
+// course?" prompt, so this creates a note with course_id NULL rather than
+// making the user pick a course before they can start typing. Shared by the
+// in-app shortcut (Ctrl+Shift+N) and the global OS-wide one (registered in
+// app.whenReady() below) — both just need "a note to type into, right now."
+// exportNoteToFile() is a no-op for a courseless note (its own course
+// lookup returns nothing, so it returns early) — nothing to un-export later
+// if the note is deleted before ever being assigned a course.
+function createUnsortedNote(): { id: number; course_id: number | null; title: string; content_markdown: string } {
+  const db = getDb();
+  const insertResult = db
+    .prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (NULL, 'Untitled', '')")
+    .run();
+  const noteId = Number(insertResult.lastInsertRowid);
+  rebuildSearchIndex();
+  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId) as {
+    id: number;
+    course_id: number | null;
+    title: string;
+    content_markdown: string;
+  };
+}
+
+ipcMain.handle('notes:createUnsorted', () => createUnsortedNote());
+
+// Moves a quick-capture note (or any note) into a course after the fact —
+// the "select which course to put it in later" half of quick capture.
+// Exports it to that course's notes/ folder for the first time (a
+// previously-unsorted note has never had an exported_path at all).
+ipcMain.handle('notes:assignCourse', (_event, noteId: number, courseId: number) => {
+  const db = getDb();
+  db.prepare('UPDATE notes SET course_id = ? WHERE id = ?').run(courseId, noteId);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
   return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
