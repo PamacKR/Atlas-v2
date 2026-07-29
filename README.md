@@ -2,15 +2,17 @@
 
 *(previously "Academic OS")*
 
-A centralized academic knowledge platform. Atlas is a desktop application that continuously organizes a student's academic life — lecture material, notes, assignments, announcements, deadlines, and handwritten notes — into structured, per-course workspaces pulled automatically from Google Classroom, Gmail, Drive, local folders, and manual uploads.
+A centralized academic knowledge platform. Atlas is a desktop application that continuously organizes a student's academic life — lecture material, notes, assignments, announcements, deadlines, and handwritten notes — into structured, per-course workspaces pulled automatically from Google Classroom, Google Drive, local folders, and manual uploads. It also reads the content of Classroom Drive attachments (PDFs, Docs, Slides, Sheets — including links discovered inside them, like a professor's course-index spreadsheet) without ever downloading them into local storage.
 
-Atlas is **not** an AI application. It is the source of truth that external AI coding agents — Claude Code or any other MCP-capable tool — use for reasoning, studying, and assignment assistance.
+Atlas is **not** an AI application. It is the source of truth that external AI coding agents — Claude Code or any other MCP-capable tool — use for reasoning, studying, and assignment assistance, via a local MCP server that exposes courses, resources, notes, deadlines, full-text search, and persistent per-course memory.
+
+Gmail is explicitly **not** part of Atlas — considered early on, later decided against entirely as out of scope for this project.
 
 ## Philosophy
 
 > Atlas owns the data. The AI agent owns the reasoning.
 
-Atlas never tries to become an AI assistant. No AI agent ever becomes responsible for storing academic information. The two systems have strictly separated responsibilities, and Atlas's data model and documentation are designed to stay understandable by any reasoning engine, not just one specific tool.
+Atlas never tries to become an AI assistant — it makes no AI/LLM API calls of any kind, ever. No AI agent ever becomes responsible for storing academic information. The two systems have strictly separated responsibilities, and Atlas's data model and documentation are designed to stay understandable by any reasoning engine, not just one specific tool.
 
 ## Documents
 
@@ -19,10 +21,18 @@ Atlas never tries to become an AI assistant. No AI agent ever becomes responsibl
 - [`ROADMAP.md`](ROADMAP.md) — phased development plan for V1.
 - [`AGENTS.md`](AGENTS.md) — how an AI coding agent (any of them) should behave, decide, and communicate while building Atlas. `CLAUDE.md` is a thin stub pointing here, kept only because Claude Code looks for that exact filename.
 - [`open-questions.md`](open-questions.md) — open product questions from the PRD, with current recommendations/decisions and their status.
+- [`phase4-spec.md`](phase4-spec.md) — the Context Builder/MCP server design (page-aware extraction, persistent agent memory, agent-created notes, the query layer, the MCP server, static export).
+- [`remote-attachments-spec.md`](remote-attachments-spec.md) — reading Classroom Drive attachments (and links discovered inside them) without downloading them locally.
+- [`mcp-setup.md`](mcp-setup.md) — how to connect an MCP-capable AI tool to Atlas's local MCP server.
+- [`STATUS.md`](STATUS.md) — living session-by-session log of what's actually been built, found, and fixed; the first thing to read after this file.
 
 ## Status
 
-Phase 1 scaffolding in progress — see [`ROADMAP.md`](ROADMAP.md) and [`STATUS.md`](STATUS.md) for detail.
+Phases 0–5 of the roadmap are complete, plus the Context Builder/MCP server (Phase 4) and remote-attachment reading beyond it — see [`ROADMAP.md`](ROADMAP.md) and [`STATUS.md`](STATUS.md) for the accurate, current detail (this file doesn't try to track day-to-day status itself).
+
+## Connecting an AI agent
+
+Atlas ships a local MCP server (`npm run mcp:server`) that any MCP-capable tool (Claude Code, Codex, Cursor, ...) can connect to for live, queryable access to your courses, resources, notes, and deadlines — see [`mcp-setup.md`](mcp-setup.md) for the exact steps. A project-scoped `.mcp.json` is already checked into this repo, fully portable (no hardcoded paths).
 
 ## Running it
 

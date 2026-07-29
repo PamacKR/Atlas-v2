@@ -38,7 +38,7 @@ After it's connected, it should list nine `atlas_*` tools.
 
 ## What the agent can do
 
-Read: search everything, list a course's resources/deadlines, read a specific page/slide/sheet/section range of a document, read a note.
+Read: search everything, list a course's resources/deadlines, read a specific page/slide/sheet/section range of a document (or, called with no range, get an outline of the whole document's parts), read a note. This transparently includes text read from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professor shared, plus links discovered inside them (e.g. a course-index spreadsheet) — fetched and extracted without ever being downloaded into Atlas's local storage (`remote-attachments-spec.md`).
 
 Write: create a new note (can never edit or overwrite one you wrote yourself), and update its own persistent memory about you or a specific course — plain Markdown files in `Downloads/Atlas-Storage/course-profiles/`, readable and editable by you at any time, never shown inside the Atlas app itself.
 
@@ -52,4 +52,4 @@ Open the course in Atlas and click **"Export for AI"** on its detail page — it
 npm run verify:mcp
 ```
 
-Spins up the server against a temporary seeded database and calls every tool over the real MCP protocol, asserting the responses — not just that it starts without crashing.
+Spins up the server against a temporary seeded database and calls every tool over the real MCP protocol, asserting the responses — not just that it starts without crashing. `npm run verify:remote` separately verifies the Classroom Drive-attachment fetching itself (local-copy-first, link-following, failure states), with Google API calls stubbed at the fetcher boundary so it runs offline.

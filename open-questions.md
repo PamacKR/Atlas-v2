@@ -293,7 +293,7 @@ Raised 2026-07-27 against the user's real data (5 real courses, 15 real upcoming
 
 - Gave `#dashboard-courses-widget > ul` / `#dashboard-upcoming-widget > ul` the same `max-height` + `overflow-y: auto` pattern the right column's widgets already use (was `max-height: none` for these two), so all three columns settle near the same natural height instead of Upcoming dragging the row taller than everyone else.
 - Enlarged "My courses" row sizing (padding, avatar, text) scoped to `#dashboard-course-list` only (not the shared `.course-avatar` used on the Courses page/course detail header), so 5 courses fill more of that now-shorter target height instead of leaving dead space below them.
-- **Deferred, not built**: a Resources-page filter to show only local vs. Classroom (vs. eventually Drive/Gmail) resources. Recommended waiting until the Gmail adapter lands (`ROADMAP.md` Phase 3) — with only two real sources today it's a thin win; once Gmail adds a third, the filter earns its place as real navigation rather than a two-way toggle. User hasn't confirmed either way yet.
+- **Deferred, not built**: a Resources-page filter to show only local vs. Classroom vs. Drive resources. Originally recommended waiting for a third source to justify it; Gmail (the source that would have been that third one) was descoped entirely 2026-07-29 (#28), so this is now a two-source question with no third on the horizon. User hasn't confirmed either way yet.
 - Settings-page revamp (see #23's last bullet) — still nothing new; still waiting on the user's detail.
 
 **Status:** Column-height/row-size fix resolved/built, verified via `npm run verify` (screenshot only shows the 1-course test fixture, so the multi-course real-height fix couldn't be visually confirmed in that run — worth a look at the user's own launch). The two deferred items are open, not scheduled.
@@ -359,4 +359,6 @@ So: Atlas captures and files email; an AI agent answers "what did I miss?" fresh
 - Building Gmail's storage shape *before* knowing how the agent actually queries risks designing the wrong shape and reworking it.
 - The user's response: "If you think doing phase 4 first will help better implement the gmail integration then im okay with that."
 
-**Status:** Agreed/planned, not built. Gmail is deferred until after Phase 4. The two remaining non-Gmail Phase 3 items (conflict handling — #3; sync configuration — #2) are agreed and come first, since both are small, independently useful, and unaffected by this reorder.
+**Status:** Superseded 2026-07-29 — the user decided Gmail doesn't belong in Atlas at all, not just later in the roadmap. Everything above is kept as the accurate record of that day's design discussion, but none of it should be built here. If a Gmail-reading tool is ever wanted, it's a separate, standalone project (e.g. "reads out important emails"), unrelated to Atlas. See `ROADMAP.md`'s "Explicitly out of scope" section.
+
+(Prior status, no longer current: "Agreed/planned, not built. Gmail is deferred until after Phase 4.")

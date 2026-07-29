@@ -3423,6 +3423,13 @@ button#classroom-connect-confirm {
   font-size: 0.95rem;
 }
 
+#settings-about-description {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-body);
+}
+
 .settings-row {
   display: flex;
   align-items: center;
