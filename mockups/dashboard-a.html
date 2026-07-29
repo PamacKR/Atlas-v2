@@ -472,10 +472,13 @@ h2 {
         </section>
       </div>
 
-      <!-- RECENT: trimmed to 6 (was 15) — beyond a handful you'd search
-           or open Resources, a longer list adds length, not utility.
-           Narrower column now, so source (Classroom/Drive/Local)
-           replaces the swatch+course-name pairing to stay legible. -->
+      <!-- Right column: Recent + Notes, wrapped together so grid
+           auto-placement can't scatter them — .columns has exactly 2
+           direct children (this div and the left one above), each
+           stacking its own sections via normal flow. Recent trimmed
+           to 6 (was 15): beyond a handful you'd search or open
+           Resources instead, a longer list adds length, not utility. -->
+      <div>
       <section>
         <div class="section-head">
           <h2>Recent</h2>
@@ -529,6 +532,7 @@ h2 {
           <span class="course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
         </div>
       </section>
+      </div>
     </div>
   </main>
 
