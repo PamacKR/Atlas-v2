@@ -176,12 +176,16 @@ interface AshokaCourseCandidate {
 }
 
 interface SearchResult {
-  entityType: 'note' | 'resource' | 'announcement' | 'assignment';
+  entityType: 'note' | 'resource' | 'announcement' | 'assignment' | 'document_part';
   entityId: number;
   courseId: number;
   title: string;
   courseName: string;
   snippet: string;
+  // Only set for entityType 'document_part' — the parent resource a page/
+  // slide/sheet hit belongs to, since a search hit resolves to one part but
+  // there's nothing to open at the part level itself (see openSearchResult).
+  resourceId: number | null;
 }
 
 interface DashboardDeadline extends Deadline {
@@ -3603,6 +3607,28 @@ async function openSearchResult(result: SearchResult): Promise<void> {
     const resources = await atlasApi.listAllResources();
     const resource = resources.find((r) => r.id === result.entityId);
     if (resource) await openPreview(resource);
+  } else if (result.entityType === 'document_part') {
+    // A page/slide/sheet hit has nothing of its own to open — it opens its
+    // parent resource's preview instead (resourceId supplied by search:query).
+    const resources = await atlasApi.listAllResources();
+    const resource = resources.find((r) => r.id === result.resourceId);
+    if (resource) await openPreview(resource);
+  } else if (result.entityType === 'announcement') {
+    const content = await atlasApi.getClassroomCourseContent(result.courseId);
+    const announcement = content.announcements.find((a) => a.id === result.entityId);
+    if (announcement) {
+      openClassroomItemDetail(
+        'Announcement',
+        announcement.title,
+        formatIsoTimestamp(announcement.posted_at),
+        announcement.body,
+        announcement.links
+      );
+    }
+  } else if (result.entityType === 'assignment') {
+    const content = await atlasApi.getClassroomCourseContent(result.courseId);
+    const assignment = content.assignments.find((a) => a.id === result.entityId);
+    if (assignment) await openAssignmentDetail(assignment, result.courseId);
   }
 
   document.getElementById('search-results')!.hidden = true;

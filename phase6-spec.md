@@ -136,7 +136,7 @@ A handful of styles will need more than tokens (neomorphism's inset shadows on i
 
 ---
 
-## 4. Package Atlas as a real app (fixes the `.bat` **and** the slow start — same root cause)
+## 4. Package Atlas as a real app (fixes the `.bat` **and** the slow start — same root cause) — **done 2026-07-29**
 
 The user raised these as two separate items (5.1 "starting the app takes a little bit", 5.3 "rather than a batch file shortcut, a shortcut that looks like an app"). **They're the same problem.**
 
@@ -153,16 +153,17 @@ So **every single launch** does a full TypeScript compile, a second full type-ch
 
 And `electron-builder` is already installed as a devDependency — but there is **no build configuration anywhere**: no `build` key in `package.json`, no `electron-builder.yml`, no `build/` directory. The app has never been packaged. That's why the `.bat` file exists at all.
 
-### 4.2 The fix
+### 4.2 The fix — **done**
 
-Configure `electron-builder` and produce a real installed Windows application:
+`electron-builder` is now configured (`package.json`'s `build` key) and `npm run package:win` produces a real installed Windows application:
 
-- A real `Atlas.exe` with a proper icon, Start Menu entry, and Desktop shortcut — created by the installer, not hand-made.
-- **No build step at launch.** The packaged app ships already-compiled code, so startup is Electron cold-start only.
-- Proper app identity (`appId`, `productName: "Atlas"`) so Windows treats it as one application.
-- NSIS installer target, per-user install (no admin prompt needed).
+- A real `Atlas.exe` with a Start Menu entry and Desktop shortcut, created by the NSIS installer — **no custom icon yet**, electron-builder's own default Electron icon is used, since the user hasn't supplied a logo concept (§8). Swapping one in later is a one-line `build.win.icon` addition, not a rebuild of anything else.
+- **No build step at launch.** The packaged app ships already-compiled code from `dist/`, so startup is Electron cold-start only.
+- Proper app identity (`appId: "com.atlas.desktop"`, `productName: "Atlas"`) so Windows treats it as one application.
+- NSIS installer target, per-user install (`perMachine: false`, no admin prompt needed), `allowToChangeInstallationDirectory: true`.
+- `asarUnpack: ["**/*.node"]` so `better-sqlite3`'s native binding isn't packed into the (non-executable) asar archive. Verified end-to-end: built, packaged, and launched the packaged `.exe` directly to confirm the native module actually works under the packaged Electron ABI, not just the dev one.
 
-Keep `Launch Atlas.bat` for development, but add a dev-only fast path for when nothing has changed:
+`Launch Atlas.bat` stays for development. Added a dev-only fast path for when nothing's changed since the last build:
 
 ```json
 "start:fast": "electron ."
@@ -176,11 +177,11 @@ So `productName: "Atlas"` is safe to claim. The v1 shortcut should be removed be
 
 ---
 
-## 5. Startup performance beyond the build step
+## 5. Startup performance beyond the build step — **done 2026-07-29**
 
-Removing the per-launch build (§4) is the big win, but there's a second, real cost that will keep growing.
+Removing the per-launch build (§4) is the big win, but there's a second, real cost that was going to keep growing.
 
-**`rebuildSearchIndex()` runs unconditionally on every launch**, and it deletes and re-inserts the *entire* FTS5 index. Measured against the user's real data today:
+**`rebuildSearchIndex()` ran unconditionally on every launch**, and it deletes and re-inserts the *entire* FTS5 index. Measured against the user's real data:
 
 | Indexed rows rebuilt on every launch | |
 |---|---|
@@ -195,7 +196,7 @@ Plus a `readFileSync` per text/markdown resource, every launch.
 
 `ARCHITECTURE.md` §14 explicitly justified the full-rebuild approach as correct-by-construction and cheap *"at this app's actual scale (one user's own courses/resources/notes — tens to low hundreds of rows, not thousands)"* — and called out that it's *"worth revisiting only if that scale assumption stops holding."* Phase 4's page-aware extraction is exactly the event that broke it: from ~380 rows to 3,443, and it grows with every document added.
 
-**Proposed fix — keep the full rebuild, but stop running it when nothing changed.** A cheap consistency check at launch (compare source-table row counts against the indexed counts) is a handful of `COUNT(*)` queries; only a mismatch triggers the real rebuild. This preserves the "always correct by construction" property that made the original decision right, while making the common launch path effectively free. Incremental per-call-site index maintenance — the alternative `ARCHITECTURE.md` deliberately rejected — stays rejected, for the same reason as before.
+**Fix — keep the full rebuild, but stop running it when nothing changed.** `searchIndexNeedsRebuild()` (`main.ts`) compares each source table's row count against the corresponding `search_index` entity-type count; only a mismatch triggers the real rebuild. This preserves the "always correct by construction" property that made the original decision right, while making the common launch path effectively free. Every non-launch call site still calls `rebuildSearchIndex()` directly and is unaffected. Incremental per-call-site index maintenance — the alternative `ARCHITECTURE.md` deliberately rejected — stays rejected, for the same reason as before.
 
 ---
 
@@ -239,9 +240,9 @@ From the real extraction data: Development Economics has 17 readable files, 9 th
 
 | # | Piece | Size | Notes |
 |---|---|---|---|
-| 1 | Package with electron-builder: real `.exe`, installer, icon, no build-at-launch (§4) | Medium | **Independent of everything else, immediate daily payoff.** Good first move. |
-| 2 | Skip the redundant launch-time search reindex (§5) | Small | Pairs with #1 to make startup genuinely fast. |
-| 3 | Design a logo/icon (§8) | — | Needed by #1; can ship with a placeholder and be replaced. |
+| 1 | Package with electron-builder: real `.exe`, installer, no build-at-launch (§4) | Medium | **Done 2026-07-29.** No custom icon yet — using electron-builder's default until #3. |
+| 2 | Skip the redundant launch-time search reindex (§5) | Small | **Done 2026-07-29.** |
+| 3 | Design a logo/icon (§8) | — | Still needed for #1's installer/taskbar icon; ships with the redesign's visual direction, not before. |
 | 4 | **Design-token layer + UI overhaul** (§1) | **Very large** | The core of this phase. Needs the user's visual direction first. |
 | 5 | Settings redesign into sections (§2) | Large | Part of #4; hosts the shortcut UI from `phase5-spec.md`. |
 | 6 | Empty/first-run states (§6.5) | Medium | Do alongside #4 — cheap then, expensive as a separate pass. |

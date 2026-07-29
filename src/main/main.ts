@@ -162,6 +162,35 @@ function rebuildSearchIndex(): void {
   }
 }
 
+// A full rebuild is correct-by-construction (see rebuildSearchIndex's own
+// comment above) but stopped being free once Phase 4's page-aware extraction
+// pushed indexed rows into the thousands (phase6-spec.md §5 — 3,443 rows
+// measured against the user's real data, rebuilt unconditionally on every
+// launch). Every call site that actually changes searchable content already
+// calls rebuildSearchIndex() directly, so this is only for the launch-time
+// call: a handful of cheap COUNT(*) comparisons to detect whether anything
+// changed while Atlas was closed, so a launch where nothing changed doesn't
+// pay for a full rebuild. A mismatch on any entity type (added, removed, or
+// never-indexed rows) triggers the real rebuild.
+function searchIndexNeedsRebuild(): boolean {
+  const db = getDb();
+  const indexedCounts = new Map(
+    (
+      db
+        .prepare('SELECT entity_type AS entityType, COUNT(*) AS count FROM search_index GROUP BY entity_type')
+        .all() as { entityType: string; count: number }[]
+    ).map((row) => [row.entityType, row.count])
+  );
+  const sourceCounts: Record<string, number> = {
+    resource: (db.prepare('SELECT COUNT(*) AS count FROM resources').get() as { count: number }).count,
+    note: (db.prepare('SELECT COUNT(*) AS count FROM notes').get() as { count: number }).count,
+    announcement: (db.prepare('SELECT COUNT(*) AS count FROM announcements').get() as { count: number }).count,
+    assignment: (db.prepare('SELECT COUNT(*) AS count FROM assignments').get() as { count: number }).count,
+    document_part: (db.prepare('SELECT COUNT(*) AS count FROM document_parts').get() as { count: number }).count,
+  };
+  return Object.entries(sourceCounts).some(([entityType, count]) => (indexedCounts.get(entityType) ?? 0) !== count);
+}
+
 // Subfolder (inside each course's own managed-storage folder) where notes
 // get exported as plain .md mirrors — see exportNoteToFile.
 const NOTES_SUBFOLDER = 'notes';
@@ -817,9 +846,11 @@ app.whenReady().then(async () => {
   }
 
   // Backfills any resources/notes that predate this feature and catches up
-  // on anything the reconciliation passes above just cleaned out — cheap
-  // enough at this app's scale to just do unconditionally on every launch.
-  rebuildSearchIndex();
+  // on anything the reconciliation passes above just cleaned out. Used to
+  // run unconditionally on every launch; now gated behind a cheap count
+  // check (searchIndexNeedsRebuild) since Phase 4 made a full rebuild
+  // expensive at this app's real scale (phase6-spec.md §5).
+  if (searchIndexNeedsRebuild()) rebuildSearchIndex();
 
   // Google Drive "inbox folder" scan (Phase 3, open-questions.md #19) and
   // Google Classroom sync (Phase 3, ARCHITECTURE.md §4b): schedule per each
@@ -887,9 +918,12 @@ ipcMain.handle('search:query', (_event, query: string) => {
               search_index.course_id AS courseId,
               search_index.title AS title,
               courses.name AS courseName,
-              snippet(search_index, 4, '<mark>', '</mark>', '…', 12) AS snippet
+              snippet(search_index, 4, '<mark>', '</mark>', '…', 12) AS snippet,
+              document_parts.resource_id AS resourceId
        FROM search_index
        JOIN courses ON courses.id = search_index.course_id
+       LEFT JOIN document_parts
+         ON search_index.entity_type = 'document_part' AND document_parts.id = search_index.entity_id
        WHERE search_index MATCH ?
        ORDER BY rank
        LIMIT 30`

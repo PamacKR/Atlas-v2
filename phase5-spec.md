@@ -31,7 +31,7 @@ Two things follow directly from those numbers:
 - **Page-level hits will drown everything else.** 3,067 of 3,443 indexed rows (89%) are individual pages. A flat, globally-ranked list of 30 results will frequently be 30 pages out of one textbook. The user's instinct that "it could get very crowded" is correct, and it is worse than it looks.
 - **Search already covers Classroom/Drive files.** The user asked whether this works for remote files or only local ones: **3,032 of those 3,067 pages come from Classroom Drive attachments.** Remote files aren't a special case in search — extraction stores their text in `document_parts` exactly like a local file's, so `rebuildSearchIndex()` picks them up with no remote-specific code at all. Searching genuinely reads through the professor's Drive documents.
 
-### 2.2 The bug: most results do nothing when clicked
+### 2.2 The bug: most results do nothing when clicked — **fixed 2026-07-29**
 
 `openSearchResult()` (`renderer.ts`) handles exactly two entity types:
 
@@ -46,7 +46,7 @@ The `SearchResult` interface (`renderer.ts:179`) doesn't even list `document_par
 
 Real impact, measured: searching "growth" against the user's data returns 5 results, **3 of which are dead clicks**. Once page hits are ranked in, the large majority of all search results are dead.
 
-Every handler needed to fix this **already exists** — this is wiring, not new UI:
+**Done.** Every handler needed to fix this **already existed** — this was wiring, not new UI:
 
 | Result type | Opens |
 |---|---|
@@ -205,7 +205,7 @@ Two rules worth stating up front:
 
 | # | Piece | Size | Notes |
 |---|---|---|---|
-| 1 | Search: make every result clickable (§2.2) | Small | Pure bug fix, all handlers already exist. Ship alone first. |
+| 1 | Search: make every result clickable (§2.2) | Small | **Done 2026-07-29.** Pure bug fix, all handlers already existed. |
 | 2 | Search: sectioned results + collapse page hits (§2.3, §2.4) | **Large** | The real work. |
 | 3 | Search: source badges + course filter (§2.5) | Medium | |
 | 4 | Dashboard: schema + migration/backfill (§3.4) | Small | |

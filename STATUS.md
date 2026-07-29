@@ -2,21 +2,37 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-29 (Atlas-v2 — remote attachments shipped and verified against real data; Phases 5 and 6 specced, nothing built. See "Next session" immediately below.)
+**Last updated:** 2026-07-29 (Atlas-v2 — the two design-independent fixes from last session's "start here" list are both done and verified. See "Next session" immediately below.)
 
 ## Next session — start here
 
-**Nothing is half-finished. The working tree is clean, all four verify suites pass, and everything is committed and pushed.** This session ended at a deliberate stopping point (usage limits), not mid-task.
+**Nothing is half-finished. The working tree is clean, all four verify suites pass, and everything is committed and pushed.**
 
-**What's ready to build, in the order I'd recommend:**
+**What's ready to build next:**
 
-1. **Search dead-click fix** (`phase5-spec.md` §2.2, build item #1) — small, pure logic, design-independent. Announcements, assignments, and page-level hits currently do nothing when clicked because `openSearchResult()` handles only 2 of the 5 entity types it receives. All the handlers it needs already exist. Good first task.
-2. **Package the app + fix startup** (`phase6-spec.md` §4, §5) — independent of all UI work, immediate daily payoff. `electron-builder` is installed but has never been configured; `npm start` runs a full TypeScript build on every launch, which *is* the slow startup. Needs a logo/icon, but can ship with a placeholder and be replaced.
-3. **Everything else in Phase 5** (search redesign, Dashboard v2, shortcuts) — but see the sequencing note below.
+1. **Everything else in Phase 5** (search results redesign/sectioning, Dashboard v2, configurable shortcuts) — but see the sequencing note below.
+2. **A real app icon** — packaging (`package:win`) currently uses electron-builder's default Electron icon since no logo exists yet. Swapping in a real `.ico` later is a one-line change (`build.win.icon` in `package.json`), not a redo.
 
 **The one standing rule that must not be violated (see `AGENTS.md`):** the UI is being replaced wholesale in Phase 6. **Do not make cosmetic fixes to `styles.css`/`index.html`**, and **do not start the redesign or draft a logo** — the user is supplying the design framework and logo concept themselves, deliberately and on their own schedule, and said they won't ask to proceed without giving something concrete to work from. Waiting is correct behavior here, not a blocker to raise.
 
 **Sequencing decision worth honoring:** Phase 5's search-results layout, Dashboard v2 widgets, and shortcut-rebinding UI are all *visual* surfaces. Build their logic/data layers (schema, queries, the shortcut registry, read/seen marking) now if asked, but let the visual surfaces land inside the Phase 6 redesign — otherwise those screens get built twice.
+
+## Session 2026-07-29 (continued) — the two ready-to-build fixes from last session
+
+Both items flagged as "ready, design-independent" at the end of the previous session are now built and verified.
+
+**1. Search dead-click fix (`phase5-spec.md` §2.2).** `openSearchResult()` (`renderer.ts`) only handled `note` and `resource` — `document_part`, `announcement`, and `assignment` results silently did nothing when clicked, which was the large majority of hits once Phase 4's page-aware extraction started indexing 3,067 individual pages. Fixed by wiring the three missing branches to handlers that already existed:
+- `document_part` → opens its parent resource's preview. `search:query`'s SQL now `LEFT JOIN`s `document_parts` to include `resourceId` alongside each hit (only populated for `document_part` rows).
+- `announcement` → fetches the course's Classroom content and opens the existing announcement detail overlay.
+- `assignment` → same, via the existing `openAssignmentDetail` (which itself prefers the mirrored deadline viewer over the generic overlay).
+
+No new UI, no new IPC endpoints — every handler this needed was already built for the Classroom content tabs; this was purely reusing them from the search results list. This is a *functional* renderer fix, not a cosmetic one, so it doesn't conflict with the "don't patch the UI" standing rule.
+
+**2. Packaging + startup fix (`phase6-spec.md` §4, §5).** Two changes:
+- Configured `electron-builder` for real (`package.json`'s new `build` key: `appId`, `productName: "Atlas"`, NSIS target, `asarUnpack` for native `.node` files). `npm run package:win` now produces a real signed-if-configured installer (`release/Atlas Setup 0.1.0.exe`) that installs a real `Atlas.exe` with its own Start Menu/desktop entries — no icon yet (electron-builder's own default is used), since the user is supplying a logo concept themselves and none exists. Verified end-to-end: built, packaged, launched the packaged `.exe` directly (confirms `better-sqlite3`'s native binding gets rebuilt correctly for the packaged Electron ABI, not just the dev one), then cleaned up the test launch. Added `npm run start:fast` (`electron .` with no rebuild) for quick dev relaunches when nothing's changed.
+- `rebuildSearchIndex()` was running unconditionally on every launch (3,443 rows at the user's real scale). Added `searchIndexNeedsRebuild()` — a handful of `COUNT(*)` comparisons between `search_index` and its five source tables — so launch only pays for the full rebuild when something actually changed while the app was closed. Every other call site that mutates searchable content still calls `rebuildSearchIndex()` directly and is unaffected.
+
+All four verify suites (`verify`, `verify:mcp`, `verify:extraction`, `verify:remote`) re-run and pass after both changes.
 
 ## Handoff — how the remote-attachments work landed
 

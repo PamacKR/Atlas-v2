@@ -7,12 +7,32 @@
   "scripts": {
     "build": "tsc -b && tsc --noEmit -p tsconfig.renderer.json && node scripts/build-renderer.js && node scripts/copy-assets.js",
     "start": "npm run build && electron .",
+    "start:fast": "electron .",
     "watch": "tsc -b -w",
     "verify": "npm run build && node scripts/verify-app.js",
     "mcp:server": "node scripts/run-mcp-server.js",
     "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js",
     "verify:extraction": "npm run build && node scripts/run-as-electron-node.js scripts/verify-extraction.js",
-    "verify:remote": "npm run build && node scripts/run-as-electron-node.js scripts/verify-remote.js"
+    "verify:remote": "npm run build && node scripts/run-as-electron-node.js scripts/verify-remote.js",
+    "package:win": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.atlas.desktop",
+    "productName": "Atlas",
+    "directories": {
+      "output": "release"
+    },
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
