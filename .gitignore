@@ -19,3 +19,6 @@ atlas.db-wal
 
 # Output of scripts/verify-app.js (Playwright self-test)
 verify-screenshot.png
+
+# UI mockup screenshots — regenerated on demand, not source of truth
+mockups/*.png
