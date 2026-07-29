@@ -66,9 +66,11 @@ Reordered again 2026-07-28 (user decision, `open-questions.md` #28): the two rem
 - [x] Course archiving: archive/unarchive a course (right-click or a detail-page button) without deleting anything; a "Show archived courses" toggle on the Courses page shows one list or the other; archived courses stop auto-syncing from Classroom but stay fully searchable. See `open-questions.md` #4/#26, `ARCHITECTURE.md` §2.
 - [x] Course editing: rename/re-code/re-term a course (right-click on its card, or "Edit course" on its detail page). Only `courses.name/code/term` change — `folder_name` (file storage, Phase 4 memory files) is fixed at creation and never renamed, same tradeoff the storage folder already made.
 - Old-course searchability defaults — resolved as part of the above: archived courses stay searchable by default (see `open-questions.md` #4)
-- Relationship editing (lecture→course, assignment→lecture, exam→lectures, email→assignment) as explicit, user/metadata-originated links
-- Dashboard v2: unread announcements, new assignments, recently synced items
-- Offline-mode audit: confirm which features degrade gracefully without a connection
+- ~~Relationship editing (lecture→course, assignment→lecture, exam→lectures, email→assignment)~~ — **dropped 2026-07-29 (user decision): "i do not see myself using this."** Not deferred; removed from scope. The connections it would have stored by hand are ones a connected AI agent can work out at query time from the actual content, which is the cheaper path and already available.
+- ~~Offline-mode audit~~ — **dropped 2026-07-29 (user decision): "95% of the time i will be using this app online."** Atlas already works offline for everything local (the database and files are on disk); this was about auditing and polishing the degraded paths, which isn't worth the effort at that usage split.
+- [ ] **Search overhaul** — sectioned results (names first, then content, then Classroom items), page-level hits collapsed under their parent file so 3,000+ indexed pages can't flood the list, source badges, a course filter, and — a live bug — making every result actually clickable (announcements, assignments, and page hits currently do nothing). See `phase5-spec.md` §2.
+- [ ] **Dashboard v2** — unread announcements and new assignments, each with per-item and "mark all" clearing so they can be removed from the dashboard (the user's explicit requirement). "Recently synced items" is recommended *against* as a third widget — it duplicates the existing "Recently added"/"What changed today" widgets; see `phase5-spec.md` §3.3.
+- [ ] **Configurable keyboard shortcuts** — a real shortcut registry (replacing today's scattered hardcoded handlers), rebindable from Settings with conflict detection, a `?` cheat-sheet overlay listing every binding, and one genuinely global shortcut for quick note capture. See `phase5-spec.md` §4.
 
 ## Explicitly out of scope for V1
 

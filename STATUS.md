@@ -20,7 +20,22 @@ Living snapshot of where the project actually is. This is the first thing to rea
 - **`classroom:getCourseContent` never joined announcement attachments at all** — only assignments and classwork did; the renderer hardcoded `links: []` for every announcement. The sheet was correctly synced and in the database the whole time; the UI just never had a code path to show it. Fixed both the IPC handler and the renderer.
 - **Every Classroom link resource synced *before* this feature shipped** (the vast majority of the user's real 155) had `remote_source`/`link_kind` stuck at `NULL` and `extraction_status` forced to `'unsupported'` forever, since a later sync's `INSERT OR IGNORE` never revisits an already-present row. Added `backfillPreExistingRemoteAttachments()`, a one-time launch pass that converts them so the new fetch path actually picks them up. Also fixed a latent bug this surfaced: `driveFileIdFromUrl` would have mistaken a Google Forms `viewform` URL's `/forms/d/e/...` path for a real Drive file ID.
 
-**What's left is just the user opening the Atlas app** — on launch it backfills the pre-existing attachments' metadata and starts fetching them in the background (visible in Settings → Text extraction). No further code work pending on this feature.
+**Remote extraction has since completed against the user's real data — measured 2026-07-29, it worked:**
+
+| | Before this work | After |
+|---|---|---|
+| Resources with readable text | 38 | **138** |
+| Classroom Drive attachments readable | 0 | **108** |
+| Indexed pages/slides/sheets | ~35 | **3,067** (3,032 of them from Classroom files) |
+| Still pending | — | **0** |
+
+One genuine failure out of 3,000+ (a link-following false positive, see below), 9 scanned PDFs with no text layer (`open-questions.md` #29), and 9 correctly-unsupported YouTube/Form links. The ECO 2202 index sheet the user asked about extracted successfully.
+
+**Phase 5 rescoped 2026-07-29 by user decision, and specced:**
+- **Dropped, not deferred:** relationship editing ("i do not see myself using this") and the offline-mode audit ("95% of the time i will be using this app online").
+- **Kept and specced in the new `phase5-spec.md`:** a search overhaul (fixes a live bug where announcements/assignments/page-hits are all dead clicks, plus sectioned results so 3,067 page entries can't flood the list), Dashboard v2 (unread announcements + new assignments, both clearable — the user's explicit requirement), and configurable keyboard shortcuts with a `?` cheat sheet.
+- **Explicitly rejected:** showing Classroom/Drive file *text* inside Atlas. The user prefers opening the real file in Drive — better fidelity, and it makes the file's origin unmistakable. Search still reads inside those files; it just hands off to Drive to view them.
+- **Nothing built yet** — `phase5-spec.md` is drafted and awaiting a go-ahead.
 
 **Gmail is now explicitly out of scope for Atlas** (2026-07-29 user decision) — see `ROADMAP.md`'s "Explicitly out of scope" section and `open-questions.md` #28. If ever built, it's a separate standalone tool, not part of this project. Also this session: added a description to Settings → About, refreshed README.md (was still describing Phase 1 scaffolding), and fixed the GitHub repo's "About" description (was still referencing an old "Pi + NVIDIA NIM" fork framing).
 
