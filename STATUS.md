@@ -37,6 +37,15 @@ One genuine failure out of 3,000+ (a link-following false positive, see below), 
 - **Explicitly rejected:** showing Classroom/Drive file *text* inside Atlas. The user prefers opening the real file in Drive — better fidelity, and it makes the file's origin unmistakable. Search still reads inside those files; it just hands off to Drive to view them.
 - **Nothing built yet** — `phase5-spec.md` is drafted and awaiting a go-ahead.
 
+**Phase 6 added and specced 2026-07-29 (`phase6-spec.md`)** — the functional product is essentially done, so this phase is about Atlas feeling like a finished desktop app: a full UI overhaul, settings redesign, design-style themes (brutalism/neomorphism/minimalism, not just colors), real app packaging, and startup performance. Two findings from that audit are worth carrying forward because they're structural, not cosmetic:
+
+1. **The slow startup and the `.bat`-file launcher are the same problem.** `npm start` runs a *full TypeScript build* before opening the window, every single launch — and `electron-builder` is installed but has never been configured (no `build` key, no config file, no icon). Packaging the app properly fixes both at once.
+2. **Design-style theming is impossible without a token layer, and that layer has to be built *during* the redesign.** All 106 `border-radius` and 119 `font-size` values in `styles.css` are hardcoded; the existing 68 CSS variables are essentially all color. A brutalist/neomorphic theme differs in radius, shadow, border, and type — none of which are variables today. Redesigning first and tokenizing later means two full passes over 3,500 lines of CSS.
+
+Also flagged: `rebuildSearchIndex()` deletes and re-inserts all **3,443** indexed rows on every launch. `ARCHITECTURE.md` §14 justified that at "tens to low hundreds of rows" and explicitly said to revisit if the scale assumption broke — Phase 4's extraction broke it (~380 → 3,443 rows, still growing).
+
+**Not touching the old Atlas v1 desktop shortcut** without explicit confirmation, even though the user suggested removing it — it's a real file outside this repo and v1 may still be in use.
+
 **Gmail is now explicitly out of scope for Atlas** (2026-07-29 user decision) — see `ROADMAP.md`'s "Explicitly out of scope" section and `open-questions.md` #28. If ever built, it's a separate standalone tool, not part of this project. Also this session: added a description to Settings → About, refreshed README.md (was still describing Phase 1 scaffolding), and fixed the GitHub repo's "About" description (was still referencing an old "Pi + NVIDIA NIM" fork framing).
 
 **Still out of scope, by design:** fetching arbitrary non-Drive web links, YouTube transcripts, writing back to Drive.

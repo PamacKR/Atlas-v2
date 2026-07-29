@@ -24,6 +24,7 @@ Atlas never tries to become an AI assistant — it makes no AI/LLM API calls of 
 - [`phase4-spec.md`](phase4-spec.md) — the Context Builder/MCP server design (page-aware extraction, persistent agent memory, agent-created notes, the query layer, the MCP server, static export).
 - [`remote-attachments-spec.md`](remote-attachments-spec.md) — reading Classroom Drive attachments (and links discovered inside them) without downloading them locally.
 - [`phase5-spec.md`](phase5-spec.md) — the search overhaul, Dashboard v2, and configurable keyboard shortcuts (drafted, not yet built).
+- [`phase6-spec.md`](phase6-spec.md) — UI overhaul and design tokens, settings redesign, design-style themes, app packaging, and startup performance (drafted, not yet built).
 - [`mcp-setup.md`](mcp-setup.md) — how to connect an MCP-capable AI tool to Atlas's local MCP server.
 - [`STATUS.md`](STATUS.md) — living session-by-session log of what's actually been built, found, and fixed; the first thing to read after this file.
 

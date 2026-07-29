@@ -72,6 +72,23 @@ Reordered again 2026-07-28 (user decision, `open-questions.md` #28): the two rem
 - [ ] **Dashboard v2** — unread announcements and new assignments, each with per-item and "mark all" clearing so they can be removed from the dashboard (the user's explicit requirement). "Recently synced items" is recommended *against* as a third widget — it duplicates the existing "Recently added"/"What changed today" widgets; see `phase5-spec.md` §3.3.
 - [ ] **Configurable keyboard shortcuts** — a real shortcut registry (replacing today's scattered hardcoded handlers), rebindable from Settings with conflict detection, a `?` cheat-sheet overlay listing every binding, and one genuinely global shortcut for quick note capture. See `phase5-spec.md` §4.
 
+## Phase 6 — Design system, theming & desktop polish
+
+Added 2026-07-29. With the functional product essentially complete, this phase is about Atlas *feeling* like a finished desktop app rather than a working prototype. Full detail in [`phase6-spec.md`](phase6-spec.md).
+
+- [ ] **Package Atlas as a real Windows app** — `electron-builder` is already installed but has never been configured, which is why launching goes through a `.bat` file. A real installer produces `Atlas.exe` with a proper icon and Start Menu entry, **and fixes the slow startup at the same time**: `npm start` currently runs a full TypeScript build on every single launch. See `phase6-spec.md` §4.
+- [ ] **Logo and app icon** — needed by the packaging step above; works at 16px (taskbar) through 256px (installer).
+- [ ] **Stop rebuilding the entire search index on every launch** — it deletes and re-inserts all 3,443 indexed rows at startup, every time. `ARCHITECTURE.md` §14 justified this at "tens to low hundreds of rows" and flagged it for revisiting if that stopped holding; Phase 4's page-aware extraction is exactly what broke the assumption. See `phase6-spec.md` §5.
+- [ ] **UI overhaul** — a full redesign, modern and personalized. The one non-negotiable engineering decision inside it: it must introduce a **design-token layer** (radius, shadow, typography, spacing, motion — not just color), because that token layer *is* the theme engine below. Today all 106 corner radii and 119 font sizes in `styles.css` are hardcoded, so design-style theming is impossible without it. See `phase6-spec.md` §1.
+- [ ] **Settings redesign** — real sections (Appearance / Shortcuts / Sources / Files & storage / AI agent / About) instead of everything on one tab. Two genuinely new surfaces: an in-app view of the AI agent/MCP connection, and storage/extraction/backup. Long-standing request from `open-questions.md` #23. See `phase6-spec.md` §2.
+- [ ] **Design-style themes** — not just colors: brutalism, neomorphism, minimalism, etc., as a `data-style` axis independent of the existing light/dark `data-theme`. Cheap *after* the token layer exists, impossible before it. See `phase6-spec.md` §3.
+- [ ] **Command palette (`Ctrl+K`)** — jump to any course/note/file or run any action. Reuses the shortcut registry from `phase5-spec.md` §4.1 as its command source, and doubles as the discovery surface for keyboard shortcuts. See `phase6-spec.md` §6.1.
+- [ ] **Empty and first-run states** — currently blank widgets with no guidance; cheap to do during the redesign, expensive as a separate pass afterwards. See `phase6-spec.md` §6.5.
+- [ ] **Local backup of `atlas.db`** — every deadline, extracted page, and all agent memory lives in one file with no backup. See `phase6-spec.md` §6.3.
+- [ ] **Density setting** (compact/comfortable) — falls out of the token work. See `phase6-spec.md` §6.4.
+- [ ] **Per-course readiness view** — "can the agent actually read everything for this course?" at a glance, instead of clicking through files. See `phase6-spec.md` §6.6.
+- Reading/coverage tracking (unread/reading/done per resource, so the agent can be asked "what haven't I covered?") — proposed, awaiting the user's decision. See `phase6-spec.md` §6.2.
+
 ## Explicitly out of scope for V1
 
 Personal finance, fitness tracking, habit tracking, general life calendar, non-academic task management, mobile app, multi-user collaboration (PRD section 22), **Gmail integration of any kind** (2026-07-29 user decision — a separate, standalone tool that reads out important emails is a possible future idea, but explicitly not part of Atlas).
