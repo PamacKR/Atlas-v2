@@ -388,6 +388,7 @@
           <nav id="settings-nav">
             <button class="settings-nav-item active" type="button" data-settings-tab="general">General</button>
             <button class="settings-nav-item" type="button" data-settings-tab="sources">Sources</button>
+            <button class="settings-nav-item" type="button" data-settings-tab="shortcuts">Shortcuts</button>
             <button class="settings-nav-item" type="button" data-settings-tab="about">About</button>
           </nav>
 
@@ -499,6 +500,23 @@
               <button id="classroom-disconnect-button" type="button" hidden>Disconnect</button>
               <p id="classroom-pending-status" class="muted" hidden></p>
               <button id="classroom-review-button" type="button" hidden>Review new courses</button>
+            </section>
+          </div>
+
+          <div class="settings-panel" data-settings-panel="shortcuts" hidden>
+            <!-- Rebinding UI (ROADMAP.md Phase 5 shortcuts item) — plain
+                 layout on purpose, matching the existing settings-row/
+                 settings-section pattern rather than introducing anything
+                 new; real visual design is Phase 6. -->
+            <section class="settings-section">
+              <div class="settings-row">
+                <div>
+                  <h3>Keyboard shortcuts</h3>
+                  <div class="settings-row-hint">Click a binding to change it. Esc cancels; typing a combo already in use asks before stealing it.</div>
+                </div>
+                <button id="settings-shortcuts-reset-all" type="button">Reset all to defaults</button>
+              </div>
+              <div id="settings-shortcuts-list"></div>
             </section>
           </div>
 

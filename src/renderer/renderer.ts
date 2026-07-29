@@ -389,7 +389,7 @@ interface AtlasApi {
 // actually works (bullet-heavy notes, Notion-like typing feel) and verified
 // working correctly in Crepe before switching. Crepe also bundles KaTeX math
 // rendering out of the box, which the user needs for academic notes.
-import { ShortcutRegistry, ShortcutAction, normalizeBinding } from './shortcuts';
+import { ShortcutRegistry, ShortcutAction, normalizeBinding, RESERVED_BINDINGS } from './shortcuts';
 import { Crepe } from '@milkdown/crepe';
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
@@ -542,6 +542,7 @@ async function renderSettingsPage(): Promise<void> {
     renderDriveStatus(),
     renderClassroomStatus(),
     renderSettingsAbout(),
+    renderSettingsShortcuts(),
   ]);
 }
 
@@ -960,6 +961,7 @@ async function selectCoursePickerCourse(courseId: number): Promise<void> {
     closeCoursePicker();
     const note = await atlasApi.createNote(courseId);
     await openNoteEditor(note);
+    currentNoteIsFreshCreation = true;
     return;
   }
 
@@ -2526,6 +2528,24 @@ let noteTitleBeforeEdit = '';
 // markdownUpdated listener once during mount even with nothing typed, which
 // is what caused this in the first place.
 let noteContentAtOpen: string | null = null;
+// True only for a note just created this session via "New note" or quick
+// capture (Ctrl+Shift+N) — never for reopening an existing note, even an
+// already-empty one. Drives closeNoteEditor()'s "discard if never edited"
+// check: creating an empty DB row (and an empty exported .md file, and a
+// search_index entry) the instant "New note" is clicked, then leaving one
+// behind for every note opened-and-immediately-closed, was real clutter the
+// user asked to stop seeing.
+let currentNoteIsFreshCreation = false;
+// Captured once at mount and never touched again (unlike noteContentAtOpen
+// above, which scheduleNoteSave() deliberately keeps moving forward after
+// every autosave) — this is the real "has anything at all changed since
+// this note was created" baseline the discard check below needs. Reusing
+// noteContentAtOpen for that check was the first attempt at this and was
+// wrong: it gets reset to the just-saved markdown the moment the very
+// first autosave lands, so it always reads "unchanged" again a few hundred
+// milliseconds after the user's first keystroke, even for a note with real
+// typed or embedded content.
+let noteContentAtCreation: string | null = null;
 
 // Reflects the derived-from-first-line title (Google-Docs style, see
 // notes:updateContent in main.ts) back into the title input — but only when
@@ -2676,6 +2696,10 @@ async function mountNoteEditor(note: Note): Promise<void> {
   // own output post-mount, after whatever normalization it just did, not
   // the raw value passed in.
   noteContentAtOpen = crepe.getMarkdown();
+  // A second, fixed baseline for closeNoteEditor()'s discard-if-untouched
+  // check — see its own declaration comment for why this can't just reuse
+  // noteContentAtOpen.
+  noteContentAtCreation = noteContentAtOpen;
 }
 
 async function openNoteEditor(note: Note): Promise<void> {
@@ -2685,6 +2709,11 @@ async function openNoteEditor(note: Note): Promise<void> {
 
   currentNoteId = note.id;
   currentNoteCourseId = note.course_id;
+  // Reset here, not just at the two creation call sites — opening any other
+  // note (including navigating straight from one fresh note to another)
+  // must never inherit a stale "discard if untouched" flag from whatever
+  // was open before.
+  currentNoteIsFreshCreation = false;
   titleInput.value = note.title;
   statusEl.textContent = '';
   overlay.hidden = false;
@@ -2719,7 +2748,27 @@ async function openNoteEditor(note: Note): Promise<void> {
 }
 
 async function closeNoteEditor(): Promise<void> {
-  await flushPendingNoteSave();
+  // Discard, don't save, a "New note"/quick-capture note the user closes
+  // without ever typing anything — into the body *or* the title. Checked
+  // here rather than at creation time since there's no way to know in
+  // advance whether the user was about to type something.
+  const titleInput = document.getElementById('note-title-input') as HTMLInputElement;
+  const untouched =
+    currentNoteIsFreshCreation &&
+    noteEditorInstance !== null &&
+    noteEditorInstance.getMarkdown() === noteContentAtCreation &&
+    titleInput.value.trim() === 'Untitled';
+
+  if (untouched && currentNoteId !== null) {
+    if (noteSaveTimer) {
+      clearTimeout(noteSaveTimer);
+      noteSaveTimer = null;
+    }
+    await atlasApi.deleteNote(currentNoteId);
+  } else {
+    await flushPendingNoteSave();
+  }
+  currentNoteIsFreshCreation = false;
 
   const overlay = document.getElementById('note-overlay')!;
   overlay.hidden = true;
@@ -4042,6 +4091,11 @@ function isElementVisible(id: string): boolean {
   return el !== null && (el as HTMLElement).offsetParent !== null;
 }
 
+// Kept in sync with shortcutRegistry's own copy — this is the mutable
+// working set the Settings > Shortcuts rebinding UI edits directly, then
+// persists as one JSON blob (same shape saveShortcutOverrides below writes).
+let shortcutOverrides: Record<string, string> = {};
+
 async function loadShortcutOverrides(): Promise<void> {
   const raw = await atlasApi.getSetting('shortcuts_overrides');
   let overrides: Record<string, string> = {};
@@ -4052,7 +4106,13 @@ async function loadShortcutOverrides(): Promise<void> {
       overrides = {};
     }
   }
+  shortcutOverrides = overrides;
   shortcutRegistry.setOverrides(overrides);
+}
+
+async function saveShortcutOverrides(): Promise<void> {
+  shortcutRegistry.setOverrides(shortcutOverrides);
+  await atlasApi.setSetting('shortcuts_overrides', JSON.stringify(shortcutOverrides));
 }
 
 function registerAppShortcuts(): void {
@@ -4314,6 +4374,135 @@ function closeShortcutsCheatSheet(): void {
   document.getElementById('shortcuts-cheatsheet-overlay')!.hidden = true;
 }
 
+// --- Settings > Shortcuts: the rebinding UI. Deliberately plain (reuses the
+// existing .settings-row layout, no new visual language) — real design is
+// Phase 6, this exists so a binding can actually be changed at all.
+
+function updateShortcutKeyButtonLabel(button: HTMLButtonElement, action: ShortcutAction): void {
+  const binding = shortcutRegistry.primaryBindingFor(action);
+  button.textContent = binding || 'Unbound';
+  button.classList.toggle('unbound', !binding);
+}
+
+// Captures the next keydown (capture phase, so it's seen before the app's
+// own shortcut dispatcher — otherwise pressing an already-bound combo while
+// choosing a new one would also fire that other action). Esc cancels
+// without changing anything; a reserved binding or a conflict with another
+// action's current binding is caught before saving, the latter requiring
+// an explicit confirm to "steal" it (which unbinds the previous owner
+// rather than leaving two actions pointing at the same key).
+function beginShortcutCapture(action: ShortcutAction, button: HTMLButtonElement): void {
+  button.textContent = 'Press a key…';
+  button.classList.add('capturing');
+
+  function cleanup(): void {
+    document.removeEventListener('keydown', onKeydown, true);
+    button.classList.remove('capturing');
+  }
+
+  const onKeydown = async (e: KeyboardEvent): Promise<void> => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.key === 'Escape') {
+      cleanup();
+      updateShortcutKeyButtonLabel(button, action);
+      return;
+    }
+    // A bare modifier on its own isn't a real binding yet — keep listening
+    // rather than capturing "Shift" alone.
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+
+    const binding = normalizeBinding(e);
+
+    if (RESERVED_BINDINGS.has(binding)) {
+      cleanup();
+      await showConfirm(`"${binding}" can't be reassigned — it's reserved so text fields always work correctly.`);
+      updateShortcutKeyButtonLabel(button, action);
+      return;
+    }
+
+    const conflicting = shortcutRegistry
+      .all()
+      .find((other) => other.id !== action.id && shortcutRegistry.primaryBindingFor(other) === binding);
+    if (conflicting) {
+      cleanup();
+      const steal = await showConfirm(
+        `"${binding}" is already used by "${conflicting.label}". Reassign it to "${action.label}" instead?`
+      );
+      if (!steal) {
+        updateShortcutKeyButtonLabel(button, action);
+        return;
+      }
+      shortcutOverrides[conflicting.id] = ''; // explicit "unbound" — see shortcuts.ts
+    } else {
+      cleanup();
+    }
+
+    shortcutOverrides[action.id] = binding;
+    await saveShortcutOverrides();
+    renderSettingsShortcuts();
+  };
+
+  document.addEventListener('keydown', onKeydown, true);
+}
+
+async function renderSettingsShortcuts(): Promise<void> {
+  const container = document.getElementById('settings-shortcuts-list')!;
+  container.innerHTML = '';
+
+  const groups = new Map<string, ShortcutAction[]>();
+  for (const action of shortcutRegistry.all()) {
+    if (!groups.has(action.group)) groups.set(action.group, []);
+    groups.get(action.group)!.push(action);
+  }
+
+  for (const [groupName, groupActions] of groups) {
+    const section = document.createElement('div');
+    section.className = 'settings-shortcuts-group';
+    const header = document.createElement('h4');
+    header.textContent = groupName;
+    section.appendChild(header);
+
+    for (const action of groupActions) {
+      const row = document.createElement('div');
+      row.className = 'settings-row';
+
+      const label = document.createElement('div');
+      label.className = 'settings-row-label';
+      label.textContent = action.label;
+      row.appendChild(label);
+
+      const controls = document.createElement('div');
+      controls.className = 'settings-shortcuts-controls';
+
+      const keyButton = document.createElement('button');
+      keyButton.type = 'button';
+      keyButton.className = 'settings-shortcut-key';
+      updateShortcutKeyButtonLabel(keyButton, action);
+      keyButton.addEventListener('click', () => beginShortcutCapture(action, keyButton));
+      controls.appendChild(keyButton);
+
+      const resetButton = document.createElement('button');
+      resetButton.type = 'button';
+      resetButton.className = 'settings-shortcut-reset';
+      resetButton.title = 'Reset to default';
+      resetButton.setAttribute('aria-label', 'Reset to default');
+      resetButton.textContent = '↺';
+      resetButton.addEventListener('click', async () => {
+        delete shortcutOverrides[action.id];
+        await saveShortcutOverrides();
+        void renderSettingsShortcuts();
+      });
+      controls.appendChild(resetButton);
+
+      row.appendChild(controls);
+      section.appendChild(row);
+    }
+    container.appendChild(section);
+  }
+}
+
 registerAppShortcuts();
 
 async function init(): Promise<void> {
@@ -4483,6 +4672,13 @@ async function init(): Promise<void> {
   document.getElementById('settings-theme-dark')!.addEventListener('click', () => setTheme('dark'));
   document.getElementById('settings-theme-light')!.addEventListener('click', () => setTheme('light'));
 
+  document.getElementById('settings-shortcuts-reset-all')!.addEventListener('click', async () => {
+    if (!(await showConfirm('Reset every keyboard shortcut back to its default binding?'))) return;
+    shortcutOverrides = {};
+    await saveShortcutOverrides();
+    void renderSettingsShortcuts();
+  });
+
   document.querySelectorAll<HTMLButtonElement>('.settings-nav-item').forEach((button) => {
     button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab!));
   });
@@ -4613,7 +4809,9 @@ async function init(): Promise<void> {
   // in the main process so it exists even if the window wasn't open yet),
   // this just opens it for editing immediately.
   atlasApi.onQuickCaptureNote((note) => {
-    void openNoteEditor(note);
+    void openNoteEditor(note).then(() => {
+      currentNoteIsFreshCreation = true;
+    });
   });
 
   atlasApi.onNoteContextMenuDelete(async (noteId) => {

@@ -59,10 +59,16 @@ function bindingsOf(action: ShortcutAction): string[] {
   return Array.isArray(action.defaultBinding) ? action.defaultBinding : [action.defaultBinding];
 }
 
-// The first (canonical) binding — what's shown in the cheat sheet and
-// what a future rebinding UI treats as "this action's shortcut."
+// The first (canonical) binding — what's shown in the cheat sheet and what
+// the rebinding UI treats as "this action's shortcut." An override of ''
+// (empty string) is a deliberate, explicit "unbound" — set when a rebind
+// steals this action's only binding away (see the Settings rebinding UI in
+// renderer.ts) — distinct from no override at all (undefined), which still
+// falls back to the built-in default.
 export function primaryBinding(action: ShortcutAction, overrides: Record<string, string>): string {
-  return overrides[action.id] ?? bindingsOf(action)[0];
+  const override = overrides[action.id];
+  if (override !== undefined) return override; // '' renders as unbound
+  return bindingsOf(action)[0];
 }
 
 export class ShortcutRegistry {
@@ -88,11 +94,13 @@ export class ShortcutRegistry {
   // Resolves a keydown to the one action it should trigger, if any. An
   // override replaces *all* of an action's default bindings (including
   // aliases) — rebinding "focus search" away from Ctrl+L also gives up the
-  // Ctrl+F alias, rather than leaving a half-migrated shortcut behind.
+  // Ctrl+F alias, rather than leaving a half-migrated shortcut behind. An
+  // override of '' means explicitly unbound (see primaryBinding above) —
+  // that action matches nothing at all until rebound again.
   resolve(binding: string): ShortcutAction | null {
     for (const action of this.actions) {
       const override = this.overrides[action.id];
-      const candidates = override ? [override] : bindingsOf(action);
+      const candidates = override !== undefined ? (override ? [override] : []) : bindingsOf(action);
       if (candidates.includes(binding)) return action;
     }
     return null;

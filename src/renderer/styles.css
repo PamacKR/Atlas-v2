@@ -1563,6 +1563,51 @@ ul#course-list.view-list li.course-card .course-card-counts {
   white-space: nowrap;
 }
 
+/* Settings > Shortcuts rebinding UI — reuses the existing .settings-row
+   layout, same plain-for-now approach as the cheat sheet above. */
+.settings-shortcuts-group h4 {
+  margin: 1.25rem 0 0.4rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.settings-shortcuts-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.settings-shortcut-key {
+  font-family: monospace;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  min-width: 6rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.settings-shortcut-key.capturing {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.settings-shortcut-key.unbound {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.settings-shortcut-reset {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.4rem;
+}
+
 #course-edit-form button {
   padding: 0.5rem 1rem;
   border-radius: 4px;
