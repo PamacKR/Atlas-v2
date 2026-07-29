@@ -147,7 +147,7 @@ interface ClassroomContentLink {
 }
 
 interface ClassroomCourseContent {
-  announcements: { id: number; title: string; body: string | null; posted_at: string }[];
+  announcements: { id: number; title: string; body: string | null; posted_at: string; links: ClassroomContentLink[] }[];
   assignments: {
     id: number;
     title: string;
@@ -3003,8 +3003,8 @@ async function renderCourseClassroomSection(course: Course): Promise<void> {
     'course-announcements-list',
     'No announcements yet.',
     content.announcements,
-    (a) => ({ title: a.title, meta: formatIsoTimestamp(a.posted_at), body: a.body, links: [] }),
-    (a) => openClassroomItemDetail('Announcement', a.title, formatIsoTimestamp(a.posted_at), a.body, [])
+    (a) => ({ title: a.title, meta: formatIsoTimestamp(a.posted_at), body: a.body, links: a.links }),
+    (a) => openClassroomItemDetail('Announcement', a.title, formatIsoTimestamp(a.posted_at), a.body, a.links)
   );
   renderClassroomLinkList(
     'course-assignments-list',

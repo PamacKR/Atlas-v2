@@ -26,11 +26,15 @@ export interface RemoteSyncProgress {
 // evidence: all four appeared in one spreadsheet). Anything else (Zoom, an
 // external dataset, a YouTube link already excluded upstream by link_kind)
 // simply doesn't match and is left as inline-only text (§2.2) — Atlas never
-// guesses at fetching a non-Drive URL.
-function driveFileIdFromUrl(url: string): string | null {
+// guesses at fetching a non-Drive URL. Forms are deliberately excluded even
+// though they're also a docs.google.com URL — a Forms link's real shape is
+// `/forms/d/e/<longid>/viewform`, so matching `/forms/d/` would capture the
+// literal "e" as a bogus file ID instead of the actual form ID, and a Form
+// has no fetchable document content anyway (§5's export table).
+export function driveFileIdFromUrl(url: string): string | null {
   const patterns = [
     /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/,
-    /docs\.google\.com\/(?:document|presentation|spreadsheets|forms)\/d\/([a-zA-Z0-9_-]+)/,
+    /docs\.google\.com\/(?:document|presentation|spreadsheets)\/d\/([a-zA-Z0-9_-]+)/,
     /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/,
     /[?&]id=([a-zA-Z0-9_-]+)/,
   ];

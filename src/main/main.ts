@@ -8,7 +8,7 @@ import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir } from './p
 import { getPreview } from './preview';
 import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
 import { extractDocumentParts } from './textExtraction';
-import { processPendingRemoteResources } from './remoteSync';
+import { processPendingRemoteResources, driveFileIdFromUrl } from './remoteSync';
 import { ensureCourseMemoryFile, ensureGeneralMemoryFile, deleteCourseMemoryFile } from './memoryFiles';
 import { toFtsQuery, getCourseBriefing } from './contextBuilder';
 import {
@@ -290,6 +290,39 @@ function resetExtractionForNewLogicVersion(): void {
   db.prepare(
     "INSERT INTO app_settings (key, value) VALUES ('extraction_logic_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
   ).run(String(EXTRACTION_LOGIC_VERSION));
+}
+
+// Classroom Drive-link attachments synced *before* remote-attachments-spec.md
+// shipped (2026-07-29) were inserted with remote_source/remote_ref/link_kind
+// all NULL and extraction_status forced to 'unsupported' — that's the state
+// EXTRACTABLE_KINDS gave every 'link' resource before this feature existed.
+// A later Classroom sync never revisits them (INSERT OR IGNORE no-ops on an
+// already-present classroom_attachment_id), so without this one-time
+// backfill they'd stay permanently unreadable even after reconnecting
+// Classroom with the new Drive scope. Idempotent — only touches rows still
+// at remote_source IS NULL, so it costs nothing on every later launch once
+// they're all converted.
+function backfillPreExistingRemoteAttachments(): void {
+  const db = getDb();
+  const candidates = db
+    .prepare(
+      `SELECT id, file_path FROM resources
+       WHERE kind = 'link' AND source = 'classroom' AND remote_source IS NULL
+         AND (file_path LIKE 'https://drive.google.com/file/%'
+           OR file_path LIKE 'https://docs.google.com/document/%'
+           OR file_path LIKE 'https://docs.google.com/presentation/%'
+           OR file_path LIKE 'https://docs.google.com/spreadsheets/%')`
+    )
+    .all() as { id: number; file_path: string }[];
+  if (candidates.length === 0) return;
+
+  const update = db.prepare(
+    "UPDATE resources SET remote_source = 'drive', remote_ref = ?, link_kind = 'driveFile', extraction_status = 'pending' WHERE id = ?"
+  );
+  for (const resource of candidates) {
+    const fileId = driveFileIdFromUrl(resource.file_path);
+    if (fileId) update.run(fileId, resource.id);
+  }
 }
 
 async function extractAllPendingResources(): Promise<void> {
@@ -805,6 +838,7 @@ app.whenReady().then(async () => {
   // pre-existing assignment rows (see upsertAssignment in googleClassroom.ts).
   void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
   void extractAllPendingResources();
+  backfillPreExistingRemoteAttachments();
   // Independent of Classroom sync's own post-sync call (scanClassroomAndNotify)
   // — covers a resource left 'pending' from a previous run when Classroom
   // sync is set to Off, so remote attachments still get picked up on launch.
@@ -1498,9 +1532,26 @@ ipcMain.handle('classroom:disconnectCourse', (_event, atlasCourseId: number) => 
 // googleClassroom.ts's saveLinkResources).
 ipcMain.handle('classroom:getCourseContent', (_event, courseId: number) => {
   const db = getDb();
-  const announcements = db
-    .prepare('SELECT * FROM announcements WHERE course_id = ? ORDER BY posted_at DESC')
-    .all(courseId);
+  // classroom_attachment_id is built as `${ownerId}:${link.url}` (see
+  // googleClassroom.ts's saveLinkResources) — an announcement's attachments
+  // use its own Classroom announcement ID as ownerId, exactly like an
+  // assignment's use its courseWork ID below. This was previously missing
+  // entirely: the renderer hardcoded an empty links array for every
+  // announcement, so an attached Drive file/doc (e.g. a professor's
+  // course-index spreadsheet posted as an announcement) never showed up in
+  // the app at all, even though the resource itself was synced correctly.
+  const linkResourcesForAnnouncement = db.prepare(
+    "SELECT id, title, file_path FROM resources WHERE classwork_material_id IS NULL AND classroom_attachment_id LIKE ? || ':%'"
+  );
+  const announcements = (
+    db.prepare('SELECT * FROM announcements WHERE course_id = ? ORDER BY posted_at DESC').all(courseId) as {
+      id: number;
+      classroom_announcement_id: string | null;
+    }[]
+  ).map((a) => ({
+    ...a,
+    links: a.classroom_announcement_id ? linkResourcesForAnnouncement.all(a.classroom_announcement_id) : [],
+  }));
   const assignments = db
     .prepare('SELECT * FROM assignments WHERE course_id = ? ORDER BY due_at IS NULL, due_at ASC')
     .all(courseId) as { id: number; classroom_coursework_id: string | null }[];
