@@ -2,25 +2,29 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-29 (Atlas-v2, remote-attachments-spec.md built end to end — see Handoff below)
+**Last updated:** 2026-07-29 (Atlas-v2, remote-attachments-spec.md built and the user has reconnected Classroom — see Handoff below)
 
 ## Handoff — where this actually stands right now
 
-**`remote-attachments-spec.md` is now built**, after the user confirmed re-extraction/memory backfill worked and gave the go-ahead. What shipped, in build order:
+**`remote-attachments-spec.md` is built and the user has reconnected Google Classroom** (the step needed for the new `drive.readonly` scope, see below). What shipped, in build order:
 
-1. **OAuth scope fix (a real discovery, not in the original spec):** `googleAuth.ts`'s `CLASSROOM_SCOPES` had zero Drive scope on it — a Classroom attachment's Drive file is shared by the professor with the account connected *to Classroom*, not the separate personal-account Drive connection, so the old assumption ("drive.readonly already covers this") was wrong. Added `drive.readonly` to `CLASSROOM_SCOPES`. **The user needs to disconnect and reconnect Google Classroom once** for this to take effect (same one-time gotcha as when `drive.file` was added earlier) — nothing else works until then.
+1. **OAuth scope fix (a real discovery, not in the original spec):** `googleAuth.ts`'s `CLASSROOM_SCOPES` had zero Drive scope on it — a Classroom attachment's Drive file is shared by the professor with the account connected *to Classroom*, not the separate personal-account Drive connection, so the old assumption ("drive.readonly already covers this") was wrong. Added `drive.readonly` to `CLASSROOM_SCOPES`.
 2. `extractMaterialLinks` (googleClassroom.ts) now keeps the Drive file ID and material kind (`driveFile`/`youTubeVideo`/`link`/`form`) instead of discarding them.
 3. Schema: `resources` gained `remote_source`, `remote_ref`, `remote_mime_type`, `remote_fetched_version`, `link_kind`, `local_twin_id`, `parent_resource_id`, `discovery_depth`.
 4. New `remoteFetch.ts` — a Drive fetcher: `canDownload` pre-check, Google-native export via `exportLinks` (falls back to `files.export()`), binary files streamed to a temp file (never under `Atlas-Storage/files/`), tries the Classroom OAuth connection first, falls back to the personal Drive connection.
-5. New `remoteSync.ts` — orchestrates it all: local-copy-first resolution (§3.3, reuses an already-downloaded twin's extracted text, zero network calls), link-following with real caps (depth 2, 100 children/parent, 300/course/sync, cycle-safe dedupe by Drive file ID), failure-state handling (permanent failures recorded, transient ones stay `pending` and retry), wired into Classroom sync + launch backfill with visible progress.
-6. Exam-scale tool changes: `atlas_course_briefing` now reports totals alongside its top-20 lists; `atlas_read_document` called with no `from`/`to` returns an outline (labels + count, no text); course-scoped `atlas_search` ceiling raised from 25 to 100.
-7. New `scripts/verify-remote.js` (`npm run verify:remote`) — stubs Google API calls at the fetcher boundary per the spec's own §9 guidance, covers local-copy-first, link-following, permission failures, and the unchanged-file-skip cache path. Passing, alongside `verify`, `verify:mcp`, and `verify:extraction` (all re-run clean after this work).
+5. New `remoteSync.ts` — orchestrates it all: local-copy-first resolution (§3.3), link-following with real caps (depth 2, 100 children/parent, 300/course/sync, cycle-safe dedupe by Drive file ID), failure-state handling, wired into Classroom sync + launch backfill with visible progress.
+6. Exam-scale tool changes: `atlas_course_briefing` now reports totals alongside its top-20 lists; `atlas_read_document` called with no `from`/`to` returns an outline; course-scoped `atlas_search` ceiling raised from 25 to 100.
+7. New `scripts/verify-remote.js` (`npm run verify:remote`) — passing, alongside `verify`, `verify:mcp`, and `verify:extraction`.
 
-**What the user needs to do before this is live:**
-1. **Disconnect and reconnect Google Classroom** (Settings) — the new `drive.readonly` scope only applies to a freshly-issued token.
-2. Open the Atlas app once — Classroom sync will then start fetching the 155 previously-unfetched Drive attachments (visible progress via the existing extraction backfill toast/Settings panel). This can take a while the first time; subsequent syncs only touch what's new.
+**Two more real bugs found and fixed right after, while checking in on the ECO-2202 sheet specifically** (the user reported it missing from its announcement in the app):
+- **`classroom:getCourseContent` never joined announcement attachments at all** — only assignments and classwork did; the renderer hardcoded `links: []` for every announcement. The sheet was correctly synced and in the database the whole time; the UI just never had a code path to show it. Fixed both the IPC handler and the renderer.
+- **Every Classroom link resource synced *before* this feature shipped** (the vast majority of the user's real 155) had `remote_source`/`link_kind` stuck at `NULL` and `extraction_status` forced to `'unsupported'` forever, since a later sync's `INSERT OR IGNORE` never revisits an already-present row. Added `backfillPreExistingRemoteAttachments()`, a one-time launch pass that converts them so the new fetch path actually picks them up. Also fixed a latent bug this surfaced: `driveFileIdFromUrl` would have mistaken a Google Forms `viewform` URL's `/forms/d/e/...` path for a real Drive file ID.
 
-**Still out of scope, by design:** Gmail (the fetcher interface is ready for it, nothing else built), fetching arbitrary non-Drive web links, YouTube transcripts, writing back to Drive.
+**What's left is just the user opening the Atlas app** — on launch it backfills the pre-existing attachments' metadata and starts fetching them in the background (visible in Settings → Text extraction). No further code work pending on this feature.
+
+**Gmail is now explicitly out of scope for Atlas** (2026-07-29 user decision) — see `ROADMAP.md`'s "Explicitly out of scope" section and `open-questions.md` #28. If ever built, it's a separate standalone tool, not part of this project. Also this session: added a description to Settings → About, refreshed README.md (was still describing Phase 1 scaffolding), and fixed the GitHub repo's "About" description (was still referencing an old "Pi + NVIDIA NIM" fork framing).
+
+**Still out of scope, by design:** fetching arbitrary non-Drive web links, YouTube transcripts, writing back to Drive.
 
 **A mistake made in an earlier session, corrected then**: an old smoke test wrote a stray `course-profiles/Microeconomics.md` into the user's *real* Atlas-Storage. Deleted, and this session's own `scripts/verify-remote.js` was double-checked for `ATLAS_DATA_DIR` isolation before ever running.
 
