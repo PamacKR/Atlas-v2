@@ -176,7 +176,7 @@ interface AshokaCourseCandidate {
 }
 
 interface SearchResult {
-  entityType: 'note' | 'resource' | 'announcement' | 'assignment' | 'document_part';
+  entityType: 'note' | 'resource' | 'announcement' | 'assignment' | 'document_part' | 'course';
   entityId: number;
   courseId: number;
   title: string;
@@ -3571,7 +3571,8 @@ async function runSearch(query: string): Promise<void> {
       const li = document.createElement('li');
       const titleRow = document.createElement('div');
       titleRow.className = 'search-result-title';
-      titleRow.textContent = `${result.entityType === 'note' ? '📃' : '📄'} ${result.title}`;
+      const resultIcon = result.entityType === 'note' ? '📃' : result.entityType === 'course' ? '📚' : '📄';
+      titleRow.textContent = `${resultIcon} ${result.title}`;
       const courseSpan = document.createElement('span');
       courseSpan.className = 'search-result-course';
       courseSpan.textContent = result.courseName;
@@ -3599,7 +3600,19 @@ async function runSearch(query: string): Promise<void> {
 }
 
 async function openSearchResult(result: SearchResult): Promise<void> {
-  if (result.entityType === 'note') {
+  if (result.entityType === 'course') {
+    // Course matches can include archived courses (search doesn't filter
+    // them out, see open-questions.md #4) — listCourses() only returns
+    // active ones, so an archived match falls back to the archived-only
+    // course-summaries list. CourseSummary extends Course, so it's a valid
+    // argument for selectCourse() either way.
+    let course: Course | undefined = (await atlasApi.listCourses()).find((c) => c.id === result.entityId);
+    if (!course) course = (await atlasApi.getCourseSummaries(true)).find((c) => c.id === result.entityId);
+    if (course) {
+      showPage('courses');
+      await selectCourse(course);
+    }
+  } else if (result.entityType === 'note') {
     const notes = await atlasApi.listAllNotes();
     const note = notes.find((n) => n.id === result.entityId);
     if (note) await openNoteEditor(note);

@@ -925,10 +925,33 @@ app.on('window-all-closed', () => {
 
 // --- IPC: global search (FTS5, PRD §14) ---
 
+// Course name matches are ranked above every other result type — the
+// user's explicit ask. Courses aren't part of the FTS5 search_index (that
+// table only holds resource/note/announcement/assignment/document_part
+// rows), so this is a plain substring match on courses.name, queried and
+// prepended separately rather than folded into the FTS query below.
+// Archived courses are included on purpose, same as everywhere else in
+// search — see open-questions.md #4, archived courses stay searchable.
 ipcMain.handle('search:query', (_event, query: string) => {
-  if (!query.trim()) return [];
+  const trimmed = query.trim();
+  if (!trimmed) return [];
   const db = getDb();
-  return db
+
+  const courseMatches = (
+    db
+      .prepare('SELECT id, name FROM courses WHERE name LIKE ? ORDER BY name LIMIT 10')
+      .all(`%${trimmed}%`) as { id: number; name: string }[]
+  ).map((c) => ({
+    entityType: 'course' as const,
+    entityId: c.id,
+    courseId: c.id,
+    title: c.name,
+    courseName: '',
+    snippet: '',
+    resourceId: null,
+  }));
+
+  const otherMatches = db
     .prepare(
       `SELECT search_index.entity_type AS entityType,
               search_index.entity_id AS entityId,
@@ -946,6 +969,8 @@ ipcMain.handle('search:query', (_event, query: string) => {
        LIMIT 30`
     )
     .all(toFtsQuery(query));
+
+  return [...courseMatches, ...otherMatches];
 });
 
 // --- IPC: dashboard (PRD §13) ---

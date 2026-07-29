@@ -57,14 +57,17 @@ Real impact, measured: searching "growth" against the user's data returns 5 resu
 | `announcement` | `openClassroomItemDetail()` — exists, used by the course-detail Announcements tab |
 | `assignment` | `openAssignmentDetail()` — exists, jumps to the mirrored deadline viewer |
 
-### 2.3 Ranking: names first, then content (the user's explicit ask)
+### 2.3 Ranking: courses, then names, then content (the user's explicit ask)
 
 > "arrange it so that the file names that contain the search result show on top and only then you include the results where the word will be in the body"
 
 Implemented as a **hard partition into sections**, not a soft relevance weight — a weight would still let a strong body match outrank a weak title match, which is exactly what the user asked not to happen.
 
-Three sections, in fixed order:
+**Course name matches added 2026-07-29** (the user hit this directly — typing a course name into search returned nothing, since courses were never a searchable entity at all): a plain `courses.name LIKE` match, ranked **above every other section**, since a course is the coarsest, most useful jump a search can make. Built and shipped (`main.ts`'s `search:query`, `openSearchResult` in `renderer.ts`) — not gated on the rest of this section's redesign, since it's small and self-contained.
 
+Four sections, in fixed order:
+
+**Courses** — course name matches, always first.
 **A. Names** — files and notes whose *title* matches.
 **B. Inside content** — page/slide/sheet hits and note-body hits.
 **C. Classroom** — announcements and assignments.
