@@ -157,14 +157,18 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item:hover { color: var(--text); background: var(--bg-hover); }
 .nav-item.active { color: var(--text); font-weight: 500; }
 .nav-label { line-height: 1; }
+/* Box is 34px — matching wm-a's tile width — so the icon glyph's own
+   visual center lines up with the wordmark tile's visual center. Left
+   edges matched already; what didn't match was that a 34px tile and a
+   19px glyph put their centers 7.5px apart even with equal left insets. */
 .nav-icon {
-  width: 19px; height: 19px;
+  width: 34px; height: 34px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.nav-icon svg { width: 100%; height: 100%; }
+.nav-icon svg { width: 19px; height: 19px; }
 
 /* Fixed height (not padding-derived) so the row is pixel-identical in
    both states — a label's line-height and an icon's own box-height
@@ -187,8 +191,12 @@ nav { display: flex; flex-direction: column; gap: 2px; }
      own left padding (18px) plus the same 10px inset used by
      .nav-item/.wordmark, so its icon lands in the same column as the
      nav icons above it in both states. */
+  /* left is nudged 10px past the sidebar/nav-item inset (18+10=28) to
+     account for the toggle's own 14px chevron being narrower than the
+     34px icon tiles above it — this puts its visual center, not just
+     its left edge, on the same column. */
   position: absolute;
-  left: var(--space-4);
+  left: 28px;
   bottom: var(--space-5);
   display: flex;
   align-items: center;
