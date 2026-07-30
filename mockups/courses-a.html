@@ -113,7 +113,7 @@ body {
   font-weight: 600;
   letter-spacing: -0.01em;
   margin-bottom: var(--space-7);
-  padding-left: var(--space-2);
+  padding-left: 10px;
 }
 /* Height fixed at 34px in both states — the wordmark row's own height
    must never change with collapse, or the nav list below it shifts.
@@ -127,7 +127,12 @@ body {
   flex-shrink: 0;
   height: 34px;
 }
-#sidebar.collapsed .wordmark { padding-left: 0; justify-content: center; }
+/* No collapse-conditional padding/justify-content here — wordmark's own
+   left inset (10px) now matches .nav-item's exactly, so the "A" tile
+   lines up with the icon column in both states without needing to
+   center it. Centering used to be load-bearing while padding differed
+   between states; now it isn't, and (being non-animatable) it was also
+   what caused the visible jump described below. */
 #sidebar.collapsed .wordmark .wm-a {
   width: 34px;
   border-radius: var(--radius-md);
@@ -164,10 +169,12 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 /* Fixed height (not padding-derived) so the row is pixel-identical in
    both states — a label's line-height and an icon's own box-height
    don't naturally match, which is what made items look taller
-   expanded than collapsed even with equal padding. Padding is already
-   identical in both states, so only justify-content/radius change. */
+   expanded than collapsed even with equal padding. No justify-content
+   override either: padding is identical in both states, so the icon
+   is already left-aligned at the same x — centering it in collapsed
+   would snap instantly (it can't transition) while the sidebar's width
+   is still animating, which is what caused the visible jump on collapse. */
 #sidebar.collapsed .nav-item {
-  justify-content: center;
   border-radius: var(--radius-md);
 }
 #sidebar.collapsed .nav-label { display: none; }
@@ -175,15 +182,13 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-spacer { flex: 1; }
 
 .sidebar-toggle {
-  /* Absolutely positioned at a fixed offset from #sidebar's own
-     border box (position:relative on #sidebar above) rather than laid
-     out in the flex flow - the sidebar's own left padding differs
-     between expanded (56px) and collapsed (18px) states, so even a
-     "constant" margin-left still shifted the button's true x position
-     by the padding delta. Anchoring to the sidebar edge directly is the
-     only way the click target truly never moves when toggling. */
+  /* Absolutely positioned at a fixed offset from #sidebar's own border
+     box (position:relative on #sidebar above), matching the sidebar's
+     own left padding (18px) plus the same 10px inset used by
+     .nav-item/.wordmark, so its icon lands in the same column as the
+     nav icons above it in both states. */
   position: absolute;
-  left: 24px;
+  left: var(--space-4);
   bottom: var(--space-5);
   display: flex;
   align-items: center;
