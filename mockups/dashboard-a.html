@@ -130,7 +130,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 8px var(--space-3);
+  padding: 10px var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   font-size: var(--text-md);
@@ -219,6 +219,12 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
   max-width: clamp(1080px, 86vw, 1560px);
+  transition: max-width var(--transition);
+}
+/* Collapsing the sidebar frees ~148px — #main should grow into that
+   space instead of leaving it empty next to a narrower rail. */
+#shell.sidebar-collapsed #main {
+  max-width: clamp(1220px, 94vw, 1700px);
 }
 
 .topline {
@@ -235,6 +241,21 @@ h1 {
   letter-spacing: -0.02em;
 }
 h1 .dim { color: var(--text-faint); font-weight: 400; }
+
+.filter-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.filter-pill:hover { border-color: var(--rule-strong); color: var(--text); }
+.filter-pill svg { width: 12px; height: 12px; flex-shrink: 0; }
 
 .search {
   width: 300px;
@@ -472,7 +493,10 @@ h2 {
   <main id="main">
     <div class="topline">
       <h1>Wednesday <span class="dim">29 July</span></h1>
-      <input class="search" placeholder="Search everything…  Ctrl L" />
+      <div style="display:flex; gap: var(--space-3);">
+        <span class="filter-pill">All courses <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+        <input class="search" placeholder="Search everything…  Ctrl L" />
+      </div>
     </div>
 
     <div class="signals">
@@ -664,6 +688,7 @@ h2 {
   // collapse toggle already does.
   document.getElementById('sidebar-toggle').addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('collapsed');
+    document.getElementById('shell').classList.toggle('sidebar-collapsed');
   });
 </script>
 </body>
