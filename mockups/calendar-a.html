@@ -64,10 +64,30 @@ body {
   scrollbar-gutter: stable;
 }
 
+/* Minimal scrollbar everywhere: thin, no track, accent-colored thumb —
+   not the chunky default OS scrollbar (which was rendering as some
+   ambient yellow/gold from the OS theme, not the app's own accent). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
+::-webkit-scrollbar-corner { background: transparent; }
+
 #shell { display: flex; min-height: 100vh; }
 
+/* sticky + explicit height:100vh — see dashboard-a.html's identical
+   comment for why relative + implicit stretch pushes the toggle/
+   nav-meta off the bottom of the viewport on any page taller than it.
+   This page in particular (month grid + sidebar filters/upcoming) is
+   often taller than the viewport, which is exactly what was hiding
+   "Synced/Agent connected" and the collapse toggle below the fold. */
 #sidebar {
-  position: relative;
+  position: sticky;
+  top: 0;
+  height: 100vh;
   width: 224px;
   flex-shrink: 0;
   padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
@@ -161,13 +181,13 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 }
 #sidebar.collapsed .nav-meta { display: none; }
 
+/* Plain flex:1, no vw-based max-width — see dashboard-a.html's
+   identical comment for why calc(100vw - Npx) overflows past the true
+   visible edge whenever a real scrollbar is present. */
 #main {
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
-  max-width: calc(100vw - 224px);
-  transition: max-width var(--transition);
 }
-#shell.sidebar-collapsed #main { max-width: calc(100vw - 76px); }
 
 .topline {
   display: flex;
@@ -227,7 +247,7 @@ h2 {
 }
 .cal-nav-btn:hover { color: var(--text); background: var(--bg-hover); }
 .cal-nav-btn svg { width: 16px; height: 16px; }
-.cal-month-label { font-size: var(--text-lg); font-weight: 600; min-width: 150px; }
+.cal-month-label { font-size: var(--text-lg); font-weight: 600; min-width: 150px; text-align: center; }
 .cal-today-btn {
   font-size: var(--text-sm);
   color: var(--text-faint);
@@ -278,13 +298,19 @@ h2 {
   border-top: 1px solid var(--rule);
   border-left: 1px solid var(--rule);
 }
+/* Content centers as a group (justify-content:center on the column) —
+   a day with just its number centers alone; a day with the number
+   plus one or more events centers that whole stack together, so it
+   only moves toward the top as much as an extra event actually needs,
+   never sitting near the top by default the way flex-start would. */
 .cal-cell {
   border-right: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   padding: var(--space-2);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  justify-content: center;
+  gap: 4px;
   cursor: pointer;
   transition: background var(--transition);
   overflow: hidden;
@@ -292,7 +318,7 @@ h2 {
 .cal-cell:hover { background: var(--bg-hover); }
 .cal-cell.is-outside .cal-daynum { color: var(--text-faint); }
 .cal-daynum {
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
@@ -300,14 +326,14 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 21px; height: 21px;
+  width: 24px; height: 24px;
   border-radius: 50%;
   background: var(--accent);
   color: var(--bg);
   font-weight: 600;
 }
 .cal-event {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -434,7 +460,35 @@ h2 {
   padding: 5px 0;
   cursor: pointer;
 }
-.filter-row input { accent-color: var(--accent); cursor: pointer; }
+/* Custom minimal checkbox: native ones default to a fairly chunky
+   filled box even unchecked. Unchecked is just a thin hairline
+   outline with no fill; checked fills solid accent with a small
+   checkmark, so the "off" state actually reads as minimal. */
+.filter-row input {
+  appearance: none;
+  width: 14px; height: 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: background var(--transition), border-color var(--transition);
+}
+.filter-row input:hover { border-color: var(--text-faint); }
+.filter-row input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.filter-row input:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px; top: 1px;
+  width: 4px; height: 8px;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
 .filter-row:hover { color: var(--text); }
 
 .legend-row {

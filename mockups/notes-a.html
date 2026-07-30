@@ -65,10 +65,27 @@ body {
   scrollbar-gutter: stable;
 }
 
+/* Minimal scrollbar everywhere: thin, no track, accent-colored thumb —
+   not the chunky default OS scrollbar (which was rendering as some
+   ambient yellow/gold from the OS theme, not the app's own accent). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
+::-webkit-scrollbar-corner { background: transparent; }
+
 #shell { display: flex; min-height: 100vh; }
 
+/* sticky + explicit height:100vh — see dashboard-a.html's identical
+   comment for why relative + implicit stretch pushes the toggle/
+   nav-meta off the bottom of the viewport on any page taller than it. */
 #sidebar {
-  position: relative;
+  position: sticky;
+  top: 0;
+  height: 100vh;
   width: 224px;
   flex-shrink: 0;
   padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
@@ -167,14 +184,12 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 }
 #sidebar.collapsed .nav-meta { display: none; }
 
+/* Plain flex:1, no vw-based max-width — see dashboard-a.html's
+   identical comment for why calc(100vw - Npx) overflows past the true
+   visible edge whenever a real scrollbar is present. */
 #main {
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
-  max-width: calc(100vw - 224px);
-  transition: max-width var(--transition);
-}
-#shell.sidebar-collapsed #main {
-  max-width: calc(100vw - 76px);
 }
 
 .topline {

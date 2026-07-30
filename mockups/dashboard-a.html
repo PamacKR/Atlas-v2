@@ -82,6 +82,18 @@ body {
   scrollbar-gutter: stable;
 }
 
+/* Minimal scrollbar everywhere: thin, no track, accent-colored thumb —
+   not the chunky default OS scrollbar (which was rendering as some
+   ambient yellow/gold from the OS theme, not the app's own accent). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
+::-webkit-scrollbar-corner { background: transparent; }
+
 #shell { display: flex; min-height: 100vh; }
 
 /* --- Sidebar: no panel, no border, no background. Just nav. -----
@@ -93,8 +105,19 @@ body {
 /* Left/right padding equal and identical in both states — expanded used
    to carry a much bigger left inset (56px) than collapsed (18px), so
    every icon visibly jumped inward when expanding. Only width changes now. */
+/* sticky + explicit height:100vh instead of relative + implicit
+   stretch-to-match-main-height: #shell's default align-items:stretch
+   makes the sidebar exactly as tall as whatever main content is,
+   which on a page taller than the viewport (e.g. a busy month grid)
+   pushes the sidebar-toggle and "Synced/Agent connected" — pinned via
+   position:absolute/nav-spacer to the sidebar's own bottom edge — off
+   the bottom of the visible viewport entirely. Sticky positioning
+   still works as the absolute-positioning containing block for the
+   toggle button, same as relative did. */
 #sidebar {
-  position: relative;
+  position: sticky;
+  top: 0;
+  height: 100vh;
   width: 224px;
   flex-shrink: 0;
   padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
@@ -238,14 +261,18 @@ nav { display: flex; flex-direction: column; gap: 2px; }
    cap. Uncapped, #main's right edge is always the viewport's right
    edge in both states — only the left edge (where the sidebar ends)
    moves, which is the actual point of collapsing it. */
+/* Plain flex:1, no vw-based max-width. calc(100vw - Npx) looks exact
+   but isn't: 100vw is always the full viewport width and never
+   subtracts a real (non-overlay) scrollbar's width, so on any page
+   whose content happens to be tall enough to scroll, that formula
+   overflows past the true visible edge by the scrollbar's width —
+   which is exactly why this shifted between pages depending on
+   whether that specific page's content was tall enough to scroll.
+   flex:1 has no such failure mode: it distributes the real rendered
+   space directly, correctly, in any scrollbar state. */
 #main {
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
-  max-width: calc(100vw - 224px);
-  transition: max-width var(--transition);
-}
-#shell.sidebar-collapsed #main {
-  max-width: calc(100vw - 76px);
 }
 
 .topline {
@@ -263,11 +290,17 @@ h1 {
 }
 h1 .dim { color: var(--text-faint); font-weight: 400; }
 
+/* Explicit shared height with .search (37px) rather than trusting
+   matching padding to produce matching height — an icon+text flex row
+   and a plain text input don't resolve their content-box height from
+   the same metrics, so equal padding alone left the pill ~2.5px
+   taller than the search box next to it. */
 .filter-pill {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 9px var(--space-4);
+  height: 37px;
+  padding: 0 var(--space-4);
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
@@ -508,7 +541,7 @@ h2 {
   <main id="main">
     <div class="topline">
       <h1>Wednesday <span class="dim">29 July</span></h1>
-      <div style="display:flex; gap: var(--space-3);">
+      <div style="display:flex; align-items:center; gap: var(--space-3);">
         <span class="filter-pill">All courses <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
         <input class="search" placeholder="Search everything…  Ctrl L" />
       </div>
