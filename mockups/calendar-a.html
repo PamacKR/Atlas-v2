@@ -352,34 +352,42 @@ h2 {
   border-top: 1px solid var(--rule);
   border-left: 1px solid var(--rule);
 }
-/* Day number stays pinned top-left (flex-start, the default) — only
-   the events area below it centers, and only within its own space:
-   a day with no events just shows the number at the top; a day with
-   one or more events centers that group within the remaining room
-   under the number, so it only moves up as much as it needs to. */
+/* Day number and events are positioned independently now — the number
+   is pinned top-left via absolute positioning, and .cal-events centers
+   itself vertically against the *entire* cell (top:50%+translateY),
+   not just the leftover space below the number. Centering it as a
+   flex child of a column that also holds the number (the previous
+   approach) centers it relative to "below the number to the bottom of
+   the cell", which visibly drifts low in a tall row — this centers it
+   against the true middle of the whole cell instead. */
 .cal-cell {
+  position: relative;
   border-right: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   padding: var(--space-2);
-  display: flex;
-  flex-direction: column;
   cursor: pointer;
   transition: background var(--transition);
   overflow: hidden;
 }
+.cal-daynum {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+}
 .cal-events {
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  top: 50%;
+  left: var(--space-2);
+  right: var(--space-2);
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 4px;
-  margin-top: 4px;
 }
 .cal-cell:hover { background: var(--bg-hover); }
 .cal-cell.is-outside .cal-daynum { color: var(--text-faint); }
 .cal-daynum {
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
@@ -394,7 +402,7 @@ h2 {
   font-weight: 600;
 }
 .cal-event {
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -407,24 +415,19 @@ h2 {
 
 /* --- Week view: agenda columns, same 7-day week the month grid's
    "today" row covers. --- */
-#cal-week {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-/* border-bottom was missing entirely — each column had a right border
-   but nothing closed off the bottom of the grid, so the box read as
-   open/unfinished. flex:1 (not a fixed min-height) so it fills
-   whatever space #cal-week has, same reasoning as the month grid. */
+/* Deliberately NOT flex:1/fill-all-remaining-height like the month
+   grid — a week only ever has a handful of short agenda items per
+   day, so stretching seven columns to the full viewport height just
+   reads as a very tall mostly-empty box. Sized from its own content
+   instead, with a floor so a fully empty week doesn't look like a
+   sliver. */
 .week-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   border-top: 1px solid var(--rule);
   border-left: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
-  flex: 1;
-  min-height: 0;
+  min-height: 260px;
 }
 .week-col {
   border-right: 1px solid var(--rule);
@@ -445,7 +448,7 @@ h2 {
 .week-col.is-today .wk-head { color: var(--accent); font-weight: 600; }
 .week-col .wk-daynum { font-size: var(--text-lg); font-weight: 600; color: var(--text); }
 .week-item {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   padding: 6px var(--space-2);
   margin: 0 calc(var(--space-2) * -1);
   border-radius: var(--radius-sm);
@@ -553,10 +556,18 @@ h2 {
   background: var(--accent);
   border-color: var(--accent);
 }
+/* inset:0 + margin:auto centers the checkmark's own box first; rotate
+   then just spins it in place around that already-centered point
+   (transform-origin defaults to the element's own center, so rotating
+   never moves it off-center). The previous version used manual
+   left/top pixel offsets, which is exactly why it read as off-center —
+   any change to box size or border would have needed hand-recomputing
+   those numbers to still line up. */
 .filter-row input:checked::after {
   content: '';
   position: absolute;
-  left: 4px; top: 1px;
+  inset: 0;
+  margin: auto;
   width: 4px; height: 8px;
   border: solid var(--bg);
   border-width: 0 2px 2px 0;
