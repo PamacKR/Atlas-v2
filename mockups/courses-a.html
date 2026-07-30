@@ -90,19 +90,20 @@ body {
    corners (--radius-md), not the sharper 5px used everywhere else,
    since an icon-only rail reads as a row of buttons and buttons
    asked for softer corners specifically. */
+/* Left/right padding equal and identical in both states — expanded used
+   to carry a much bigger left inset (56px) than collapsed (18px), so
+   every icon visibly jumped inward when expanding. Only width changes now. */
 #sidebar {
   position: relative;
   width: 224px;
   flex-shrink: 0;
-  padding: var(--space-7) var(--space-4) var(--space-8) var(--space-7);
+  padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
   display: flex;
   flex-direction: column;
   transition: width var(--transition), padding var(--transition);
 }
 #sidebar.collapsed {
   width: 76px;
-  padding-left: var(--space-4);
-  padding-right: var(--space-4);
 }
 
 .wordmark {
@@ -114,19 +115,21 @@ body {
   margin-bottom: var(--space-7);
   padding-left: var(--space-2);
 }
-/* Fixed 34x34 in both states (not just collapsed) — the wordmark row's
-   own height must never change with collapse, or everything below it
-   (the whole nav list) shifts up/down by the difference. Only the
-   tile's background/radius are collapse-conditional. */
+/* Height fixed at 34px in both states — the wordmark row's own height
+   must never change with collapse, or the nav list below it shifts.
+   Width is only pinned to 34px when collapsed, where it needs to read
+   as a square icon tile; in expanded it has to hug the "A" glyph, or a
+   fixed-width box opens a visible gap before "tlas". */
 .wordmark .wm-a {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 34px; height: 34px;
+  height: 34px;
 }
 #sidebar.collapsed .wordmark { padding-left: 0; justify-content: center; }
 #sidebar.collapsed .wordmark .wm-a {
+  width: 34px;
   border-radius: var(--radius-md);
   background: var(--bg-hover);
 }
@@ -139,7 +142,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   align-items: center;
   gap: var(--space-3);
   height: 38px;
-  padding: 0 var(--space-3);
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   font-size: var(--text-md);
@@ -161,10 +164,10 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 /* Fixed height (not padding-derived) so the row is pixel-identical in
    both states — a label's line-height and an icon's own box-height
    don't naturally match, which is what made items look taller
-   expanded than collapsed even with equal padding. */
+   expanded than collapsed even with equal padding. Padding is already
+   identical in both states, so only justify-content/radius change. */
 #sidebar.collapsed .nav-item {
   justify-content: center;
-  padding: 0 10px;
   border-radius: var(--radius-md);
 }
 #sidebar.collapsed .nav-label { display: none; }
