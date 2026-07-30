@@ -215,17 +215,18 @@ nav { display: flex; flex-direction: column; gap: 2px; }
    real columns/gaps and bigger type, not into stretching a fixed-width
    row until a gap opens in the middle of it, which is what happened
    the first time this was tried. */
-/* Exact, not a vw guess: max-width is the viewport minus the sidebar's
-   actual current width, so #main always fills precisely what's left —
-   see dashboard-a.html's identical comment. */
+/* max-width is exactly the viewport minus the sidebar's current width —
+   no upper ceiling. See dashboard-a.html's identical comment for why a
+   flat cap defeats the point (it re-introduces the same right-edge
+   shift the calc alone was meant to fix). */
 #main {
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
-  max-width: min(1800px, calc(100vw - 224px));
+  max-width: calc(100vw - 224px);
   transition: max-width var(--transition);
 }
 #shell.sidebar-collapsed #main {
-  max-width: min(1800px, calc(100vw - 76px));
+  max-width: calc(100vw - 76px);
 }
 
 .topline {

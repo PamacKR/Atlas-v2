@@ -215,20 +215,21 @@ nav { display: flex; flex-direction: column; gap: 2px; }
    real columns/gaps and bigger type, not into stretching a fixed-width
    row until a gap opens in the middle of it, which is what happened
    the first time this was tried. */
-/* Exact, not a vw guess: max-width is the viewport minus the sidebar's
-   actual current width, so #main always fills precisely what's left —
-   no percentage-based approximation that still falls short (or leaves
-   a strip) on a real window whose size wasn't one of the ones tested.
-   The 1800px ceiling only ever engages on genuinely ultra-wide displays,
-   so rows don't run absurdly long. */
+/* max-width is exactly the viewport minus the sidebar's current width —
+   no upper ceiling. A flat cap (tried previously) pins #main to a fixed
+   width regardless of sidebar state, so its right edge still shifts by
+   the full sidebar-width delta on any window wide enough to hit that
+   cap. Uncapped, #main's right edge is always the viewport's right
+   edge in both states — only the left edge (where the sidebar ends)
+   moves, which is the actual point of collapsing it. */
 #main {
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
-  max-width: min(1800px, calc(100vw - 224px));
+  max-width: calc(100vw - 224px);
   transition: max-width var(--transition);
 }
 #shell.sidebar-collapsed #main {
-  max-width: min(1800px, calc(100vw - 76px));
+  max-width: calc(100vw - 76px);
 }
 
 .topline {
