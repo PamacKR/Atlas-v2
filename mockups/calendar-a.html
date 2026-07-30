@@ -54,6 +54,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body { height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -61,33 +62,39 @@ body {
   font-size: var(--text-md);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  scrollbar-gutter: stable;
+  /* The page itself never scrolls — only #main does (see below). That
+     means #sidebar is a plain fixed-height sibling that never
+     participates in any scroll calculation at all, so it structurally
+     cannot shift by even a subpixel when scrolling, on any page,
+     ever — not a patch for one page's content height, a guarantee. */
+  overflow: hidden;
 }
 
-/* Minimal scrollbar everywhere: thin, no track, accent-colored thumb —
-   not the chunky default OS scrollbar (which was rendering as some
-   ambient yellow/gold from the OS theme, not the app's own accent). */
+/* Minimal scrollbar everywhere: thin, no track, subtle white thumb —
+   not the chunky default OS scrollbar (which was rendering some
+   ambient yellow/gold), and not the app's accent either (too loud for
+   something that's supposed to fade into the background). */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--accent) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
-#shell { display: flex; min-height: 100vh; }
+#shell { display: flex; height: 100vh; }
 
-/* sticky + explicit height:100vh — see dashboard-a.html's identical
-   comment for why relative + implicit stretch pushes the toggle/
-   nav-meta off the bottom of the viewport on any page taller than it.
-   This page in particular (month grid + sidebar filters/upcoming) is
-   often taller than the viewport, which is exactly what was hiding
-   "Synced/Agent connected" and the collapse toggle below the fold. */
+/* Plain relative + height:100% — see dashboard-a.html's identical
+   comment: #main (not the page) is the only scroll container now, so
+   the sidebar is never inside anything that scrolls at all. This page
+   in particular (month grid + filters/upcoming sidebar) is often
+   taller than the viewport, which is exactly what was hiding "Synced/
+   Agent connected" and the collapse toggle below the fold before. */
 #sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  position: relative;
+  height: 100%;
   width: 224px;
   flex-shrink: 0;
   padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
@@ -184,9 +191,21 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 /* Plain flex:1, no vw-based max-width — see dashboard-a.html's
    identical comment for why calc(100vw - Npx) overflows past the true
    visible edge whenever a real scrollbar is present. */
+/* #main is the only scroll container on the page (see body's
+   overflow:hidden) — height:100% + its own overflow-y:auto, with the
+   scrollbar gutter reserved here instead of on body. It's also a flex
+   column now: topline/toolbar are fixed-height, and #cal-layout below
+   takes the rest via flex:1, so the month grid can size itself to
+   exactly fill whatever's left instead of using a fixed row height
+   that may or may not fit — see .cal-grid below. */
 #main {
   flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
+  display: flex;
+  flex-direction: column;
 }
 
 .topline {
@@ -195,6 +214,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   justify-content: space-between;
   gap: var(--space-5);
   margin-bottom: var(--space-5);
+  flex-shrink: 0;
 }
 h1 { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.02em; }
 h1 .dim { color: var(--text-faint); font-weight: 400; }
@@ -232,6 +252,7 @@ h2 {
   padding-bottom: var(--space-5);
   border-bottom: 1px solid var(--rule);
   margin-bottom: var(--space-5);
+  flex-shrink: 0;
 }
 .cal-nav-btn {
   display: flex;
@@ -266,11 +287,29 @@ h2 {
 .viewmode span.active { color: var(--text); background: var(--bg-hover); }
 .viewmode span:hover { color: var(--text); }
 
+/* flex:1 + min-height:0 so this fills whatever's left of #main after
+   the topline/toolbar, instead of sizing itself from content (which
+   is what forced #main to scroll even when the viewport had room).
+   align-items:stretch (not start) so both the month-view column and
+   the sidebar aside actually receive that full height to work with. */
 #cal-layout {
   display: grid;
   grid-template-columns: 1fr 260px;
   gap: var(--space-7);
-  align-items: start;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+#cal-layout > div:first-child {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+/* The sidebar column scrolls internally (rare) rather than ever
+   forcing the month grid area to shrink or the page to scroll. */
+#cal-layout > aside {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 /* --- Month grid: hairline table, not boxed cards. Per-tile borders
@@ -279,6 +318,12 @@ h2 {
    trailing cells as solid slabs. Here every row is always full (7
    days), so this mostly matters for consistency with the rest of the
    redesign's grid language, not a live bug. */
+#cal-month {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .cal-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -288,32 +333,48 @@ h2 {
   text-transform: uppercase;
   color: var(--text-faint);
   padding-bottom: var(--space-2);
+  flex-shrink: 0;
 }
 .cal-weekdays span { text-align: left; padding-left: var(--space-2); }
 
+/* grid-template-rows: repeat(6, 1fr) on a flex:1 container, not a
+   fixed grid-auto-rows px height — the 6 rows now always divide
+   exactly whatever vertical space is actually available, so the
+   month grid fills the viewport instead of a hardcoded row height
+   that may add up to more than the screen has room for (which is
+   what was forcing a scrollbar on this page specifically). */
 .cal-grid {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: 104px;
+  grid-template-rows: repeat(6, 1fr);
   border-top: 1px solid var(--rule);
   border-left: 1px solid var(--rule);
 }
-/* Content centers as a group (justify-content:center on the column) —
-   a day with just its number centers alone; a day with the number
-   plus one or more events centers that whole stack together, so it
-   only moves toward the top as much as an extra event actually needs,
-   never sitting near the top by default the way flex-start would. */
+/* Day number stays pinned top-left (flex-start, the default) — only
+   the events area below it centers, and only within its own space:
+   a day with no events just shows the number at the top; a day with
+   one or more events centers that group within the remaining room
+   under the number, so it only moves up as much as it needs to. */
 .cal-cell {
   border-right: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   padding: var(--space-2);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 4px;
   cursor: pointer;
   transition: background var(--transition);
   overflow: hidden;
+}
+.cal-events {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 4px;
 }
 .cal-cell:hover { background: var(--bg-hover); }
 .cal-cell.is-outside .cal-daynum { color: var(--text-faint); }
@@ -346,12 +407,24 @@ h2 {
 
 /* --- Week view: agenda columns, same 7-day week the month grid's
    "today" row covers. --- */
+#cal-week {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* border-bottom was missing entirely — each column had a right border
+   but nothing closed off the bottom of the grid, so the box read as
+   open/unfinished. flex:1 (not a fixed min-height) so it fills
+   whatever space #cal-week has, same reasoning as the month grid. */
 .week-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   border-top: 1px solid var(--rule);
   border-left: 1px solid var(--rule);
-  min-height: 420px;
+  border-bottom: 1px solid var(--rule);
+  flex: 1;
+  min-height: 0;
 }
 .week-col {
   border-right: 1px solid var(--rule);
@@ -621,28 +694,28 @@ h2 {
             <div class="cal-cell"><span class="cal-daynum">28</span></div>
             <div class="cal-cell is-today">
               <span class="cal-daynum">29</span>
-              <div class="cal-event is-urgent"><span class="swatch" style="background:#8b5cf6"></span><span>Reading: Ch. 7</span></div>
+              <div class="cal-events"><div class="cal-event is-urgent"><span class="swatch" style="background:#8b5cf6"></span><span>Reading: Ch. 7</span></div></div>
             </div>
             <div class="cal-cell">
               <span class="cal-daynum">30</span>
-              <div class="cal-event"><span class="swatch" style="background:#10b981"></span><span>Reading Response</span></div>
+              <div class="cal-events"><div class="cal-event"><span class="swatch" style="background:#10b981"></span><span>Reading Response</span></div></div>
             </div>
             <div class="cal-cell">
               <span class="cal-daynum">31</span>
-              <div class="cal-event"><span class="swatch" style="background:#f59e0b"></span><span>Quiz 1</span></div>
+              <div class="cal-events"><div class="cal-event"><span class="swatch" style="background:#f59e0b"></span><span>Quiz 1</span></div></div>
             </div>
             <div class="cal-cell is-outside">
               <span class="cal-daynum">1</span>
-              <div class="cal-event"><span class="swatch" style="background:#3b82f6"></span><span>Problem Set 1</span></div>
+              <div class="cal-events"><div class="cal-event"><span class="swatch" style="background:#3b82f6"></span><span>Problem Set 1</span></div></div>
             </div>
             <!-- Row 6: 2-8 Aug -->
             <div class="cal-cell is-outside">
               <span class="cal-daynum">2</span>
-              <div class="cal-event"><span class="swatch" style="background:#8b5cf6"></span><span>Problem Set 3</span></div>
+              <div class="cal-events"><div class="cal-event"><span class="swatch" style="background:#8b5cf6"></span><span>Problem Set 3</span></div></div>
             </div>
             <div class="cal-cell is-outside">
               <span class="cal-daynum">3</span>
-              <div class="cal-event"><span class="swatch" style="background:#ec4899"></span><span>Case Study</span></div>
+              <div class="cal-events"><div class="cal-event"><span class="swatch" style="background:#ec4899"></span><span>Case Study</span></div></div>
             </div>
             <div class="cal-cell is-outside"><span class="cal-daynum">4</span></div>
             <div class="cal-cell is-outside"><span class="cal-daynum">5</span></div>

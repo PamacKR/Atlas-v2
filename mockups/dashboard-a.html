@@ -69,6 +69,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body { height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -76,10 +77,12 @@ body {
   font-size: var(--text-md);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Reserves the scrollbar's width permanently so its appearing or
-     disappearing (e.g. from a collapsed sidebar's shorter content)
-     never nudges the rest of the page horizontally. */
-  scrollbar-gutter: stable;
+  /* The page itself never scrolls — only #main does (see below). That
+     means #sidebar is a plain fixed-height sibling that never
+     participates in any scroll calculation at all, so it structurally
+     cannot shift by even a subpixel when scrolling, on any page,
+     ever — not a patch for one page's content height, a guarantee. */
+  overflow: hidden;
 }
 
 /* Minimal scrollbar everywhere: thin, no track, accent-colored thumb —
@@ -87,14 +90,15 @@ body {
    ambient yellow/gold from the OS theme, not the app's own accent). */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--accent) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
-#shell { display: flex; min-height: 100vh; }
+#shell { display: flex; height: 100vh; }
 
 /* --- Sidebar: no panel, no border, no background. Just nav. -----
    Collapsible to icon-only — toggled by #sidebar-toggle's script at
@@ -114,10 +118,14 @@ body {
    the bottom of the visible viewport entirely. Sticky positioning
    still works as the absolute-positioning containing block for the
    toggle button, same as relative did. */
+/* Plain relative + height:100% now that #shell has a fixed height:100vh
+   and #main (not the page) is the thing that scrolls — the sidebar is
+   simply never inside anything that scrolls, so there's no sticky
+   recalculation, and no subpixel jitter possible even at the very
+   bottom of a long scroll. */
 #sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  position: relative;
+  height: 100%;
   width: 224px;
   flex-shrink: 0;
   padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
@@ -270,8 +278,14 @@ nav { display: flex; flex-direction: column; gap: 2px; }
    whether that specific page's content was tall enough to scroll.
    flex:1 has no such failure mode: it distributes the real rendered
    space directly, correctly, in any scrollbar state. */
+/* #main is the only scroll container on the page (see body's
+   overflow:hidden) — height:100% + its own overflow-y:auto, with the
+   scrollbar gutter reserved here instead of on body. */
 #main {
   flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
 }
 

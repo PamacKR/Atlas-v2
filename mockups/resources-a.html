@@ -69,6 +69,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body { height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -76,25 +77,29 @@ body {
   font-size: var(--text-md);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Reserves the scrollbar's width permanently so its appearing or
-     disappearing (e.g. from a collapsed sidebar's shorter content)
-     never nudges the rest of the page horizontally. */
-  scrollbar-gutter: stable;
+  /* The page itself never scrolls — only #main does (see below). That
+     means #sidebar is a plain fixed-height sibling that never
+     participates in any scroll calculation at all, so it structurally
+     cannot shift by even a subpixel when scrolling, on any page,
+     ever — not a patch for one page's content height, a guarantee. */
+  overflow: hidden;
 }
 
-/* Minimal scrollbar everywhere: thin, no track, accent-colored thumb —
-   not the chunky default OS scrollbar (which was rendering as some
-   ambient yellow/gold from the OS theme, not the app's own accent). */
+/* Minimal scrollbar everywhere: thin, no track, subtle white thumb —
+   not the chunky default OS scrollbar (which was rendering some
+   ambient yellow/gold), and not the app's accent either (too loud for
+   something that's supposed to fade into the background). */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--accent) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
-#shell { display: flex; min-height: 100vh; }
+#shell { display: flex; height: 100vh; }
 
 /* --- Sidebar: no panel, no border, no background. Just nav. -----
    Collapsible to icon-only — toggled by #sidebar-toggle's script at
@@ -105,13 +110,12 @@ body {
 /* Left/right padding equal and identical in both states — expanded used
    to carry a much bigger left inset (56px) than collapsed (18px), so
    every icon visibly jumped inward when expanding. Only width changes now. */
-/* sticky + explicit height:100vh — see dashboard-a.html's identical
-   comment for why relative + implicit stretch pushes the toggle/
-   nav-meta off the bottom of the viewport on any page taller than it. */
+/* Plain relative + height:100% — see dashboard-a.html's identical
+   comment: #main (not the page) is the only scroll container now, so
+   the sidebar is never inside anything that scrolls at all. */
 #sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  position: relative;
+  height: 100%;
   width: 224px;
   flex-shrink: 0;
   padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
@@ -255,8 +259,14 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 /* Plain flex:1, no vw-based max-width — see dashboard-a.html's
    identical comment for why calc(100vw - Npx) overflows past the true
    visible edge whenever a real scrollbar is present. */
+/* #main is the only scroll container on the page (see body's
+   overflow:hidden) — height:100% + its own overflow-y:auto, with the
+   scrollbar gutter reserved here instead of on body. */
 #main {
   flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
 }
 
