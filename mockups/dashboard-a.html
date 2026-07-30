@@ -76,6 +76,10 @@ body {
   font-size: var(--text-md);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Reserves the scrollbar's width permanently so its appearing or
+     disappearing (e.g. from a collapsed sidebar's shorter content)
+     never nudges the rest of the page horizontally. */
+  scrollbar-gutter: stable;
 }
 
 #shell { display: flex; min-height: 100vh; }
@@ -110,15 +114,19 @@ body {
   margin-bottom: var(--space-7);
   padding-left: var(--space-2);
 }
+/* Fixed 34x34 in both states (not just collapsed) — the wordmark row's
+   own height must never change with collapse, or everything below it
+   (the whole nav list) shifts up/down by the difference. Only the
+   tile's background/radius are collapse-conditional. */
 .wordmark .wm-a {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  width: 34px; height: 34px;
 }
 #sidebar.collapsed .wordmark { padding-left: 0; justify-content: center; }
 #sidebar.collapsed .wordmark .wm-a {
-  width: 34px; height: 34px;
   border-radius: var(--radius-md);
   background: var(--bg-hover);
 }
@@ -130,7 +138,8 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 10px var(--space-3);
+  height: 38px;
+  padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   font-size: var(--text-md);
@@ -139,6 +148,7 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 }
 .nav-item:hover { color: var(--text); background: var(--bg-hover); }
 .nav-item.active { color: var(--text); font-weight: 500; }
+.nav-label { line-height: 1; }
 .nav-icon {
   width: 19px; height: 19px;
   flex-shrink: 0;
@@ -147,22 +157,17 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   justify-content: center;
 }
 .nav-icon svg { width: 100%; height: 100%; }
-.nav-item .dot {
-  width: 3px; height: 3px; border-radius: 50%;
-  background: var(--accent);
-  opacity: 0;
-  margin-left: auto;
-  transition: opacity var(--transition);
-}
-.nav-item.active .dot { opacity: 1; }
 
+/* Fixed height (not padding-derived) so the row is pixel-identical in
+   both states — a label's line-height and an icon's own box-height
+   don't naturally match, which is what made items look taller
+   expanded than collapsed even with equal padding. */
 #sidebar.collapsed .nav-item {
   justify-content: center;
-  padding: 10px;
+  padding: 0 10px;
   border-radius: var(--radius-md);
 }
-#sidebar.collapsed .nav-label,
-#sidebar.collapsed .nav-item .dot { display: none; }
+#sidebar.collapsed .nav-label { display: none; }
 
 .nav-spacer { flex: 1; }
 
@@ -210,21 +215,20 @@ nav { display: flex; flex-direction: column; gap: 2px; }
    real columns/gaps and bigger type, not into stretching a fixed-width
    row until a gap opens in the middle of it, which is what happened
    the first time this was tried. */
-/* clamp(), not a fixed px cap — my screenshots are all taken at 1440px,
-   so a fixed 1260px cap looked fine to me but leaves a growing unused
-   strip on any wider real window (likely what's happening on your end).
-   Scales with the actual window instead, capped so rows can't run
-   absurdly wide either. */
+/* Exact, not a vw guess: max-width is the viewport minus the sidebar's
+   actual current width, so #main always fills precisely what's left —
+   no percentage-based approximation that still falls short (or leaves
+   a strip) on a real window whose size wasn't one of the ones tested.
+   The 1800px ceiling only ever engages on genuinely ultra-wide displays,
+   so rows don't run absurdly long. */
 #main {
   flex: 1;
   padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
-  max-width: clamp(1080px, 86vw, 1560px);
+  max-width: min(1800px, calc(100vw - 224px));
   transition: max-width var(--transition);
 }
-/* Collapsing the sidebar frees ~148px — #main should grow into that
-   space instead of leaving it empty next to a narrower rail. */
 #shell.sidebar-collapsed #main {
-  max-width: clamp(1220px, 94vw, 1700px);
+  max-width: min(1800px, calc(100vw - 76px));
 }
 
 .topline {
@@ -451,32 +455,26 @@ h2 {
       <div class="nav-item active" title="Dashboard">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5a1 1 0 0 0 1 1H9a1 1 0 0 0 1-1V15a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4.5a1 1 0 0 0 1 1h2.5a1 1 0 0 0 1-1V10"/></svg></span>
         <span class="nav-label">Dashboard</span>
-        <span class="dot"></span>
       </div>
       <div class="nav-item" title="Courses">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span>
         <span class="nav-label">Courses</span>
-        <span class="dot"></span>
       </div>
       <div class="nav-item" title="Resources">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></span>
         <span class="nav-label">Resources</span>
-        <span class="dot"></span>
       </div>
       <div class="nav-item" title="Notes">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><line x1="8.5" y1="13" x2="15.5" y2="13"/><line x1="8.5" y1="17" x2="13.5" y2="17"/></svg></span>
         <span class="nav-label">Notes</span>
-        <span class="dot"></span>
       </div>
       <div class="nav-item" title="Calendar">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></svg></span>
         <span class="nav-label">Calendar</span>
-        <span class="dot"></span>
       </div>
       <div class="nav-item" title="Settings">
         <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z"/></svg></span>
         <span class="nav-label">Settings</span>
-        <span class="dot"></span>
       </div>
     </nav>
     <div class="nav-spacer"></div>
