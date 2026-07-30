@@ -2,20 +2,22 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-29 (Atlas-v2 — the two design-independent fixes from last session's "start here" list are both done and verified. See "Next session" immediately below.)
+**Last updated:** 2026-07-30 (Atlas-v2 — a full plan for implementing the UI overhaul into the real app was researched, written, and approved this session. **Zero implementation has happened** — no file under `src/` has changed. See "Next session" immediately below before touching anything.)
 
 ## Next session — start here
 
-**Nothing is half-finished. The working tree is clean, all four verify suites pass, and everything is committed and pushed.**
+**Planning only, nothing built. Do not start implementation without the user explicitly saying to start** — this was clarified directly mid-session after a premature start (one exploratory `Read` of `index.html`, no edits) was corrected. Treat "the plan is approved" and "you may begin executing it" as two separate authorizations.
 
-**What's ready to build next:**
+**Where things actually stand:**
 
-1. **Everything else in Phase 5** (search results redesign/sectioning, Dashboard v2, configurable shortcuts) — but see the sequencing note below.
-2. **A real app icon** — packaging (`package:win`) currently uses electron-builder's default Electron icon since no logo exists yet. Swapping in a real `.ico` later is a one-line change (`build.win.icon` in `package.json`), not a redo.
+1. **Design direction is now real and approved** — six static HTML mockups (`mockups/dashboard-a.html`, `courses-a`, `resources-a`, `notes-a`, `calendar-a`, `settings-a`, all on branch `ui-overhaul`) went through many rounds of hands-on feedback and are accepted. `ui-brief.md` holds the design thesis. **This resolves the old standing blocker** in `AGENTS.md`'s "don't patch the UI" section — see that file's 2026-07-30 addendum at the end of that section.
+2. **A full implementation plan is written and approved**, at `C:\Users\Pamac\.claude\plans\vectorized-gliding-sketch.md` — 14 stages (A through N): unmocked-surface mockups (course-detail, overlays, search results, custom controls, light theme) → token-layer foundation → primitives/shell/custom-controls → page-by-page conversion (Dashboard, Courses+detail, Resources, Notes, Calendar, Settings) → search overhaul → new Settings features → empty/first-run states → light-theme+responsive audit → docs+merge. Full detail, file:line references, and reasoning are in that plan file — this summary is not a substitute for reading it.
+3. **A 14-item task list exists** (task tracker IDs #57–70, one per stage, all currently `pending`) — start with #57 (Stage A) when actually given the go-ahead.
+4. **Four real errors were found in `mockups/settings-a.html` during planning, not yet fixed in the mockup itself**: the MCP server is stdio with no port (`src/main/mcpServer.ts:190`) and Atlas never launches or observes it (`main.ts` never imports it) — so the mockup's "MCP server running — port 8420" status pill and its `{"url": "http://localhost:8420/mcp"}` config block are both fiction, and the "start on login / minimize to tray keeps the agent alive" reasoning that shipped with that mockup is false. There is also no `needs_ocr` field anywhere — "9 files need OCR" should read `extraction_status = 'empty'` instead. **The mockup file on disk still shows the wrong version** — Stage A / Stage I work should either correct `settings-a.html` directly or treat the plan file's corrected description as authoritative over the stale mockup, whichever the executing session decides.
+5. **Decisions locked in via user Q&A this session** (recorded in full in the plan file): mock up the four remaining unmocked surfaces first, same accept/reject loop as the six pages; replace *all* native popups (blocking `alert()`, every `<select>`, all 5 right-click context menus) with custom themed HTML, not just some; Settings → AI agent trimmed to two truthful controls (copy-able `.mcp.json` snippet + an agent kill switch) with start-on-login and minimize-to-tray dropped entirely; Dashboard v2 and Empty/first-run states are folded into this effort; command palette, density setting, and per-course readiness view were **not** selected and stay out of scope for now.
+6. **A real app icon** is still separately pending — unrelated to the above, still just a one-line `build.win.icon` swap once a logo exists (`ROADMAP.md`).
 
-**The one standing rule that must not be violated (see `AGENTS.md`):** the UI is being replaced wholesale in Phase 6. **Do not make cosmetic fixes to `styles.css`/`index.html`**, and **do not start the redesign or draft a logo** — the user is supplying the design framework and logo concept themselves, deliberately and on their own schedule, and said they won't ask to proceed without giving something concrete to work from. Waiting is correct behavior here, not a blocker to raise.
-
-**Sequencing decision worth honoring:** Phase 5's search-results layout, Dashboard v2 widgets, and shortcut-rebinding UI are all *visual* surfaces. Build their logic/data layers (schema, queries, the shortcut registry, read/seen marking) now if asked, but let the visual surfaces land inside the Phase 6 redesign — otherwise those screens get built twice.
+**Work continues on the `ui-overhaul` branch**, one commit per stage, merged to `main` only once the whole plan is done — expect that branch to look like a half-converted app in the middle of this, which is correct, not a regression to fix.
 
 ## Session 2026-07-29 (continued) — the two ready-to-build fixes from last session
 
