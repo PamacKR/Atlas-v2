@@ -209,7 +209,20 @@ nav { display: flex; flex-direction: column; gap: 2px; }
    is already left-aligned at the same x — centering it in collapsed
    would snap instantly (it can't transition) while the sidebar's width
    is still animating, which is what caused the visible jump on collapse. */
+/* Collapsed sidebar is only 76px wide (40px of actual content after
+   its own padding), too narrow to fit the 34px icon box plus
+   .nav-item's own 10px/side padding (needs 54px) — the icon was
+   overflowing .nav-item's own box, so the hover highlight (painted on
+   .nav-item, sized to that too-narrow box) ended before the icon
+   visually did, reading as misaligned. Hover now paints on .nav-icon
+   itself instead — exactly the 34px box the icon actually occupies,
+   same approach the wordmark tile already uses. */
 #sidebar.collapsed .nav-item {
+  border-radius: var(--radius-md);
+}
+#sidebar.collapsed .nav-item:hover { background: none; }
+#sidebar.collapsed .nav-item:hover .nav-icon {
+  background: var(--bg-hover);
   border-radius: var(--radius-md);
 }
 #sidebar.collapsed .nav-label { display: none; }

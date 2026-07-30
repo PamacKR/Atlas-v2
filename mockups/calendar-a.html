@@ -152,7 +152,14 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   justify-content: center;
 }
 .nav-icon svg { width: 19px; height: 19px; }
+/* Hover paints on .nav-icon (34px, matching the wordmark tile), not
+   .nav-item — the collapsed sidebar's content area is only 40px wide,
+   too narrow to fit the icon plus .nav-item's own padding, so the
+   icon overflowed .nav-item's box and its hover highlight ended
+   before the icon visually did. */
 #sidebar.collapsed .nav-item { border-radius: var(--radius-md); }
+#sidebar.collapsed .nav-item:hover { background: none; }
+#sidebar.collapsed .nav-item:hover .nav-icon { background: var(--bg-hover); border-radius: var(--radius-md); }
 #sidebar.collapsed .nav-label { display: none; }
 
 .nav-spacer { flex: 1; }

@@ -145,7 +145,14 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   justify-content: center;
 }
 .nav-icon svg { width: 19px; height: 19px; }
+/* Hover paints on .nav-icon (34px, matching the wordmark tile), not
+   .nav-item — the collapsed sidebar's content area is only 40px wide,
+   too narrow to fit the icon plus .nav-item's own padding, so the
+   icon overflowed .nav-item's box and its hover highlight ended
+   before the icon visually did. */
 #sidebar.collapsed .nav-item { border-radius: var(--radius-md); }
+#sidebar.collapsed .nav-item:hover { background: none; }
+#sidebar.collapsed .nav-item:hover .nav-icon { background: var(--bg-hover); border-radius: var(--radius-md); }
 #sidebar.collapsed .nav-label { display: none; }
 
 .nav-spacer { flex: 1; }
@@ -278,10 +285,10 @@ h2 {
 .settings-row:last-child { border-bottom: none; }
 .row-label { font-size: var(--text-md); font-weight: 450; }
 .row-hint { font-size: var(--text-sm); color: var(--text-faint); margin-top: 2px; max-width: 480px; }
-.row-control { flex-shrink: 0; display: flex; align-items: center; gap: var(--space-3); }
+.row-control { flex-shrink: 0; display: flex; align-items: center; gap: var(--space-4); }
 
 /* Theme / generic chip group */
-.chip-group { display: flex; gap: 2px; }
+.chip-group { display: flex; gap: var(--space-2); }
 .chip {
   padding: 7px 14px;
   border: 1px solid var(--rule);
@@ -423,15 +430,9 @@ select:hover { border-color: var(--rule-strong); }
 .agent-log-row .al-what { color: var(--text-muted); }
 
 /* --- Storage --- */
-.storage-bar-track {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--rule);
-  overflow: hidden;
-  display: flex;
-  margin: var(--space-3) 0;
-}
-.storage-bar-seg { height: 100%; }
+/* No usage bar — Atlas has no storage quota/limit, so a progress-bar
+   visual would imply a cap that doesn't exist. Numbers alone say
+   what's actually true: how much space, split by category. */
 .storage-legend {
   display: flex;
   flex-wrap: wrap;
@@ -644,7 +645,7 @@ select:hover { border-color: var(--rule-strong); }
                   <option>On launch only</option>
                   <option>Off</option>
                 </select>
-                <button class="link-button">Sync now</button>
+                <button class="btn">Sync now</button>
               </div>
             </div>
             <div class="settings-row">
@@ -659,7 +660,7 @@ select:hover { border-color: var(--rule-strong); }
                   <option>Every 60 minutes</option>
                   <option>Off</option>
                 </select>
-                <button class="link-button">Sync now</button>
+                <button class="btn">Sync now</button>
               </div>
             </div>
             <div class="settings-row">
@@ -772,12 +773,7 @@ select:hover { border-color: var(--rule-strong); }
             <h2>Usage</h2>
             <div class="settings-row" style="border-bottom:none;">
               <div style="flex:1;">
-                <div class="row-label">412 MB total</div>
-                <div class="storage-bar-track">
-                  <div class="storage-bar-seg" style="width:58%; background:#3b82f6"></div>
-                  <div class="storage-bar-seg" style="width:21%; background:#8b5cf6"></div>
-                  <div class="storage-bar-seg" style="width:21%; background:var(--rule-strong)"></div>
-                </div>
+                <div class="row-label" style="margin-bottom: var(--space-3);">412 MB total</div>
                 <div class="storage-legend">
                   <span><span class="n">239 MB</span> resources</span>
                   <span><span class="n">86 MB</span> Drive previews</span>
