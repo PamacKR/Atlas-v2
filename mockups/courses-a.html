@@ -572,6 +572,50 @@ h2 {
   transition: color var(--transition), background var(--transition);
 }
 .more:hover { color: var(--text); background: var(--bg-hover); }
+
+.viewmode {
+  display: flex;
+  gap: 2px;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+.viewmode span { cursor: pointer; padding: 2px 6px; border-radius: 6px; transition: color var(--transition), background var(--transition); }
+.viewmode span.active { color: var(--text); background: var(--bg-hover); }
+.viewmode span:hover { color: var(--text); }
+
+/* Grid view: same per-tile-border approach as Resources/Notes (see
+   their identical comments) — a painted grid-gap background would
+   turn an odd-numbered last row's empty cells into solid slabs. */
+.course-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  border-top: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+}
+.termgroup .course-grid { margin-top: var(--space-3); }
+.course-tile {
+  background: var(--bg);
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition: background var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.course-tile:hover { background: var(--bg-hover); }
+.course-tile .course-code { padding-left: 20px; }
+.course-tile .tile-stats {
+  display: flex;
+  gap: var(--space-5);
+  margin-top: var(--space-1);
+}
+.course-tile .course-next {
+  padding-left: 0;
+  margin-top: auto;
+}
+.course-tile:hover .course-next { max-height: 20px; opacity: 1; margin-top: var(--space-2); }
 </style>
 </head>
 <body>
@@ -641,9 +685,14 @@ h2 {
       <span class="sort">Name</span>
       <span class="sort">Files</span>
       <div class="toolbar-spacer"></div>
+      <div class="viewmode">
+        <span class="active" id="view-list-btn">List</span>
+        <span id="view-grid-btn">Grid</span>
+      </div>
       <span class="toggle-archived">Show archived</span>
     </div>
 
+    <div id="courses-list">
     <div class="termgroup">
       <div class="term-head">
         <h2>Monsoon 26</h2>
@@ -717,6 +766,72 @@ h2 {
         </div>
       </div>
     </div>
+    </div>
+
+    <div id="courses-grid" style="display:none">
+      <div class="termgroup">
+        <div class="term-head">
+          <h2>Monsoon 26</h2>
+          <span class="term-count">3 courses</span>
+        </div>
+        <div class="course-grid">
+          <div class="course-tile">
+            <div class="course-name"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Finance</span></div>
+            <div class="course-code">FIN-3563 / ECO-3563 / FIN-4563 / ECO-4563</div>
+            <div class="tile-stats">
+              <div><span class="stat-n">47</span><span class="stat-label">files</span></div>
+              <div><span class="stat-n is-urgent">6</span><span class="stat-label">due</span></div>
+            </div>
+            <div class="course-next">Next: <span class="accent">Problem Set 1</span> — Sat 23:59</div>
+          </div>
+          <div class="course-tile">
+            <div class="course-name"><span class="swatch" style="background:#8b5cf6"></span><span>Development Economics</span></div>
+            <div class="course-code">ECO-3500</div>
+            <div class="tile-stats">
+              <div><span class="stat-n">62</span><span class="stat-label">files</span></div>
+              <div><span class="stat-n is-urgent">3</span><span class="stat-label">due</span></div>
+            </div>
+            <div class="course-next">Next: <span class="accent">Reading: Ch. 7</span> — today 18:29</div>
+          </div>
+          <div class="course-tile">
+            <div class="course-name"><span class="swatch" style="background:#f59e0b"></span><span>Economics of Gender</span></div>
+            <div class="course-code">ECO-3660</div>
+            <div class="tile-stats">
+              <div><span class="stat-n">28</span><span class="stat-label">files</span></div>
+              <div><span class="stat-n is-urgent">3</span><span class="stat-label">due</span></div>
+            </div>
+            <div class="course-next">Next: <span class="accent">Quiz 1</span> — Fri 10:00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="termgroup">
+        <div class="term-head">
+          <h2>Spring 27</h2>
+          <span class="term-count">2 courses</span>
+        </div>
+        <div class="course-grid">
+          <div class="course-tile">
+            <div class="course-name"><span class="swatch" style="background:#10b981"></span><span>Technology Law and Policy</span></div>
+            <div class="course-code">ENT-2032 / POL-2120 / IR-2070</div>
+            <div class="tile-stats">
+              <div><span class="stat-n">21</span><span class="stat-label">files</span></div>
+              <div><span class="stat-n">2</span><span class="stat-label">due</span></div>
+            </div>
+            <div class="course-next">Next: <span class="accent">Reading Response</span> — tomorrow</div>
+          </div>
+          <div class="course-tile">
+            <div class="course-name"><span class="swatch" style="background:#ec4899"></span><span>The Theory of Corporate Finance and Banking</span></div>
+            <div class="course-code">FIN-3555 / FIN-4555</div>
+            <div class="tile-stats">
+              <div><span class="stat-n">38</span><span class="stat-label">files</span></div>
+              <div><span class="stat-n is-urgent">7</span><span class="stat-label">due</span></div>
+            </div>
+            <div class="course-next">Next: <span class="accent">Case Study</span> — Mon 23:59</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="more">Show 2 archived courses →</div>
   </main>
@@ -726,6 +841,23 @@ h2 {
   document.getElementById('sidebar-toggle').addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('collapsed');
     document.getElementById('shell').classList.toggle('sidebar-collapsed');
+  });
+
+  const listBtn = document.getElementById('view-list-btn');
+  const gridBtn = document.getElementById('view-grid-btn');
+  const listPane = document.getElementById('courses-list');
+  const gridPane = document.getElementById('courses-grid');
+  listBtn.addEventListener('click', () => {
+    listBtn.classList.add('active');
+    gridBtn.classList.remove('active');
+    listPane.style.display = '';
+    gridPane.style.display = 'none';
+  });
+  gridBtn.addEventListener('click', () => {
+    gridBtn.classList.add('active');
+    listBtn.classList.remove('active');
+    gridPane.style.display = '';
+    listPane.style.display = 'none';
   });
 </script>
 </body>

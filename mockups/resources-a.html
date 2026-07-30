@@ -562,6 +562,48 @@ h2 {
   margin: var(--space-6) 0 var(--space-3);
 }
 .groupmeta:first-child { margin-top: 0; }
+
+/* Grid view: hairline-bordered tiles, not shadowed cards. Borders live
+   on each tile (not as a painted grid-gap background) — with a group
+   of 6 files in a 4-column grid, the last row only has 2 real tiles,
+   and a gap-background would paint the two empty trailing cells as a
+   solid slab. Per-tile borders mean an empty cell has nothing in it at
+   all, so it's invisible instead of a stray rectangle. */
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  border-top: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+  margin-bottom: var(--space-3);
+}
+.file-tile {
+  background: var(--bg);
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition: background var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.file-tile:hover { background: var(--bg-hover); }
+.file-tile .tile-kind { color: var(--text-faint); }
+.file-tile .tile-kind svg { width: 22px; height: 22px; }
+.file-tile .file-name {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.file-tile .tile-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: var(--space-2);
+}
 </style>
 <body>
 <div id="shell">
@@ -656,11 +698,12 @@ h2 {
           <span class="sort">Name</span>
           <span class="sort">Course</span>
           <div class="viewmode">
-            <span class="active">List</span>
-            <span>Grid</span>
+            <span class="active" id="view-list-btn">List</span>
+            <span id="view-grid-btn">Grid</span>
           </div>
         </div>
 
+        <div id="files-list">
         <div class="groupmeta">This week</div>
         <div class="file-list">
           <div class="file-row">
@@ -747,6 +790,106 @@ h2 {
         </div>
 
         <div class="more">Show 185 more files →</div>
+        </div>
+
+        <div id="files-grid" style="display:none">
+          <div class="groupmeta">This week</div>
+          <div class="file-grid">
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">W12 — Solow Growth Model.pdf</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+                <span class="file-added">2h ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">Case study brief.docx</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
+                <span class="file-added">5h ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">ECO 2202 course index</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+                <span class="file-added">1d ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
+              <span class="file-name">Gender &amp; labour markets.pdf</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
+                <span class="file-added">2d ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 21h10M9 17v4M15 17v4"/></svg></span>
+              <span class="file-name">Lecture 9 slides.pptx</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+                <span class="file-added">3d ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">Platform regulation — EU AI Act.pdf</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#10b981"></span><span>Tech Law</span></span>
+                <span class="file-added">4d ago</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="groupmeta">Earlier</div>
+          <div class="file-grid">
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">Behavioural biases — reading list.pdf</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+                <span class="file-added">1w ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16"/></svg></span>
+              <span class="file-name">Grades — midterm breakdown.xlsx</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#ec4899"></span><span>Corporate Fin</span></span>
+                <span class="file-added">1w ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">W11 — Convergence and catch-up.pdf</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#8b5cf6"></span><span>Dev Economics</span></span>
+                <span class="file-added">1w ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">Intra-household bargaining.pdf</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#f59e0b"></span><span>Econ of Gender</span></span>
+                <span class="file-added">2w ago</span>
+              </div>
+            </div>
+            <div class="file-tile">
+              <span class="tile-kind"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></span>
+              <span class="file-name">Syllabus — Monsoon 26.pdf</span>
+              <div class="tile-foot">
+                <span class="file-course"><span class="swatch" style="background:#3b82f6"></span><span>Behavioral Fin</span></span>
+                <span class="file-added">3w ago</span>
+              </div>
+            </div>
+          </div>
+          <div class="more">Show 185 more files →</div>
+        </div>
       </div>
     </div>
   </main>
@@ -756,6 +899,23 @@ h2 {
   document.getElementById('sidebar-toggle').addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('collapsed');
     document.getElementById('shell').classList.toggle('sidebar-collapsed');
+  });
+
+  const listBtn = document.getElementById('view-list-btn');
+  const gridBtn = document.getElementById('view-grid-btn');
+  const listPane = document.getElementById('files-list');
+  const gridPane = document.getElementById('files-grid');
+  listBtn.addEventListener('click', () => {
+    listBtn.classList.add('active');
+    gridBtn.classList.remove('active');
+    listPane.style.display = '';
+    gridPane.style.display = 'none';
+  });
+  gridBtn.addEventListener('click', () => {
+    gridBtn.classList.add('active');
+    listBtn.classList.remove('active');
+    gridPane.style.display = '';
+    listPane.style.display = 'none';
   });
 </script>
 </body>
