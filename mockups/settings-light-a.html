@@ -2,40 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Atlas — Settings (Direction A: continuous)</title>
+<title>Atlas — Settings, light theme (Direction A: continuous)</title>
 <style>
 /* ---------------------------------------------------------------
-   Atlas UI overhaul — Direction A, "continuous"
+   Atlas UI overhaul — Direction A, "continuous" — LIGHT THEME
    Mockup only. Not wired into the app.
 
-   Per ROADMAP.md's "Settings redesign" item: real sections
-   (Appearance / Sources / Shortcuts / AI & Integration / Storage /
-   About) instead of everything on one or two tabs, plus two genuinely
-   new surfaces — an in-app view of the AI agent/MCP connection
-   (today only documented in mcp-setup.md) and storage/extraction-
-   status/backup. Content decided in conversation before this mockup:
-   kept what's real (theme/accent, sync config, Drive/Classroom
-   connections, shortcut rebinding, extraction status), added the two
-   new surfaces plus "start on login"/"minimize to tray" (genuinely
-   useful here since the MCP server needs Atlas running for the agent
-   to work at all), and deliberately left out generic template filler
-   that doesn't match what Atlas actually is — no language/date-format
-   (no i18n exists), no Notifications tab (Atlas is pull-not-push by
-   design), no separate Privacy tab (the one real privacy lever —
-   cutting off agent access — lives under AI & Integration instead).
+   Light-theme sign-off variant of settings-a.html (post the
+   2026-07-30 AI-section correction — MCP is stdio-only, no port,
+   no observable status, no activity log; start-on-login/tray
+   dropped). Same token substitution as dashboard-light-a.html —
+   see that file's header comment for the palette rationale.
+   Chosen deliberately as the second sign-off page alongside
+   Dashboard because it's the densest surface (6 sections' worth of
+   rows, chips, toggles, selects) — if the light palette holds up
+   here, it holds up everywhere simpler.
    --------------------------------------------------------------- */
 
 :root {
-  --bg:            #0f0f0e;
-  --bg-hover:      #1a1a17;
-  --text:          #ecebe6;
-  --text-muted:    #8d8a83;
-  --text-faint:    #5b5852;
-  --rule:          #24241f;
-  --rule-strong:   #302f29;
-  --accent:        #d9a441;
-  --urgent:        #e0574a;
-  --good:          #3ba55d;
+  --bg:            #faf8f4;
+  --bg-hover:      #f0ece2;
+  --text:          #221f19;
+  --text-muted:    #6b6558;
+  --text-faint:    #a39c8c;
+  --rule:          #e7e1d3;
+  --rule-strong:   #d6cdb8;
+  --accent:        #b8842f;
+  --urgent:        #c2432f;
+  --good:          #2f8a4c;
 
   --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
 
@@ -75,12 +69,12 @@ body {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
 }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 #shell { display: flex; height: 100vh; }
@@ -145,11 +139,6 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   justify-content: center;
 }
 .nav-icon svg { width: 19px; height: 19px; }
-/* Hover paints on .nav-icon (34px, matching the wordmark tile), not
-   .nav-item — the collapsed sidebar's content area is only 40px wide,
-   too narrow to fit the icon plus .nav-item's own padding, so the
-   icon overflowed .nav-item's box and its hover highlight ended
-   before the icon visually did. */
 #sidebar.collapsed .nav-item { border-radius: var(--radius-md); }
 #sidebar.collapsed .nav-item:hover { background: none; }
 #sidebar.collapsed .nav-item:hover .nav-icon { background: var(--bg-hover); border-radius: var(--radius-md); }
@@ -232,8 +221,6 @@ h2 {
   color: var(--text-faint);
 }
 
-/* --- Settings layout: narrow section rail (filter/nav, same pattern
-   as Resources'/Notes' course-rail) + content column. --- */
 #settings-layout {
   display: grid;
   grid-template-columns: 200px 1fr;
@@ -263,7 +250,6 @@ h2 {
 .rail-item.active .rail-title { color: var(--text); font-weight: 500; }
 .rail-item .rail-hint { font-size: var(--text-xs); color: var(--text-faint); }
 
-/* --- Section content: hairline-separated rows, no cards. --- */
 .settings-panel { display: none; }
 .settings-panel.active { display: block; }
 
@@ -287,7 +273,6 @@ h2 {
 .row-hint { font-size: var(--text-sm); color: var(--text-faint); margin-top: 2px; max-width: 480px; }
 .row-control { flex-shrink: 0; display: flex; align-items: center; gap: var(--space-4); }
 
-/* Theme / generic chip group */
 .chip-group { display: flex; gap: var(--space-2); }
 .chip {
   padding: 7px 14px;
@@ -303,7 +288,6 @@ h2 {
 .chip:hover { color: var(--text); border-color: var(--rule-strong); }
 .chip.active { color: var(--text); background: var(--bg-hover); border-color: var(--rule-strong); }
 
-/* Accent color swatches */
 .accent-swatches { display: flex; gap: var(--space-2); }
 .accent-dot {
   width: 22px; height: 22px;
@@ -315,7 +299,6 @@ h2 {
 .accent-dot:hover { transform: scale(1.08); }
 .accent-dot.active { border-color: var(--text); }
 
-/* Toggle switch */
 .toggle {
   position: relative;
   width: 36px; height: 21px;
@@ -331,11 +314,11 @@ h2 {
   top: 2px; left: 2px;
   width: 17px; height: 17px;
   border-radius: 50%;
-  background: var(--text-faint);
+  background: #fff;
   transition: transform var(--transition), background var(--transition);
 }
 .toggle.on { background: var(--accent); }
-.toggle.on::after { transform: translateX(15px); background: var(--bg); }
+.toggle.on::after { transform: translateX(15px); }
 
 select {
   padding: 7px var(--space-3);
@@ -370,7 +353,7 @@ select:hover { border-color: var(--rule-strong); }
 .btn.primary { color: var(--text); border-color: var(--rule-strong); }
 .btn.primary:hover { background: var(--bg-hover); }
 .btn.danger { color: var(--urgent); border-color: var(--rule); }
-.btn.danger:hover { border-color: var(--urgent); background: rgba(224, 87, 74, 0.08); }
+.btn.danger:hover { border-color: var(--urgent); background: rgba(194, 67, 47, 0.08); }
 .link-button {
   background: none;
   border: none;
@@ -382,7 +365,6 @@ select:hover { border-color: var(--rule-strong); }
 }
 .link-button:hover { color: var(--text); }
 
-/* Connection status pill */
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -395,7 +377,6 @@ select:hover { border-color: var(--rule-strong); }
 .status-dot.is-off { background: var(--text-faint); }
 .status-dot.is-error { background: var(--urgent); }
 
-/* --- AI & Integration: MCP config block --- */
 .mcp-config {
   position: relative;
   margin-top: var(--space-3);
@@ -414,25 +395,7 @@ select:hover { border-color: var(--rule-strong); }
   top: var(--space-2);
   right: var(--space-2);
 }
-.agent-log {
-  margin-top: var(--space-4);
-}
-.agent-log-row {
-  display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: var(--space-4);
-  padding: 7px 0;
-  font-size: var(--text-sm);
-  border-bottom: 1px solid var(--rule);
-}
-.agent-log-row:last-child { border-bottom: none; }
-.agent-log-row .al-time { color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.agent-log-row .al-what { color: var(--text-muted); }
 
-/* --- Storage --- */
-/* No usage bar — Atlas has no storage quota/limit, so a progress-bar
-   visual would imply a cap that doesn't exist. Numbers alone say
-   what's actually true: how much space, split by category. */
 .storage-legend {
   display: flex;
   flex-wrap: wrap;
@@ -467,7 +430,6 @@ select:hover { border-color: var(--rule-strong); }
 .backup-row .b-size { color: var(--text-faint); text-align: right; font-variant-numeric: tabular-nums; }
 .backup-row .b-restore { text-align: right; }
 
-/* --- Shortcuts sample list --- */
 .shortcut-row {
   display: flex;
   align-items: center;
@@ -584,8 +546,8 @@ select:hover { border-color: var(--rule-strong); }
               </div>
               <div class="row-control">
                 <div class="chip-group">
-                  <button class="chip active">Dark</button>
-                  <button class="chip">Light</button>
+                  <button class="chip">Dark</button>
+                  <button class="chip active">Light</button>
                 </div>
               </div>
             </div>
@@ -596,10 +558,10 @@ select:hover { border-color: var(--rule-strong); }
               </div>
               <div class="row-control">
                 <div class="accent-swatches">
-                  <span class="accent-dot active" style="background:#d9a441"></span>
+                  <span class="accent-dot active" style="background:#b8842f"></span>
                   <span class="accent-dot" style="background:#3b82f6"></span>
                   <span class="accent-dot" style="background:#8b5cf6"></span>
-                  <span class="accent-dot" style="background:#3ba55d"></span>
+                  <span class="accent-dot" style="background:#2f8a4c"></span>
                   <span class="accent-dot" style="background:#ec4899"></span>
                 </div>
               </div>
@@ -704,16 +666,7 @@ select:hover { border-color: var(--rule-strong); }
           </section>
         </div>
 
-        <!-- AI & INTEGRATION (new) ==================================== -->
-        <!-- Corrected 2026-07-30: the MCP server is a separate stdio
-             process, spawned by the agent's own tool — not something
-             Atlas launches or can observe. There is no port, no "is it
-             running" signal, and no activity log Atlas could populate
-             honestly. This section is cut down to the two things that
-             ARE true: the real copy-able config, and a kill switch the
-             server itself checks per tool call (still true even if
-             Atlas's window is closed, since the switch lives in the
-             shared database, not in app memory). -->
+        <!-- AI & INTEGRATION =========================================== -->
         <div class="settings-panel" data-panel="ai">
           <section class="settings-section">
             <h2>Agent access</h2>
@@ -740,7 +693,7 @@ select:hover { border-color: var(--rule-strong); }
           </section>
         </div>
 
-        <!-- STORAGE (new) ============================================= -->
+        <!-- STORAGE ==================================================== -->
         <div class="settings-panel" data-panel="storage">
           <section class="settings-section">
             <h2>Usage</h2>

@@ -611,15 +611,27 @@ h2 {
 }
 .more:hover { color: var(--text); background: var(--bg-hover); }
 
+/* Icon buttons, not text labels — matches the list/grid toggle used
+   in course-detail-a.html's Deadlines tab; this used to be plain
+   "List"/"Grid" text here, which read as inconsistent once the icon
+   version existed elsewhere. */
 .viewmode {
   display: flex;
   gap: 2px;
-  color: var(--text-faint);
-  font-size: var(--text-sm);
 }
-.viewmode span { cursor: pointer; padding: 2px 6px; border-radius: 6px; transition: color var(--transition), background var(--transition); }
-.viewmode span.active { color: var(--text); background: var(--bg-hover); }
-.viewmode span:hover { color: var(--text); }
+.viewmode button {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.viewmode button svg { width: 15px; height: 15px; }
+.viewmode button:hover { color: var(--text); background: var(--bg-hover); }
+.viewmode button.active { color: var(--text); background: var(--bg-hover); }
 
 /* Grid view: same per-tile-border approach as Resources/Notes (see
    their identical comments) — a painted grid-gap background would
@@ -724,8 +736,12 @@ h2 {
       <span class="sort">Files</span>
       <div class="toolbar-spacer"></div>
       <div class="viewmode">
-        <span class="active" id="view-list-btn">List</span>
-        <span id="view-grid-btn">Grid</span>
+        <button class="active" id="view-list-btn" title="List view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </button>
+        <button id="view-grid-btn" title="Grid view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </button>
       </div>
       <span class="toggle-archived">Show archived</span>
     </div>

@@ -2,50 +2,46 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Atlas — Dashboard (Direction A: continuous)</title>
+<title>Atlas — Dashboard, light theme (Direction A: continuous)</title>
 <style>
 /* ---------------------------------------------------------------
-   Atlas UI overhaul — Direction A, "continuous"
-   Mockup only. Not wired into the app. Real data from the user's
-   database (5 courses, 196 files, 14 upcoming deadlines).
+   Atlas UI overhaul — Direction A, "continuous" — LIGHT THEME
+   Mockup only. Not wired into the app.
 
-   Thesis: no cards. Hierarchy comes from typography and hairline
-   rules; every section is exactly as tall as its content, so
-   columns can never fail to "align" — there is nothing boxed to
-   align. Density comes from a strict rhythm, not from packing.
+   Light-theme sign-off variant of dashboard-a.html. Every rule below
+   this comment is identical to dashboard-a.html except the :root
+   token block and the scrollbar-thumb colors (which invert from a
+   white-based rgba to a black-based one) — same warm, typographic,
+   no-card design, just the light half of ui-brief.md §7's "light
+   and dark both required."
 
-   v2 changes (deadlines were dominating the page):
-   - Day-group headers removed. Each row carries its own day in the
-     gutter instead. Five labelled groups with their own rules and
-     margins cost more vertical space than the rows themselves did.
-   - Deadlines scoped to the near horizon only; the Calendar page
-     owns the full one.
-   - Courses promoted to a full-width strip: they're the navigation
-     spine, and "get me to a file" is a top reason to open Atlas.
-   - "Changed today" and "Recently added" merged. They answered the
-     same question twice.
+   Palette choices, explained:
+   - Background is a warm off-white (#faf8f4), not stark #fff — matches
+     the dark theme's warm-black (#0f0f0e) rather than going cold/blue,
+     and is easier on the eyes for the "open in a burst" use pattern.
+   - --accent kept close to the dark theme's gold but darkened
+     (#b8842f vs #d9a441) — the original gold's contrast against this
+     light background is too low wherever it's used as text/icon
+     color (signal counts, active tab underline), not just as a fill.
+   - --urgent similarly darkened for the same reason.
+   - --good is new here to match settings-a.html's addition — used
+     nowhere on the dashboard itself, kept for token-parity checking.
    --------------------------------------------------------------- */
 
 :root {
-  /* Written as tokens from the start — this is the layer the
-     design-style themes (brutalist/neomorphic/etc.) swap wholesale. */
-  --bg:            #0f0f0e;
-  --bg-hover:      #1a1a17;
-  --text:          #ecebe6;
-  --text-muted:    #8d8a83;
-  --text-faint:    #5b5852;
-  --rule:          #24241f;
-  --rule-strong:   #302f29;
-  --accent:        #d9a441;
-  --urgent:        #e0574a;
+  --bg:            #faf8f4;
+  --bg-hover:      #f0ece2;
+  --text:          #221f19;
+  --text-muted:    #6b6558;
+  --text-faint:    #a39c8c;
+  --rule:          #e7e1d3;
+  --rule-strong:   #d6cdb8;
+  --accent:        #b8842f;
+  --urgent:        #c2432f;
+  --good:          #2f8a4c;
 
   --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
 
-  /* Bumped up a step from the first pass — the page was leaving too much
-     unused width/height at 1440px. Growing type and rhythm (not just
-     stretching gaps between existing elements) is how that space gets
-     used without reintroducing the ragged-alignment problem stretching
-     caused last time. */
   --text-xs: 11.5px;
   --text-sm: 13px;
   --text-md: 14.5px;
@@ -77,52 +73,23 @@ body {
   font-size: var(--text-md);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* The page itself never scrolls — only #main does (see below). That
-     means #sidebar is a plain fixed-height sibling that never
-     participates in any scroll calculation at all, so it structurally
-     cannot shift by even a subpixel when scrolling, on any page,
-     ever — not a patch for one page's content height, a guarantee. */
   overflow: hidden;
 }
 
-/* Minimal scrollbar everywhere: thin, no track, accent-colored thumb —
-   not the chunky default OS scrollbar (which was rendering as some
-   ambient yellow/gold from the OS theme, not the app's own accent). */
+/* Thumb inverted to a black-based rgba — a white-based one (correct
+   on the dark theme) would render nearly invisible on this bg. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
 }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 #shell { display: flex; height: 100vh; }
 
-/* --- Sidebar: no panel, no border, no background. Just nav. -----
-   Collapsible to icon-only — toggled by #sidebar-toggle's script at
-   the bottom of the page. Collapsed nav items get real rounded
-   corners (--radius-md), not the sharper 5px used everywhere else,
-   since an icon-only rail reads as a row of buttons and buttons
-   asked for softer corners specifically. */
-/* Left/right padding equal and identical in both states — expanded used
-   to carry a much bigger left inset (56px) than collapsed (18px), so
-   every icon visibly jumped inward when expanding. Only width changes now. */
-/* sticky + explicit height:100vh instead of relative + implicit
-   stretch-to-match-main-height: #shell's default align-items:stretch
-   makes the sidebar exactly as tall as whatever main content is,
-   which on a page taller than the viewport (e.g. a busy month grid)
-   pushes the sidebar-toggle and "Synced/Agent connected" — pinned via
-   position:absolute/nav-spacer to the sidebar's own bottom edge — off
-   the bottom of the visible viewport entirely. Sticky positioning
-   still works as the absolute-positioning containing block for the
-   toggle button, same as relative did. */
-/* Plain relative + height:100% now that #shell has a fixed height:100vh
-   and #main (not the page) is the thing that scrolls — the sidebar is
-   simply never inside anything that scrolls, so there's no sticky
-   recalculation, and no subpixel jitter possible even at the very
-   bottom of a long scroll. */
 #sidebar {
   position: relative;
   height: 100%;
@@ -133,9 +100,7 @@ body {
   flex-direction: column;
   transition: width var(--transition), padding var(--transition);
 }
-#sidebar.collapsed {
-  width: 76px;
-}
+#sidebar.collapsed { width: 76px; }
 
 .wordmark {
   display: flex;
@@ -146,11 +111,6 @@ body {
   margin-bottom: var(--space-7);
   padding-left: 10px;
 }
-/* Height fixed at 34px in both states — the wordmark row's own height
-   must never change with collapse, or the nav list below it shifts.
-   Width is only pinned to 34px when collapsed, where it needs to read
-   as a square icon tile; in expanded it has to hug the "A" glyph, or a
-   fixed-width box opens a visible gap before "tlas". */
 .wordmark .wm-a {
   display: flex;
   align-items: center;
@@ -158,12 +118,6 @@ body {
   flex-shrink: 0;
   height: 34px;
 }
-/* No collapse-conditional padding/justify-content here — wordmark's own
-   left inset (10px) now matches .nav-item's exactly, so the "A" tile
-   lines up with the icon column in both states without needing to
-   center it. Centering used to be load-bearing while padding differed
-   between states; now it isn't, and (being non-animatable) it was also
-   what caused the visible jump described below. */
 #sidebar.collapsed .wordmark .wm-a {
   width: 34px;
   border-radius: var(--radius-md);
@@ -188,10 +142,6 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item:hover { color: var(--text); background: var(--bg-hover); }
 .nav-item.active { color: var(--text); font-weight: 500; }
 .nav-label { line-height: 1; }
-/* Box is 34px — matching wm-a's tile width — so the icon glyph's own
-   visual center lines up with the wordmark tile's visual center. Left
-   edges matched already; what didn't match was that a 34px tile and a
-   19px glyph put their centers 7.5px apart even with equal left insets. */
 .nav-icon {
   width: 34px; height: 34px;
   flex-shrink: 0;
@@ -200,45 +150,14 @@ nav { display: flex; flex-direction: column; gap: 2px; }
   justify-content: center;
 }
 .nav-icon svg { width: 19px; height: 19px; }
-
-/* Fixed height (not padding-derived) so the row is pixel-identical in
-   both states — a label's line-height and an icon's own box-height
-   don't naturally match, which is what made items look taller
-   expanded than collapsed even with equal padding. No justify-content
-   override either: padding is identical in both states, so the icon
-   is already left-aligned at the same x — centering it in collapsed
-   would snap instantly (it can't transition) while the sidebar's width
-   is still animating, which is what caused the visible jump on collapse. */
-/* Collapsed sidebar is only 76px wide (40px of actual content after
-   its own padding), too narrow to fit the 34px icon box plus
-   .nav-item's own 10px/side padding (needs 54px) — the icon was
-   overflowing .nav-item's own box, so the hover highlight (painted on
-   .nav-item, sized to that too-narrow box) ended before the icon
-   visually did, reading as misaligned. Hover now paints on .nav-icon
-   itself instead — exactly the 34px box the icon actually occupies,
-   same approach the wordmark tile already uses. */
-#sidebar.collapsed .nav-item {
-  border-radius: var(--radius-md);
-}
+#sidebar.collapsed .nav-item { border-radius: var(--radius-md); }
 #sidebar.collapsed .nav-item:hover { background: none; }
-#sidebar.collapsed .nav-item:hover .nav-icon {
-  background: var(--bg-hover);
-  border-radius: var(--radius-md);
-}
+#sidebar.collapsed .nav-item:hover .nav-icon { background: var(--bg-hover); border-radius: var(--radius-md); }
 #sidebar.collapsed .nav-label { display: none; }
 
 .nav-spacer { flex: 1; }
 
 .sidebar-toggle {
-  /* Absolutely positioned at a fixed offset from #sidebar's own border
-     box (position:relative on #sidebar above), matching the sidebar's
-     own left padding (18px) plus the same 10px inset used by
-     .nav-item/.wordmark, so its icon lands in the same column as the
-     nav icons above it in both states. */
-  /* left is nudged 10px past the sidebar/nav-item inset (18+10=28) to
-     account for the toggle's own 14px chevron being narrower than the
-     34px icon tiles above it — this puts its visual center, not just
-     its left edge, on the same column. */
   position: absolute;
   left: 28px;
   bottom: var(--space-5);
@@ -269,31 +188,6 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 }
 #sidebar.collapsed .nav-meta { display: none; }
 
-/* --- Main ------------------------------------------------------
-   Widened from the first pass (was capped at 1090px, leaving a lot
-   of the 1440px window unused) — but the extra room goes into wider
-   real columns/gaps and bigger type, not into stretching a fixed-width
-   row until a gap opens in the middle of it, which is what happened
-   the first time this was tried. */
-/* max-width is exactly the viewport minus the sidebar's current width —
-   no upper ceiling. A flat cap (tried previously) pins #main to a fixed
-   width regardless of sidebar state, so its right edge still shifts by
-   the full sidebar-width delta on any window wide enough to hit that
-   cap. Uncapped, #main's right edge is always the viewport's right
-   edge in both states — only the left edge (where the sidebar ends)
-   moves, which is the actual point of collapsing it. */
-/* Plain flex:1, no vw-based max-width. calc(100vw - Npx) looks exact
-   but isn't: 100vw is always the full viewport width and never
-   subtracts a real (non-overlay) scrollbar's width, so on any page
-   whose content happens to be tall enough to scroll, that formula
-   overflows past the true visible edge by the scrollbar's width —
-   which is exactly why this shifted between pages depending on
-   whether that specific page's content was tall enough to scroll.
-   flex:1 has no such failure mode: it distributes the real rendered
-   space directly, correctly, in any scrollbar state. */
-/* #main is the only scroll container on the page (see body's
-   overflow:hidden) — height:100% + its own overflow-y:auto, with the
-   scrollbar gutter reserved here instead of on body. */
 #main {
   flex: 1;
   height: 100%;
@@ -317,11 +211,6 @@ h1 {
 }
 h1 .dim { color: var(--text-faint); font-weight: 400; }
 
-/* Explicit shared height with .search (37px) rather than trusting
-   matching padding to produce matching height — an icon+text flex row
-   and a plain text input don't resolve their content-box height from
-   the same metrics, so equal padding alone left the pill ~2.5px
-   taller than the search box next to it. */
 .filter-pill {
   display: flex;
   align-items: center;
@@ -353,8 +242,6 @@ h1 .dim { color: var(--text-faint); font-weight: 400; }
 .search:hover { border-color: var(--rule-strong); }
 .search:focus { outline: none; border-color: var(--text-faint); }
 
-/* Live signals: one line, inline, no boxes. Each one names a thing
-   worth doing — not an inert count. */
 .signals {
   display: flex;
   gap: var(--space-5);
@@ -369,7 +256,6 @@ h1 .dim { color: var(--text-faint); font-weight: 400; }
 .signal.is-urgent .n { color: var(--urgent); }
 .signal.is-warn .n { color: var(--accent); }
 
-/* --- Section furniture ----------------------------------------- */
 .section-head {
   display: flex;
   align-items: baseline;
@@ -391,7 +277,6 @@ h2 {
 }
 .section-action:hover { color: var(--text); }
 
-/* --- Course strip: the navigation spine, full width ------------- */
 .courses {
   padding: var(--space-5) 0;
   border-bottom: 1px solid var(--rule);
@@ -434,10 +319,6 @@ h2 {
 }
 .course-cell .cmeta .due { color: var(--text); }
 
-/* --- Two balanced lists ---------------------------------------- */
-/* Columns are free to be different heights — that's the whole point of
-   having no boxes. Nothing needs to align, so each list runs exactly as
-   long as it's worth running. */
 .columns {
   display: grid;
   grid-template-columns: 1.05fr 1fr;
@@ -448,8 +329,6 @@ h2 {
 
 .section + .section { margin-top: var(--space-7); }
 
-/* Hover wash bleeds past the text via negative margin, so rows feel
-   like one continuous surface rather than separate hit targets. */
 .row {
   display: grid;
   gap: var(--space-3);
@@ -462,11 +341,6 @@ h2 {
 }
 .row:hover { background: var(--bg-hover); transform: translateX(2px); }
 
-/* Fixed columns, not `auto` — with `auto` each row right-aligns to a
-   different point depending on text length, which reads as ragged.
-   Widened a step alongside the rest of the page, proportionally, so
-   the extra room reads as "everything is a bit bigger," not as one
-   new gap. */
 .row.deadline { grid-template-columns: 48px 1fr 150px 46px; }
 .row.recent   { grid-template-columns: 34px 1fr 150px; }
 
@@ -500,8 +374,6 @@ h2 {
 
 .swatch { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
 
-/* Unread announcements: a marker in the same gutter the timestamps
-   use, so read and unread rows still sit on one grid. */
 .unread {
   display: inline-block;
   width: 5px; height: 5px;
@@ -580,7 +452,6 @@ h2 {
       <div class="signal is-warn"><span class="n">9</span><span class="t">files came back empty (OCR?)</span></div>
     </div>
 
-    <!-- COURSES: full-width strip, the way into everything --------- -->
     <section class="courses">
       <div class="section-head">
         <h2>Courses</h2>
@@ -615,11 +486,6 @@ h2 {
       </div>
     </section>
 
-    <!-- Back to the v2 structure the user preferred: Up next and
-         Announcements stacked in the left column, Recent as its own
-         right column — but Recent trimmed to 6, not 15. The previous
-         pass's "everything full-width" version buried Recent as an
-         afterthought below the fold instead of a peer to deadlines. -->
     <div class="columns">
       <div>
         <section>
@@ -660,9 +526,6 @@ h2 {
           <div class="more">9 more in the next fortnight →</div>
         </section>
 
-        <!-- "What did I miss" is a real reason to open Atlas in a burst.
-             Trimmed to 4 — this is a peek, not the full list. Unread
-             carry a marker; opening one clears it. -->
         <section class="section">
           <div class="section-head">
             <h2>Announcements</h2>
@@ -692,12 +555,6 @@ h2 {
         </section>
       </div>
 
-      <!-- Right column: Recent + Notes, wrapped together so grid
-           auto-placement can't scatter them — .columns has exactly 2
-           direct children (this div and the left one above), each
-           stacking its own sections via normal flow. Recent trimmed
-           to 6 (was 15): beyond a handful you'd search or open
-           Resources instead, a longer list adds length, not utility. -->
       <div>
       <section>
         <div class="section-head">
@@ -732,10 +589,6 @@ h2 {
         <div class="more">All 196 files →</div>
       </section>
 
-      <!-- Fills the gap under a shortened Recent. Only 2 notes exist
-           today, so this is genuinely thin content, not padding —
-           notes currently have zero presence anywhere on the
-           dashboard, which is its own small gap this closes. -->
       <section class="section">
         <div class="section-head">
           <h2>Notes</h2>
@@ -758,9 +611,6 @@ h2 {
 
 </div>
 <script>
-  // Demo-only: toggles the collapsed icon-rail state. In the real app this
-  // would persist to app_settings the same way the existing sidebar
-  // collapse toggle already does.
   document.getElementById('sidebar-toggle').addEventListener('click', () => {
     document.getElementById('sidebar').classList.toggle('collapsed');
     document.getElementById('shell').classList.toggle('sidebar-collapsed');
