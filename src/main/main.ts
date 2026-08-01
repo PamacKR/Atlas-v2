@@ -1062,7 +1062,14 @@ ipcMain.handle('dashboard:stats', () => {
   const upcomingDeadlineCount = (
     db
       .prepare(
-        'SELECT COUNT(*) AS count FROM deadlines WHERE completed = 0 AND due_at IS NOT NULL AND stale_import = 0 AND classroom_removed = 0'
+        `SELECT COUNT(*) AS count
+         FROM deadlines
+         WHERE completed = 0
+           AND due_at IS NOT NULL
+           AND stale_import = 0
+           AND classroom_removed = 0
+           AND date(due_at) >= date('now', 'localtime')
+           AND date(due_at) <= date('now', 'localtime', '+7 days')`
       )
       .get() as { count: number }
   ).count;

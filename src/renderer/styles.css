@@ -3711,6 +3711,12 @@ button#classroom-connect-confirm {
   font-weight: 500;
 }
 
+#sidebar .sidebar-nav-item.nav-item:focus { outline: none; }
+#sidebar .sidebar-nav-item.nav-item:focus-visible .nav-icon {
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 #sidebar .nav-icon {
   display: flex;
   align-items: center;
@@ -4177,6 +4183,26 @@ button#classroom-connect-confirm {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* Dashboard rows need a visibly roomy, rounded interactive surface even on
+   first paint, rather than inheriting the old tight list-item geometry. */
+#dashboard-main-grid li.dashboard-compact-row {
+  padding: 10px 16px;
+  margin: 0 -8px;
+  border-radius: var(--radius-md);
+}
+#dashboard-main-grid li.dashboard-compact-row:hover {
+  background: var(--bg-hover);
+  transform: translateX(2px);
+}
+#dashboard-main-grid .section-action,
+#dashboard-main-grid .dashboard-widget-footer-btn {
+  border-radius: var(--radius-sm);
+}
+#dashboard-main-grid .section-action:hover,
+#dashboard-main-grid .dashboard-widget-footer-btn:hover {
+  background: var(--bg-hover);
 }
 
 /* Courses — the approved default is an information-dense list, with grid
