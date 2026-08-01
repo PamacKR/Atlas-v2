@@ -4817,9 +4817,9 @@ button#classroom-connect-confirm {
 #courses-detail-view #watched-folder-list { list-style: none; margin: 0; padding: 0; }
 #courses-detail-view #deadline-list.view-list .deadline-item {
   display: grid;
-  grid-template-columns: 20px 24px minmax(0, 1fr) auto 120px;
+  grid-template-columns: 20px 24px minmax(0, 1fr) 88px 178px;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
   margin: 0 calc(var(--space-3) * -1);
@@ -4832,12 +4832,18 @@ button#classroom-connect-confirm {
 }
 #courses-detail-view #deadline-list.view-list .deadline-item:hover { background: var(--bg-hover); }
 #courses-detail-view #deadline-list .deadline-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--text-md); font-weight: 500; }
-#courses-detail-view #deadline-list .deadline-due { color: var(--text-muted); font-size: var(--text-sm); text-align: right; font-variant-numeric: tabular-nums; }
+#courses-detail-view #deadline-list .deadline-due { color: var(--text-muted); font-size: var(--text-sm); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #courses-detail-view #deadline-list .code,
 #courses-detail-view #deadline-list .deadline-edited-badge,
 #courses-detail-view #deadline-list .deadline-classroom-removed-badge { color: var(--text-faint); font-size: var(--text-xs); }
-#courses-detail-view #deadline-list.view-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-4); }
-#courses-detail-view #deadline-list.view-grid .deadline-item { border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; }
+#courses-detail-view #deadline-list.view-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0; margin: 0; border-top: 1px solid var(--rule); border-left: 1px solid var(--rule); }
+#courses-detail-view #deadline-list.view-grid .deadline-item { position: relative; min-width: 0; min-height: 118px; padding: var(--space-4); border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); border-radius: 0; background: transparent; text-align: left; }
+#courses-detail-view #deadline-list.view-grid .deadline-item:hover { background: var(--bg-hover); }
+#courses-detail-view #deadline-list.view-grid .deadline-checkbox { position: absolute; top: var(--space-3); right: var(--space-3); left: auto; z-index: 1; }
+#courses-detail-view #deadline-list.view-grid .icon-glyph { display: flex; align-items: center; justify-content: flex-start; height: 24px; margin: 0 0 var(--space-3); color: var(--text-faint); }
+#courses-detail-view #deadline-list.view-grid .icon-glyph .mono-icon svg { width: 21px; height: 21px; }
+#courses-detail-view #deadline-list.view-grid .icon-name { margin: 0; padding-right: var(--space-5); color: var(--text); font-size: var(--text-md); font-weight: 500; text-align: left; }
+#courses-detail-view #deadline-list.view-grid .icon-due { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: var(--text-sm); text-align: left; }
 #courses-detail-view #course-announcements-section h4,
 #courses-detail-view #course-assignments-section h4,
 #courses-detail-view #course-classwork-section h4,
