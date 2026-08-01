@@ -14,7 +14,8 @@ UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that
 - The Dashboard has been structurally rebuilt toward `mockups/dashboard-a.html`: the date/search share the top row, courses render as a five-column horizontal strip with colour swatches and aggregate metadata, and compact unboxed lists replace dashboard filter chips and card separators.
 - The global default accent is now the mockup amber (`#d9a441`), so a legacy persisted blue setting no longer applies.
 - `npm run build` and the full Electron `npm run verify` passed after this dashboard change. The Electron CSP warning is pre-existing development-mode output.
-- Next: visually compare the running Dashboard against the literal mockup, then finish remaining Dashboard details (announcement data and final action labels) before moving to the next page surface. Do not return to incremental cosmetic patching.
+- Dashboard/sidebar cosmetic mismatches reported on 2026-08-01 (collapsed-rail hover geometry, scrollbar corner rendering, and other minor spacing polish) are deliberately deferred at the user's request. Do not continue patching them until the final whole-app fidelity pass; the user's running app did not reflect the attempted CSS changes reliably.
+- Next: implement Resources and Notes directly from their mockups, then Calendar, Settings/search/overlays, and finally return to all deferred cross-surface fidelity work.
 
 **Historical state follows.**
 
