@@ -3753,6 +3753,7 @@ button#classroom-connect-confirm {
 }
 
 #sidebar.collapsed #sidebar-brand.wordmark {
+  display: flex;
   width: 34px;
   padding: 0;
   border-radius: var(--radius-md);
