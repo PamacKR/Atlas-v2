@@ -93,51 +93,35 @@
 
       <section id="page-courses" class="app-page" hidden>
         <div id="courses-list-view">
-          <div class="page-header">
-            <div>
-              <h2>Courses</h2>
-              <p class="muted">All your courses in one place.</p>
-            </div>
-            <div class="page-header-actions">
-              <button id="ashoka-import-button" type="button">Import from Ashoka Planner</button>
-              <button id="add-course-toggle" type="button">+ Add course</button>
+          <div class="courses-page-topline">
+            <h1>Courses <span id="courses-page-count" class="dim">0</span></h1>
+            <div class="courses-page-actions">
+              <button id="ashoka-import-button" type="button" class="section-action">Import from Ashoka Planner</button>
+              <button id="add-course-toggle" type="button" class="section-action">+ Add course</button>
             </div>
           </div>
 
           <form id="course-form" hidden>
             <input id="course-name" type="text" placeholder="Course name" required />
             <input id="course-code" type="text" placeholder="Code (optional)" />
-            <select id="course-term">
-              <option value="">Semester</option>
-              <option value="Monsoon 26">Monsoon 26</option>
-              <option value="Spring 27">Spring 27</option>
-              <option value="Monsoon 27">Monsoon 27</option>
-              <option value="Spring 28">Spring 28</option>
-            </select>
+            <input id="course-term" type="text" placeholder="Term (optional)" />
             <button type="submit">Add course</button>
           </form>
 
           <div class="courses-toolbar">
             <div class="courses-toolbar-left">
-              <select id="semester-filter">
-                <option value="">All semesters</option>
-                <option value="Monsoon 26">Monsoon 26</option>
-                <option value="Spring 27">Spring 27</option>
-                <option value="Monsoon 27">Monsoon 27</option>
-                <option value="Spring 28">Spring 28</option>
-              </select>
               <!-- Toggles between active courses (default) and archived ones —
                    never both mixed together, so a card on screen is
                    unambiguously one or the other. -->
-              <button id="toggle-archived-courses" type="button" class="link-button">Show archived courses</button>
+              <div id="courses-term-controls" class="courses-text-controls" aria-label="Filter courses by term"></div>
+              <div class="toolbar-divider" aria-hidden="true"></div>
+              <div id="courses-sort-controls" class="courses-text-controls" aria-label="Sort courses">
+                <button type="button" class="course-sort-control active" data-course-sort="term">Term</button>
+                <button type="button" class="course-sort-control" data-course-sort="name">Name</button>
+                <button type="button" class="course-sort-control" data-course-sort="resources">Files</button>
+              </div>
             </div>
             <div class="courses-toolbar-right">
-              <select id="course-sort">
-                <option value="name">Sort by: Name</option>
-                <option value="resources">Sort by: Resources</option>
-                <option value="deadlines">Sort by: Deadlines</option>
-                <option value="notes">Sort by: Notes</option>
-              </select>
               <div class="view-toggle">
                 <button id="course-view-grid" type="button" title="Grid view" aria-label="Grid view">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -146,10 +130,11 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 </button>
               </div>
+              <button id="toggle-archived-courses" type="button" class="toggle-archived">Show archived</button>
             </div>
           </div>
 
-          <ul id="course-list" class="view-grid"></ul>
+          <div id="course-list" class="view-list"></div>
           <p id="course-list-empty" class="muted" hidden></p>
         </div>
 

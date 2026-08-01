@@ -638,8 +638,8 @@ function resolveConfirm(result: boolean): void {
 }
 
 let courseViewMode: 'grid' | 'list' = 'list';
-type CourseSort = 'name' | 'resources' | 'deadlines' | 'notes';
-let courseSort: CourseSort = 'name';
+type CourseSort = 'term' | 'name' | 'resources' | 'deadlines' | 'notes';
+let courseSort: CourseSort = 'term';
 // Shows either active courses (default) or archived ones, never both mixed
 // together — a plain either/or toggle rather than an "include archived"
 // checkbox, so there's no ambiguity about which state a course card on
@@ -650,6 +650,7 @@ function compareCourseSummaries(a: CourseSummary, b: CourseSummary, sort: Course
   if (sort === 'resources') return b.resource_count - a.resource_count;
   if (sort === 'deadlines') return b.deadline_count - a.deadline_count;
   if (sort === 'notes') return b.note_count - a.note_count;
+  if (sort === 'term') return (a.term ?? '').localeCompare(b.term ?? '') || a.name.localeCompare(b.name);
   return a.name.localeCompare(b.name);
 }
 
@@ -657,7 +658,7 @@ function compareCourseSummaries(a: CourseSummary, b: CourseSummary, sort: Course
 // as the alternative — same view-toggle convention used for resources/
 // deadlines elsewhere, just a separate mode since a course card carries
 // more information (counts, code) than a resource/deadline row does.
-async function renderCourses(): Promise<void> {
+async function renderLegacyCourses(): Promise<void> {
   void renderDashboard();
   const list = document.getElementById('course-list')!;
   const emptyState = document.getElementById('course-list-empty')!;
@@ -727,6 +728,132 @@ async function renderCourses(): Promise<void> {
   }
 }
 
+function isCurrentOrFutureDeadline(deadline: Deadline): boolean {
+  if (deadline.completed === 1 || !deadline.due_at) return false;
+  const { year, month, day, hour, minute } = splitDueAt(deadline.due_at);
+  return new Date(year, month - 1, day, hour ?? 23, minute ?? 59).getTime() >= Date.now();
+}
+
+function updateCourseToolbar(courses: CourseSummary[]): void {
+  document.getElementById('courses-page-count')!.textContent = String(courses.length);
+  const termControls = document.getElementById('courses-term-controls')!;
+  const terms = [...new Set(courses.map((course) => course.term).filter((term): term is string => Boolean(term)))].sort();
+  termControls.innerHTML = '';
+  for (const filter of [{ label: 'All terms', value: '' }, ...terms.map((term) => ({ label: term, value: term }))]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'course-term-control';
+    button.textContent = filter.label;
+    button.dataset.term = filter.value;
+    const active = semesterFilter === filter.value;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.addEventListener('click', () => void setSemesterFilter(filter.value));
+    termControls.appendChild(button);
+  }
+  document.querySelectorAll<HTMLButtonElement>('[data-course-sort]').forEach((button) => {
+    const active = button.dataset.courseSort === courseSort;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+async function renderCourses(): Promise<void> {
+  void renderDashboard();
+  const list = document.getElementById('course-list')!;
+  const emptyState = document.getElementById('course-list-empty')!;
+  const allSummaries = await atlasApi.getCourseSummaries(showArchivedCourses);
+  updateCourseToolbar(allSummaries);
+  let courses = semesterFilter ? allSummaries.filter((course) => course.term === semesterFilter) : allSummaries;
+  courses = [...courses].sort((a, b) => compareCourseSummaries(a, b, courseSort));
+  emptyState.hidden = courses.length > 0;
+  emptyState.textContent = showArchivedCourses ? 'No archived courses.' : 'No courses yet.';
+  list.className = courseViewMode === 'grid' ? 'view-grid' : 'view-list';
+  list.innerHTML = '';
+
+  const deadlinesByCourse = new Map<number, Deadline[]>();
+  await Promise.all(courses.map(async (course) => deadlinesByCourse.set(course.id, await atlasApi.listDeadlines(course.id))));
+  const groupedCourses = new Map<string, CourseSummary[]>();
+  for (const course of courses) {
+    const term = course.term || 'No term';
+    const group = groupedCourses.get(term) ?? [];
+    group.push(course);
+    groupedCourses.set(term, group);
+  }
+
+  for (const [term, termCourses] of groupedCourses) {
+    const group = document.createElement('section');
+    group.className = 'course-termgroup';
+    const head = document.createElement('div');
+    head.className = 'course-term-head';
+    const heading = document.createElement('h2');
+    heading.textContent = term;
+    const termCount = document.createElement('span');
+    termCount.className = 'course-term-count';
+    termCount.textContent = `${termCourses.length} course${termCourses.length === 1 ? '' : 's'}`;
+    head.append(heading, termCount);
+    group.appendChild(head);
+    const entries = document.createElement('div');
+    entries.className = courseViewMode === 'grid' ? 'course-grid' : 'course-rows';
+
+    for (const course of termCourses) {
+      const entry = document.createElement('div');
+      entry.className = courseViewMode === 'grid' ? 'course-tile' : 'course-row';
+      entry.dataset.courseId = String(course.id);
+      entry.tabIndex = 0;
+      entry.setAttribute('role', 'button');
+      entry.setAttribute('aria-label', `Open ${course.name}`);
+      const main = document.createElement('div');
+      main.className = 'course-main';
+      const name = document.createElement('div');
+      name.className = 'course-name';
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(course.id);
+      const nameText = document.createElement('span');
+      nameText.textContent = course.name;
+      name.append(swatch, nameText);
+      const code = document.createElement('div');
+      code.className = 'course-code';
+      code.textContent = course.code || 'No course code';
+      main.append(name, code);
+      const nextDeadline = (deadlinesByCourse.get(course.id) ?? [])
+        .filter(isCurrentOrFutureDeadline)
+        .sort((a, b) => (a.due_at ?? '').localeCompare(b.due_at ?? ''))[0];
+      const next = document.createElement('div');
+      next.className = 'course-next';
+      next.textContent = nextDeadline ? `Next: ${nextDeadline.title} - due ${formatDueDate(nextDeadline.due_at)}` : 'No upcoming deadlines';
+      main.appendChild(next);
+      entry.appendChild(main);
+      const stats = document.createElement('div');
+      stats.className = courseViewMode === 'grid' ? 'tile-stats' : 'course-stats';
+      for (const stat of [
+        { value: course.resource_count, label: 'files', urgent: false },
+        { value: course.deadline_count, label: 'due', urgent: course.deadline_count > 0 },
+      ]) {
+        const item = document.createElement('div');
+        item.innerHTML = `<span class="stat-n${stat.urgent ? ' is-urgent' : ''}">${stat.value}</span><span class="stat-label">${stat.label}</span>`;
+        stats.appendChild(item);
+      }
+      entry.appendChild(stats);
+      entry.addEventListener('click', () => void selectCourse(course));
+      entry.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          void selectCourse(course);
+        }
+      });
+      entry.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        atlasApi.showCourseContextMenu(course.id);
+      });
+      entries.appendChild(entry);
+    }
+    group.appendChild(entries);
+    list.appendChild(group);
+  }
+}
+
 function setCourseViewMode(mode: 'grid' | 'list'): void {
   courseViewMode = mode;
   document.getElementById('course-view-grid')!.classList.toggle('active', mode === 'grid');
@@ -737,7 +864,7 @@ function setCourseViewMode(mode: 'grid' | 'list'): void {
 function setShowArchivedCourses(value: boolean): void {
   showArchivedCourses = value;
   const button = document.getElementById('toggle-archived-courses')!;
-  button.textContent = value ? 'Show active courses' : 'Show archived courses';
+  button.textContent = value ? 'Show active' : 'Show archived';
   button.classList.toggle('active', value);
   void renderCourses();
 }
@@ -4721,7 +4848,6 @@ async function init(): Promise<void> {
   const savedSemesterFilter = await atlasApi.getSetting('semesterFilter');
   if (savedSemesterFilter) {
     semesterFilter = savedSemesterFilter;
-    (document.getElementById('semester-filter') as HTMLSelectElement).value = savedSemesterFilter;
   }
 
   await renderCourses();
@@ -4740,7 +4866,7 @@ async function init(): Promise<void> {
     e.preventDefault();
     const name = (document.getElementById('course-name') as HTMLInputElement).value.trim();
     const code = (document.getElementById('course-code') as HTMLInputElement).value.trim() || null;
-    const term = (document.getElementById('course-term') as HTMLSelectElement).value || null;
+    const term = (document.getElementById('course-term') as HTMLInputElement).value.trim() || null;
     if (!name) return;
 
     await atlasApi.createCourse(name, code, term);
@@ -4751,8 +4877,10 @@ async function init(): Promise<void> {
 
   document.getElementById('course-view-grid')!.addEventListener('click', () => setCourseViewMode('grid'));
   document.getElementById('course-view-list')!.addEventListener('click', () => setCourseViewMode('list'));
-  document.getElementById('course-sort')!.addEventListener('change', (e) => {
-    courseSort = (e.target as HTMLSelectElement).value as CourseSort;
+  document.getElementById('courses-sort-controls')!.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-course-sort]');
+    if (!button?.dataset.courseSort) return;
+    courseSort = button.dataset.courseSort as CourseSort;
     void renderCourses();
   });
   document.getElementById('toggle-archived-courses')!.addEventListener('click', () => {
@@ -4969,10 +5097,6 @@ async function init(): Promise<void> {
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
     const isCollapsed = document.getElementById('sidebar')!.classList.contains('collapsed');
     setSidebarCollapsed(!isCollapsed);
-  });
-
-  document.getElementById('semester-filter')!.addEventListener('change', (e) => {
-    setSemesterFilter((e.target as HTMLSelectElement).value);
   });
 
   document.getElementById('new-note-button')!.addEventListener('click', () => openCoursePicker('note'));
