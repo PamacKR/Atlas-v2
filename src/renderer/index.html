@@ -115,11 +115,6 @@
                    unambiguously one or the other. -->
               <div id="courses-term-controls" class="courses-text-controls" aria-label="Filter courses by term"></div>
               <div class="toolbar-divider" aria-hidden="true"></div>
-              <div id="courses-sort-controls" class="courses-text-controls" aria-label="Sort courses">
-                <button type="button" class="course-sort-control active" data-course-sort="term">Term</button>
-                <button type="button" class="course-sort-control" data-course-sort="name">Name</button>
-                <button type="button" class="course-sort-control" data-course-sort="resources">Files</button>
-              </div>
             </div>
             <div class="courses-toolbar-right">
               <div class="view-toggle">
@@ -153,9 +148,11 @@
             <!-- Phase 4 Part E fallback (phase4-spec.md §7) — a plain-Markdown
                  dump of this course's context, for pasting into an AI tool
                  that can't use the MCP server directly. -->
-            <button id="course-detail-edit" type="button" class="link-button">Edit course</button>
-            <button id="course-detail-export-context" type="button" class="link-button">Export for AI</button>
-            <button id="course-detail-archive-toggle" type="button" class="link-button">Archive course</button>
+            <div class="course-detail-header-actions">
+              <button id="course-detail-edit" type="button" class="link-button">Edit course</button>
+              <button id="course-detail-export-context" type="button" class="link-button">Export for AI</button>
+              <button id="course-detail-archive-toggle" type="button" class="link-button">Archive course</button>
+            </div>
           </div>
           <p id="course-detail-export-status" class="muted" hidden></p>
 
@@ -593,13 +590,7 @@
       <form id="course-edit-form">
         <input id="course-edit-name" type="text" placeholder="Course name" required />
         <input id="course-edit-code" type="text" placeholder="Code (optional)" />
-        <select id="course-edit-term">
-          <option value="">Semester</option>
-          <option value="Monsoon 26">Monsoon 26</option>
-          <option value="Spring 27">Spring 27</option>
-          <option value="Monsoon 27">Monsoon 27</option>
-          <option value="Spring 28">Spring 28</option>
-        </select>
+        <input id="course-edit-term" type="text" placeholder="Term (optional)" />
         <button type="submit">Save</button>
       </form>
     </div>

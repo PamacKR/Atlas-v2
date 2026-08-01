@@ -751,11 +751,6 @@ function updateCourseToolbar(courses: CourseSummary[]): void {
     button.addEventListener('click', () => void setSemesterFilter(filter.value));
     termControls.appendChild(button);
   }
-  document.querySelectorAll<HTMLButtonElement>('[data-course-sort]').forEach((button) => {
-    const active = button.dataset.courseSort === courseSort;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', String(active));
-  });
 }
 
 async function renderCourses(): Promise<void> {
@@ -3292,7 +3287,7 @@ function openCourseEditModal(course: Course): void {
   const nameInput = document.getElementById('course-edit-name') as HTMLInputElement;
   nameInput.value = course.name;
   (document.getElementById('course-edit-code') as HTMLInputElement).value = course.code ?? '';
-  (document.getElementById('course-edit-term') as HTMLSelectElement).value = course.term ?? '';
+  (document.getElementById('course-edit-term') as HTMLInputElement).value = course.term ?? '';
   document.getElementById('course-edit-overlay')!.hidden = false;
   nameInput.focus();
 }
@@ -3323,6 +3318,8 @@ async function exportSelectedCourseContext(): Promise<void> {
 
 async function toggleSelectedCourseArchived(): Promise<void> {
   if (!selectedCourse) return;
+  const action = selectedCourse.archived === 1 ? 'Unarchive' : 'Archive';
+  if (!(await showConfirm(`${action} "${selectedCourse.name}"? You can change this again later.`))) return;
   const updated = await atlasApi.setCourseArchived(selectedCourse.id, selectedCourse.archived !== 1);
   // Archiving the course currently open removes it from the active list (or
   // vice versa for unarchiving) — going back to the grid avoids leaving the
@@ -4905,12 +4902,6 @@ async function init(): Promise<void> {
 
   document.getElementById('course-view-grid')!.addEventListener('click', () => setCourseViewMode('grid'));
   document.getElementById('course-view-list')!.addEventListener('click', () => setCourseViewMode('list'));
-  document.getElementById('courses-sort-controls')!.addEventListener('click', (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-course-sort]');
-    if (!button?.dataset.courseSort) return;
-    courseSort = button.dataset.courseSort as CourseSort;
-    void renderCourses();
-  });
   document.getElementById('toggle-archived-courses')!.addEventListener('click', () => {
     setShowArchivedCourses(!showArchivedCourses);
   });
@@ -4939,7 +4930,7 @@ async function init(): Promise<void> {
     const name = (document.getElementById('course-edit-name') as HTMLInputElement).value.trim();
     if (!name) return;
     const code = (document.getElementById('course-edit-code') as HTMLInputElement).value.trim() || null;
-    const term = (document.getElementById('course-edit-term') as HTMLSelectElement).value || null;
+    const term = (document.getElementById('course-edit-term') as HTMLInputElement).value.trim() || null;
     const courseId = editingCourseId;
     const updated = await atlasApi.updateCourse(courseId, name, code, term);
     closeCourseEditModal();

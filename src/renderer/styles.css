@@ -4642,7 +4642,7 @@ button#classroom-connect-confirm {
   align-items: center;
   gap: var(--space-4);
 }
-#courses-list-view .courses-page-actions { gap: var(--space-3); }
+#courses-list-view .courses-page-actions { gap: var(--space-5); }
 #courses-list-view .courses-page-actions .section-action,
 #courses-list-view .course-term-control,
 #courses-list-view .course-sort-control,
@@ -5030,10 +5030,47 @@ button#classroom-connect-confirm {
 #courses-detail-view #add-watch-folder { height: 34px; margin-top: var(--space-5); padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--accent); color: #17140d; font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
 #courses-detail-view #new-deadline-button:hover,
 #courses-detail-view #add-watch-folder:hover { filter: brightness(1.06); }
+#courses-detail-view { min-width: 0; overflow-x: hidden; }
+#courses-detail-view .course-detail-header > div:not(.course-detail-header-actions) { min-width: 0; }
+#courses-detail-view .course-detail-header-actions { display: flex; align-items: center; gap: var(--space-4); margin-left: auto; flex: 0 0 auto; }
+#courses-detail-view #course-detail-archive-toggle { margin-left: 0; }
+#courses-detail-view .course-tabs { flex-wrap: wrap; }
+#courses-detail-view .course-detail-tab-panel { min-width: 0; }
+#courses-detail-view .deadline-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+  position: relative;
+}
+#courses-detail-view .deadline-checkbox:checked { border-color: var(--accent); background: var(--accent); }
+#courses-detail-view .deadline-checkbox:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #17140d; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+#courses-detail-view .deadline-checkbox:focus-visible { outline: 2px solid var(--rule-strong); outline-offset: 2px; }
+#courses-detail-view #course-announcements-list .classroom-item-body { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+
+/* Course edit uses the shared overlays-a anatomy, not the legacy small modal. */
+#course-edit-overlay { background: rgba(0, 0, 0, .62); z-index: 70; }
+#course-edit-panel { width: min(440px, calc(100vw - 24px)); padding: 0; overflow: hidden; border: 1px solid var(--rule-strong); border-radius: var(--radius-lg); background: var(--bg-panel); box-shadow: 0 24px 70px rgba(0,0,0,.38); }
+#course-edit-panel .modal-header { display: flex; align-items: center; justify-content: space-between; min-height: 66px; padding: 0 var(--space-5); border-bottom: 1px solid var(--rule); }
+#course-edit-panel .modal-header h3 { color: var(--text); font-size: var(--text-lg); font-weight: 600; }
+#course-edit-panel .modal-header button { width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
+#course-edit-panel .modal-header button:hover, #course-edit-panel .modal-header button:focus-visible { background: rgba(224,87,74,.12); color: var(--urgent); outline: none; }
+#course-edit-panel .modal-header button svg { width: 16px; height: 16px; }
+#course-edit-form { gap: var(--space-3); padding: var(--space-5); }
+#course-edit-form input { height: 36px; padding: 0 var(--space-3); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-sm); outline: none; }
+#course-edit-form input:focus { border-color: var(--rule-strong); }
+#course-edit-form button { height: 34px; margin-top: var(--space-2); padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--accent); color: #17140d; font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; transition: filter var(--transition); }
+#course-edit-form button:hover { filter: brightness(1.06); }
 @media (max-width: 760px) {
   #courses-detail-view .course-detail-header { align-items: flex-start; flex-wrap: wrap; }
   #courses-detail-view #course-detail-archive-toggle { margin-left: 0; }
-  #courses-detail-view .course-tabs { gap: var(--space-4); overflow-x: auto; }
+  #courses-detail-view .course-detail-header-actions { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  #courses-detail-view .course-tabs { gap: var(--space-4); overflow: visible; }
   #courses-detail-view .course-detail-widgets { grid-template-columns: 1fr; grid-template-rows: auto; gap: var(--space-6); }
   #courses-detail-view .course-detail-widgets .dashboard-widget:nth-child(n) { grid-column: 1; grid-row: auto; }
 }
