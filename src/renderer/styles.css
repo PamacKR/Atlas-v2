@@ -2341,6 +2341,21 @@ form#course-form button {
   background: #8f3636;
 }
 
+/* Shared destructive confirmation shell from overlays-a.html. */
+#confirm-overlay { z-index: 80; background: rgba(0,0,0,.62); }
+#confirm-panel { width: min(400px, calc(100vw - 24px)); padding: var(--space-5); border-color: var(--rule-strong); border-radius: var(--radius-lg); background: var(--bg-panel); box-shadow: 0 24px 70px rgba(0,0,0,.38); }
+#confirm-panel .confirm-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-bottom: var(--space-4); border-radius: var(--radius-md); background: rgba(224,87,74,.12); color: var(--urgent); }
+#confirm-panel .confirm-icon svg { width: 22px; height: 22px; }
+#confirm-title { margin: 0 0 var(--space-2); color: var(--text); font-size: var(--text-lg); font-weight: 600; }
+#confirm-message { margin: 0 0 var(--space-5); color: var(--text-muted); font-size: var(--text-md); line-height: 1.6; }
+#confirm-actions { gap: var(--space-3); }
+#confirm-cancel, #confirm-yes { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: color var(--transition), border-color var(--transition), background var(--transition); }
+#confirm-cancel:hover { border-color: var(--rule-strong); color: var(--text); }
+#confirm-yes { border-color: var(--rule-strong); color: var(--text); }
+#confirm-yes:hover { background: var(--bg-hover); }
+#confirm-yes.danger { border-color: rgba(224,87,74,.45); color: var(--urgent); }
+#confirm-yes.danger:hover { background: rgba(224,87,74,.12); }
+
 /* Google Drive review panel — same overlay pattern as #confirm-overlay
    above, including the same [hidden]-vs-own-selector fix (AGENTS.md). */
 #drive-review-overlay {

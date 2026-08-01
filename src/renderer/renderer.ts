@@ -621,6 +621,13 @@ let confirmResolve: ((result: boolean) => void) | null = null;
 function showConfirm(message: string): Promise<boolean> {
   const overlay = document.getElementById('confirm-overlay')!;
   const messageEl = document.getElementById('confirm-message')!;
+  const titleEl = document.getElementById('confirm-title')!;
+  const confirmButton = document.getElementById('confirm-yes')!;
+  const firstWord = message.trim().split(/[\s?]/)[0] || 'Confirm';
+  const action = ['Delete', 'Disconnect', 'Archive', 'Unarchive', 'Reset'].includes(firstWord) ? firstWord : 'Confirm';
+  titleEl.textContent = action === 'Confirm' ? 'Confirm action' : `${action} this item?`;
+  confirmButton.textContent = action;
+  confirmButton.classList.toggle('danger', ['Delete', 'Disconnect', 'Archive', 'Reset'].includes(action));
   messageEl.textContent = message;
   overlay.hidden = false;
   return new Promise((resolve) => {
