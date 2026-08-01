@@ -4250,6 +4250,28 @@ button#classroom-connect-confirm {
 #deadline-view-actions { margin: 0; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--rule); justify-content: space-between; }
 #deadline-view-actions span { flex: 1; }
 
+/* Deadline overlay interactions: every apparent action has an affordance. */
+#deadline-view-header-actions button:hover,
+.deadline-edit-header button:hover { color: var(--text); background: var(--bg-hover); }
+#deadline-view-header-actions #deadline-view-close:hover,
+.deadline-edit-header #deadline-edit-close:hover { color: var(--urgent); background: rgba(224,87,74,.12); }
+#deadline-edit-form { max-width: none; padding: 0; background: var(--bg-panel); }
+.deadline-edit-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-5); border-bottom: 1px solid var(--rule); }
+.deadline-edit-header h3 { margin: 0; font-size: var(--text-lg); color: var(--text); }
+.deadline-edit-header > div { display: flex; gap: 2px; }
+.deadline-edit-header button { padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); font-family: var(--font); cursor: pointer; }
+.deadline-edit-header button.active { color: var(--text); background: var(--bg-hover); }
+.deadline-edit-header #deadline-edit-close { font-size: 20px; padding: 2px 8px; }
+#deadline-edit-form > label, #deadline-mention-box { display: block; margin: var(--space-4) var(--space-5); color: var(--text-faint); font-size: var(--text-sm); }
+#deadline-edit-form input, #deadline-edit-form select, #deadline-edit-form textarea { margin: var(--space-2) 0 0; border-radius: var(--radius-sm); background: var(--bg); border-color: var(--rule); }
+#deadline-edit-form input:hover, #deadline-edit-form select:hover, #deadline-edit-form textarea:hover { border-color: var(--rule-strong); }
+#deadline-edit-form input:focus, #deadline-edit-form select:focus, #deadline-edit-form textarea:focus { outline: none; border-color: var(--text-faint); }
+#deadline-edit-actions { margin: 0; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--rule); }
+#deadline-edit-actions button { border-radius: var(--radius-sm); transition: background var(--transition), color var(--transition); }
+#deadline-cancel-button:hover { background: var(--bg-hover); }
+#deadline-save-button { background: var(--accent) !important; border-color: var(--accent) !important; color: #18140a !important; }
+#deadline-save-button:hover { filter: brightness(1.08); }
+
 /* Courses — the approved default is an information-dense list, with grid
    available as a secondary view rather than the default card wall. */
 #courses-list-view .page-header {

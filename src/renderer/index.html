@@ -684,7 +684,9 @@
       </div>
 
       <form id="deadline-edit-form" hidden>
-        <input id="deadline-edit-title" type="text" placeholder="Title" required />
+        <div class="deadline-edit-header"><h3>Edit deadline</h3><div><button id="deadline-edit-view-button" type="button">View</button><button type="button" class="active">Edit</button><button id="deadline-edit-close" type="button" aria-label="Close">×</button></div></div>
+        <label>Title<input id="deadline-edit-title" type="text" placeholder="Title" required /></label>
+        <label>Kind
         <select id="deadline-edit-kind">
           <option value="assignment">Assignment</option>
           <option value="reading">Reading</option>
@@ -693,15 +695,16 @@
           <option value="project">Project</option>
           <option value="exam">Exam</option>
           <option value="manual">Other</option>
-        </select>
+        </select></label>
+        <label>Due
         <div id="deadline-date-row">
           <input id="deadline-edit-date-text" type="text" placeholder="dd-mm-yyyy" autocomplete="off" />
           <button id="deadline-edit-date-pick" type="button" title="Pick a date" aria-label="Pick a date">📅</button>
           <input id="deadline-edit-date-native" type="date" />
           <input id="deadline-edit-time" type="time" />
-        </div>
+        </div></label>
         <span id="deadline-date-error" class="muted" hidden>Invalid date — use dd-mm-yyyy</span>
-        <div id="deadline-mention-box">
+        <div id="deadline-mention-box"><label>Notes</label>
           <textarea
             id="deadline-edit-description"
             placeholder="Description (optional) — type @ to reference a file or note"
@@ -709,8 +712,7 @@
           <ul id="deadline-mention-suggestions" hidden></ul>
         </div>
         <div id="deadline-edit-actions">
-          <button id="deadline-save-button" type="submit">Save</button>
-          <button id="deadline-cancel-button" type="button">Cancel</button>
+          <button id="deadline-cancel-button" type="button">Cancel</button><button id="deadline-save-button" type="submit">Save</button>
         </div>
       </form>
     </div>

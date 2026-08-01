@@ -5125,6 +5125,10 @@ async function init(): Promise<void> {
   });
   document.getElementById('deadline-view-close')!.addEventListener('click', closeDeadlineEditor);
   document.getElementById('deadline-view-close-footer')!.addEventListener('click', closeDeadlineEditor);
+  document.getElementById('deadline-edit-close')!.addEventListener('click', closeDeadlineEditor);
+  document.getElementById('deadline-edit-view-button')!.addEventListener('click', () => {
+    if (currentViewingDeadline) void openDeadlineViewer(currentViewingDeadline);
+  });
   document.getElementById('deadline-cancel-button')!.addEventListener('click', closeDeadlineEditor);
 
   const dateTextInput = document.getElementById('deadline-edit-date-text') as HTMLInputElement;
