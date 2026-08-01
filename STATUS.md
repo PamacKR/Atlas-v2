@@ -16,6 +16,7 @@ UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that
 - `npm run build` and the full Electron `npm run verify` passed after this dashboard change. The Electron CSP warning is pre-existing development-mode output.
 - Dashboard/sidebar cosmetic mismatches reported on 2026-08-01 (collapsed-rail hover geometry, scrollbar corner rendering, and other minor spacing polish) are deliberately deferred at the user's request. Do not continue patching them until the final whole-app fidelity pass; the user's running app did not reflect the attempted CSS changes reliably.
 - Dashboard deadline overlays are now being rebuilt directly from `mockups/overlays-a.html`: past deadlines are excluded from Dashboard Up Next; the deadline viewer has the mockup’s structured header, facts, footer, reset action, and interaction states; and the editor uses one native date-time field instead of separate date/time boxes. `npm run build` passed after the latest cohesive overlay control pass.
+- Classroom conflict UI is context-safe: only a live Classroom-synced deadline that has local overrides can show a Classroom-version/reset action. A Classroom removal notice is mutually exclusive with that action, and manual deadlines can never be changed by the reset IPC handler.
 - Next: rebuild the note editor overlay directly from its mockup, then work through Courses before moving to Resources. After that: Calendar, Settings/search/remaining overlays, and finally return to deferred cross-surface fidelity work.
 
 **Historical state follows.**

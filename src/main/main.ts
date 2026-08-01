@@ -2677,9 +2677,29 @@ ipcMain.handle(
 ipcMain.handle('deadlines:resetClassroomOverrides', (_event, deadlineId: number) => {
   const db = getDb();
   const current = db
-    .prepare('SELECT classroom_title, classroom_due_at FROM deadlines WHERE id = ?')
-    .get(deadlineId) as { classroom_title: string | null; classroom_due_at: string | null } | undefined;
-  if (!current) return null;
+    .prepare(
+      `SELECT source, classroom_coursework_id, classroom_title, classroom_due_at, classroom_removed, local_overrides
+       FROM deadlines WHERE id = ?`
+    )
+    .get(deadlineId) as
+    | {
+        source: string;
+        classroom_coursework_id: string | null;
+        classroom_title: string | null;
+        classroom_due_at: string | null;
+        classroom_removed: number;
+        local_overrides: string | null;
+      }
+    | undefined;
+  // A manual deadline, a current unedited mirror, and a removed Classroom
+  // assignment each have no Classroom version that may safely be restored.
+  if (
+    !current ||
+    current.source !== 'classroom' ||
+    !current.classroom_coursework_id ||
+    current.classroom_removed === 1 ||
+    !current.local_overrides
+  ) return null;
 
   db.prepare(
     'UPDATE deadlines SET title = COALESCE(classroom_title, title), due_at = classroom_due_at, local_overrides = NULL WHERE id = ?'

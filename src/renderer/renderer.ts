@@ -3984,11 +3984,14 @@ async function openDeadlineViewer(deadline: Deadline): Promise<void> {
   // the source, e.g. edited once, then the professor deleted the
   // assignment), so they're shown/hidden separately rather than as one
   // combined state.
-  document.getElementById('deadline-view-removed-notice')!.hidden = deadline.classroom_removed !== 1;
+  const isClassroomDeadline = deadline.source === 'classroom' && Boolean(deadline.classroom_coursework_id);
+  const isRemovedFromClassroom = isClassroomDeadline && deadline.classroom_removed === 1;
+  document.getElementById('deadline-view-removed-notice')!.hidden = !isRemovedFromClassroom;
 
   const overrides = (deadline.local_overrides ?? '').split(',').filter(Boolean);
   const overrideNotice = document.getElementById('deadline-view-override-notice')!;
-  if (overrides.length > 0) {
+  const canResetToClassroom = isClassroomDeadline && !isRemovedFromClassroom && overrides.length > 0;
+  if (canResetToClassroom) {
     const fieldLabels: Record<string, string> = { title: 'Title', due_at: 'Due date' };
     document.getElementById('deadline-view-override-text')!.textContent =
       `You've edited: ${overrides.map((f) => fieldLabels[f] ?? f).join(', ')} — Classroom's own updates to ${
