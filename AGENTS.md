@@ -74,6 +74,19 @@ Atlas is an Electron desktop app, not a website — there's no browser tab to pr
 
 Use it as the default way to confirm a UI/renderer change actually works before telling the user it's done — extend `scripts/verify-app.js` as new features get added (uploads, viewers, notes, search) rather than only ever asking the user to click around. Still worth having the user glance at real usage periodically, but don't make them your only verification method.
 
+## UI fidelity contract for every remaining page
+
+**Added 2026-08-01 at the user's explicit instruction.** `mockups/overlays-a.html` and `mockups/controls-a.html` are the shared UI contract for the whole application. They are not visual suggestions and must be consulted alongside the page-specific mockup before changing any page or overlay.
+
+For each page/overlay pass:
+
+1. Copy the page-specific mockup's DOM grouping, literal text, dimensions, spacing, and interaction roles before writing app markup. Do not infer a familiar layout from the feature name.
+2. Use the shared overlay anatomy from `overlays-a.html` whenever an interaction opens a panel: backdrop, `--radius-lg` panel, header/body/footer segmentation, 30px icon actions, 34px buttons, hover states, and `hidden`-safe display selectors. Do not invent a separate modal language per feature.
+3. Replace every native OS-rendered control with the corresponding Atlas control from `controls-a.html`. Themed selects use the `dselect` trigger/menu/option pattern; controls must have the mockup's border, radius, panel, selected state, and hover/focus behavior. Native `<select>`, date/time pickers, browser alerts, and title tooltips are not acceptable final UI.
+4. Distinguish plain navigation text from buttons. Section actions such as Manage/Calendar/Notes are text links with a colour-only hover; only actions explicitly shown as `.btn`, `.icon-btn`, or another boxed control in the mockup receive a surface, border, padding, or hover background.
+5. Make each apparent action functional and discoverable: cursor, hover/focus state, keyboard semantics where applicable, correct data-dependent visibility, and no contradictory states. Verify `hidden` elements have no unconditional `display` rule that can keep them visible.
+6. Before calling a pass complete, inspect the rendered page as one surface: shell placement, headers, section actions, list rows, controls, overlays, empty states, scroll behavior, typography, spacing, colours, and hover states. Do not close out isolated elements merely because they compile.
+
 **Verification cadence (2026-08-01 user instruction):** Don't run the full `npm run verify` suite after every incremental UI edit; it wastes time and resources during a large overhaul. Use focused build/type checks while iterating, then run the full Electron suite and inspect its screenshot after a completed major surface or a cross-cutting change, and before reporting that work complete.
 
 ### A recurring CSS bug to check for explicitly
