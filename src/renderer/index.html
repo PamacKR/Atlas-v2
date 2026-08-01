@@ -27,11 +27,11 @@
       </button>
     </nav>
 
-    <div id="main-area">
+    <div id="main-area" data-page="dashboard">
       <header id="topbar">
-        <button id="dashboard-course-filter" type="button" class="dashboard-course-filter">All courses
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
+        <select id="dashboard-course-filter" class="dashboard-course-filter" aria-label="Filter dashboard by course">
+          <option value="">All courses</option>
+        </select>
         <div id="search-box">
           <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
           <ul id="search-results" hidden></ul>

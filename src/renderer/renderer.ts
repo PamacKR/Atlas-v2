@@ -498,6 +498,7 @@ let ashokaReviewCandidates: AshokaCourseCandidate[] = [];
 // isn't one of these and has no sidebar entry of its own.
 type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'calendar' | 'settings';
 let currentPage: AppPage = 'dashboard';
+let dashboardCourseFilterId: number | null = null;
 
 function showPage(page: AppPage): void {
   currentPage = page;
@@ -1965,9 +1966,12 @@ async function renderDashboardStats(): Promise<void> {
 async function renderDashboardCourses(): Promise<void> {
   const list = document.getElementById('dashboard-course-list')!;
   const courses = await atlasApi.getCourseSummaries();
+  renderDashboardCourseFilter(courses);
   list.innerHTML = '';
 
-  if (courses.length === 0) {
+  const visibleCourses = dashboardCourseFilterId === null ? courses : courses.filter((course) => course.id === dashboardCourseFilterId);
+
+  if (visibleCourses.length === 0) {
     const li = document.createElement('li');
     li.className = 'muted';
     li.textContent = 'No courses yet.';
@@ -1975,8 +1979,9 @@ async function renderDashboardCourses(): Promise<void> {
     return;
   }
 
-  for (const course of courses) {
+  for (const course of visibleCourses) {
     const li = document.createElement('li');
+    li.className = 'dashboard-course-cell';
     const name = document.createElement('div');
     name.className = 'dashboard-course-name';
     const swatch = document.createElement('span');
@@ -2261,7 +2266,18 @@ function renderCalendarLegend(deadlines: DashboardDeadline[]): void {
 
 async function renderDashboardDeadlines(): Promise<void> {
   dashboardDeadlinesCache = await atlasApi.getUpcomingDeadlines();
+  if (dashboardCourseFilterId !== null) {
+    dashboardDeadlinesCache = dashboardDeadlinesCache.filter((deadline) => deadline.course_id === dashboardCourseFilterId);
+  }
   renderDashboardCompactDeadlineRows();
+}
+
+function renderDashboardCourseFilter(courses: CourseSummary[]): void {
+  const select = document.getElementById('dashboard-course-filter') as HTMLSelectElement;
+  const selectedValue = dashboardCourseFilterId === null ? '' : String(dashboardCourseFilterId);
+  select.replaceChildren(new Option('All courses', ''));
+  for (const course of courses) select.add(new Option(course.name, String(course.id)));
+  select.value = selectedValue;
 }
 
 function renderDashboardCompactDeadlineRows(): void {
@@ -2413,9 +2429,12 @@ function renderDashboardDeadlineRows(): void {
 async function renderDashboardResources(): Promise<void> {
   const list = document.getElementById('dashboard-resources')!;
   const resources = await atlasApi.getRecentResources();
+  const visibleResources = dashboardCourseFilterId === null
+    ? resources
+    : resources.filter((resource) => resource.course_id === dashboardCourseFilterId);
   list.innerHTML = '';
 
-  if (resources.length === 0) {
+  if (visibleResources.length === 0) {
     const li = document.createElement('li');
     li.className = 'muted';
     li.textContent = 'No resources yet.';
@@ -2423,7 +2442,7 @@ async function renderDashboardResources(): Promise<void> {
     return;
   }
 
-  for (const resource of resources) {
+  for (const resource of visibleResources) {
     const li = makeDashboardListingRow(resource.title, resource.course_name, resource.course_id, relativeTime(resource.added_at));
     li.addEventListener('click', () => openDashboardResource(resource));
     li.addEventListener('contextmenu', (e) => {
@@ -2465,7 +2484,8 @@ function makeDashboardListingRow(title: string, courseName: string, courseId: nu
 async function renderDashboardActivity(): Promise<void> {
   const list = document.getElementById('dashboard-activity')!;
   const notes = await atlasApi.listAllNotes();
-  const todayItems = notes.filter((note): note is NoteWithCourse & { course_id: number } => note.course_id !== null).slice(0, 5).map((note) => ({
+  const todayItems = notes.filter((note): note is NoteWithCourse & { course_id: number } => note.course_id !== null)
+    .filter((note) => dashboardCourseFilterId === null || note.course_id === dashboardCourseFilterId).slice(0, 5).map((note) => ({
     ...note,
     timestamp: note.updated_at,
     entity_type: 'note' as const,
@@ -4755,6 +4775,11 @@ async function init(): Promise<void> {
 
   document.querySelectorAll<HTMLButtonElement>('#dashboard-upcoming-tabs .chip').forEach((chip) => {
     chip.addEventListener('click', () => setDashboardUpcomingFilter(chip.dataset.upcomingFilter ?? ''));
+  });
+  document.getElementById('dashboard-course-filter')!.addEventListener('change', (event) => {
+    const value = (event.target as HTMLSelectElement).value;
+    dashboardCourseFilterId = value === '' ? null : Number(value);
+    void renderDashboard();
   });
   document.getElementById('dashboard-view-calendar')!.addEventListener('click', () => showPage('calendar'));
 
