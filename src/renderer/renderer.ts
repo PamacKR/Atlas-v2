@@ -626,7 +626,7 @@ function resolveConfirm(result: boolean): void {
   }
 }
 
-let courseViewMode: 'grid' | 'list' = 'grid';
+let courseViewMode: 'grid' | 'list' = 'list';
 type CourseSort = 'name' | 'resources' | 'deadlines' | 'notes';
 let courseSort: CourseSort = 'name';
 // Shows either active courses (default) or archived ones, never both mixed

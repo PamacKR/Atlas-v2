@@ -3968,3 +3968,75 @@ button#classroom-connect-confirm {
 
 #dashboard-main-grid .section-head button:hover,
 #dashboard-main-grid .section-action:hover { color: var(--text); }
+
+/* Courses — the approved default is an information-dense list, with grid
+   available as a secondary view rather than the default card wall. */
+#courses-list-view .page-header {
+  align-items: baseline;
+  margin-bottom: var(--space-5);
+}
+
+#courses-list-view .page-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+#courses-list-view .page-header .muted { margin: var(--space-1) 0 0; font-size: var(--text-md); }
+
+#courses-list-view .courses-toolbar {
+  padding: 0 0 var(--space-5);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--rule);
+}
+
+#courses-list-view .courses-toolbar select,
+#courses-list-view .courses-toolbar .link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+}
+
+#course-list.view-list {
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+
+#course-list.view-list li.course-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-3);
+  margin: 0 calc(var(--space-3) * -1);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  transition: background var(--transition);
+}
+
+#course-list.view-list li.course-card:hover { background: var(--bg-hover); }
+
+#course-list.view-list .course-card-top { min-width: 0; }
+#course-list.view-list .course-card-name { font-size: var(--text-lg); font-weight: 500; }
+#course-list.view-list .course-card-code { color: var(--text-faint); font-size: var(--text-sm); }
+
+#course-list.view-list .course-card-counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(72px, auto));
+  gap: var(--space-5);
+  align-self: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+
+#course-list.view-list .course-card-menu { align-self: start; }
