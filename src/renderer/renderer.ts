@@ -661,6 +661,34 @@ function compareCourseSummaries(a: CourseSummary, b: CourseSummary, sort: Course
   return a.name.localeCompare(b.name);
 }
 
+function resourceIconKind(resource: { kind: string; title: string }): string {
+  if (resource.kind !== 'link') return resource.kind || 'other';
+  const ext = resource.title.split('.').pop()?.toLowerCase() ?? '';
+  return ICON_EXTENSION_MAP[ext] ?? 'link';
+}
+
+function makeMonoIcon(kind: string, className = 'mono-icon'): HTMLElement {
+  const paths: Record<string, string> = {
+    pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 15h8M8 18h5"/>',
+    pptx: '<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4M8 8h8M8 12h5"/>',
+    xlsx: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h8M12 6v12"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
+    zip: '<path d="M6 2h9l3 3v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"/><path d="M13 2v4h4M11 7v2m0 2v2m0 2v2m0 2v2"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.07.07l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15"/><path d="M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 12 20l1.15-1.15"/>',
+    reading: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>',
+    quiz: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.12 1.9c-.92.74-1.62 1.22-1.62 2.6M12 17h.01"/>',
+    lab: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.74 3h10.52A2 2 0 0 0 19 18l-5-9V3"/><path d="M8.5 15h7"/>',
+    project: '<path d="M4 7h16v13H4zM9 7V4h6v3"/>',
+    exam: '<path d="M4 10.5 12 4l8 6.5L12 17l-8-6.5Z"/><path d="M7 14v4.5c2.7 1.8 7.3 1.8 10 0V14"/>',
+    assignment: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/>',
+  };
+  const icon = document.createElement('span');
+  icon.className = className;
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[kind] ?? paths.assignment}</svg>`;
+  return icon;
+}
+
 // Card grid by default (matches the mockup the user provided), a flat list
 // as the alternative — same view-toggle convention used for resources/
 // deadlines elsewhere, just a separate mode since a course card carries
@@ -913,7 +941,7 @@ function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTML
     li.className = 'icon-tile';
     const icon = document.createElement('div');
     icon.className = 'icon-glyph';
-    icon.textContent = resourceDisplayIcon(resource);
+    icon.appendChild(makeMonoIcon(resourceIconKind(resource)));
     li.appendChild(icon);
     const name = document.createElement('div');
     name.className = 'icon-name';
@@ -1426,6 +1454,8 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
 
     const icon = document.createElement('span');
     icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
+    icon.innerHTML = '';
+    icon.appendChild(makeMonoIcon(deadline.kind, 'deadline-kind-icon'));
     li.appendChild(icon);
 
     const title = document.createElement('span');
@@ -1478,7 +1508,11 @@ function renderDeadlineIconView(deadlines: Deadline[]): void {
 
     const icon = document.createElement('div');
     icon.className = 'icon-glyph';
+    icon.innerHTML = '';
+    icon.appendChild(makeMonoIcon(deadline.kind));
     icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
+    icon.innerHTML = '';
+    icon.appendChild(makeMonoIcon(deadline.kind));
     li.appendChild(icon);
 
     const name = document.createElement('div');
@@ -3545,8 +3579,8 @@ function openClassroomItemDetail(
   for (const link of links) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'link-button';
-    button.textContent = `${resourceDisplayIcon({ kind: 'link', title: link.title })} ${link.title}`;
+    button.className = 'classroom-attachment-chip';
+    button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg><span>${escapeHtml(link.title)}</span>`;
     button.addEventListener('click', () => void atlasApi.openExternalUrl(link.file_path));
     linksDiv.appendChild(button);
   }

@@ -5076,6 +5076,13 @@ button#classroom-connect-confirm {
 #courses-detail-view .classroom-attachment-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #courses-detail-view .classroom-attachment-chip:hover, #courses-detail-view .classroom-attachment-chip:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 
+/* Shared monochrome file/deadline glyphs: sidebar-weight inline SVGs instead
+   of emoji, while course/status colour remains reserved for actual data. */
+.mono-icon, .deadline-kind-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--text-faint); }
+.mono-icon svg, .deadline-kind-icon svg { width: 17px; height: 17px; }
+.icon-glyph .mono-icon svg { width: 28px; height: 28px; }
+ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; height: 18px; }
+
 /* Course edit uses the shared overlays-a anatomy, not the legacy small modal. */
 #course-edit-overlay { background: rgba(0, 0, 0, .62); z-index: 70; }
 #course-edit-panel { width: min(440px, calc(100vw - 24px)); padding: 0; overflow: hidden; border: 1px solid var(--rule-strong); border-radius: var(--radius-lg); background: var(--bg-panel); box-shadow: 0 24px 70px rgba(0,0,0,.38); }
