@@ -1095,6 +1095,7 @@ ipcMain.handle('dashboard:upcomingDeadlines', () => {
        JOIN courses ON courses.id = deadlines.course_id
        WHERE deadlines.completed = 0 AND deadlines.due_at IS NOT NULL AND deadlines.stale_import = 0
          AND deadlines.classroom_removed = 0
+         AND date(deadlines.due_at) >= date('now', 'localtime')
        ORDER BY deadlines.due_at ASC
        LIMIT 8`
     )
