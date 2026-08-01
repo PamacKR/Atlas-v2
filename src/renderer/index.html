@@ -36,25 +36,13 @@
       </header>
 
       <section id="page-dashboard" class="app-page">
-        <h2>Dashboard</h2>
+        <header class="dashboard-intro"><h1>Today</h1></header>
 
-        <div id="dashboard-stats">
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-courses">0</span>
-            <span class="stat-label">Courses</span>
-          </div>
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-resources">0</span>
-            <span class="stat-label">Resources</span>
-          </div>
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-notes">0</span>
-            <span class="stat-label">Notes</span>
-          </div>
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-deadlines">0</span>
-            <span class="stat-label">Upcoming deadlines</span>
-          </div>
+        <div id="dashboard-stats" class="signals" aria-label="Academic overview">
+          <button class="signal is-urgent" type="button" id="dashboard-deadline-signal"><span class="n" id="stat-deadlines">0</span><span class="t">due this week</span></button>
+          <button class="signal" type="button" id="dashboard-resource-signal"><span class="n" id="stat-resources">0</span><span class="t">resources available</span></button>
+          <button class="signal" type="button" id="dashboard-note-signal"><span class="n" id="stat-notes">0</span><span class="t">notes in Atlas</span></button>
+          <span id="stat-courses" hidden>0</span>
         </div>
 
         <!-- Three-column layout (My Courses | Upcoming | Recent activity),

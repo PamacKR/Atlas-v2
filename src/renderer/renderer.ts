@@ -4690,6 +4690,9 @@ async function init(): Promise<void> {
     button.addEventListener('click', () => showPage(button.dataset.page as AppPage));
   });
   document.getElementById('manage-courses-button')!.addEventListener('click', () => showPage('courses'));
+  document.getElementById('dashboard-deadline-signal')!.addEventListener('click', () => showPage('calendar'));
+  document.getElementById('dashboard-resource-signal')!.addEventListener('click', () => showPage('resources'));
+  document.getElementById('dashboard-note-signal')!.addEventListener('click', () => showPage('notes'));
 
   document.getElementById('sync-config-drive')!.addEventListener('change', (e) => {
     void atlasApi.setSyncConfig('drive', (e.target as HTMLSelectElement).value).then(renderSyncStatus);
