@@ -11,40 +11,75 @@
    theme tractable at all — every color below traces back to one of these
    ~13 variables. */
 :root {
-  --color-bg: #111418;
-  --color-bg-elevated: #1a1e24;
-  --color-bg-elevated-2: #16191e;
-  --color-border: #2a2f37;
-  --color-border-soft: #262b33;
-  --color-hover-bg: #262c34;
-  --color-text: #e6e8eb;
-  --color-text-muted: #8a919c;
-  --color-text-secondary: #b0b6bf;
-  --color-text-body: #d5d8dd;
-  --color-text-dim: #4a505a;
-  --color-accent: #3b82f6;
-  --color-canvas: #0d0f12;
+  /* Direction A tokens — copied from the approved mockups. Legacy aliases
+     remain temporarily so unchanged renderer surfaces inherit the real
+     palette while their structure is replaced stage by stage. */
+  --bg: #0f0f0e;
+  --bg-hover: #1a1a17;
+  --bg-panel: #171714;
+  --text: #ecebe6;
+  --text-muted: #8d8a83;
+  --text-faint: #5b5852;
+  --rule: #24241f;
+  --rule-strong: #302f29;
+  --accent: #d9a441;
+  --urgent: #e0574a;
+  --good: #3ba55d;
+  --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+  --text-xs: 11.5px;
+  --text-sm: 13px;
+  --text-md: 14.5px;
+  --text-lg: 16.5px;
+  --text-xl: 30px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 13px;
+  --space-4: 18px;
+  --space-5: 26px;
+  --space-6: 36px;
+  --space-7: 56px;
+  --space-8: 72px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --transition: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg);
+  --color-bg-elevated-2: var(--bg-panel);
+  --color-border: var(--rule);
+  --color-border-soft: var(--rule);
+  --color-hover-bg: var(--bg-hover);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-secondary: var(--text-muted);
+  --color-text-body: var(--text);
+  --color-text-dim: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-canvas: var(--bg);
   --color-shadow: rgba(0, 0, 0, 0.4);
 }
 
 :root[data-theme='light'] {
-  --color-bg: #f3f4f6;
-  --color-bg-elevated: #ffffff;
-  --color-bg-elevated-2: #ffffff;
-  --color-border: #e0e2e7;
-  --color-border-soft: #eceef1;
-  --color-hover-bg: #eef0f3;
-  --color-text: #16181c;
-  --color-text-muted: #6b7280;
-  --color-text-secondary: #4b5563;
-  --color-text-body: #374151;
-  --color-text-dim: #c7cad1;
-  --color-canvas: #e5e7eb;
-  --color-shadow: rgba(15, 23, 42, 0.12);
+  --bg: #faf8f4;
+  --bg-hover: #f0ece2;
+  --bg-panel: #ffffff;
+  --text: #221f19;
+  --text-muted: #6b6558;
+  --text-faint: #a39c8c;
+  --rule: #e7e1d3;
+  --rule-strong: #d6cdb8;
+  --accent: #b8842f;
+  --urgent: #c2432f;
+  --good: #2f8a4c;
+  --color-shadow: rgba(34, 31, 25, 0.1);
 }
 
 body {
-  font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: var(--font);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
