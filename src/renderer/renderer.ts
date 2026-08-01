@@ -2125,11 +2125,16 @@ async function importSelectedAshokaCourses(): Promise<void> {
 
 async function renderDashboardStats(): Promise<void> {
   const stats = await atlasApi.getDashboardStats();
-  document.getElementById('dashboard-heading')!.textContent = new Intl.DateTimeFormat(undefined, {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(new Date());
+  const now = new Date();
+  const heading = document.getElementById('dashboard-heading')!;
+  heading.innerHTML = '';
+  const weekday = document.createElement('span');
+  weekday.className = 'dashboard-weekday';
+  weekday.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(now);
+  const date = document.createElement('span');
+  date.className = 'dashboard-date';
+  date.textContent = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long' }).format(now);
+  heading.append(weekday, document.createTextNode(' '), date);
   document.getElementById('stat-courses')!.textContent = String(stats.courseCount);
   document.getElementById('stat-resources')!.textContent = String(stats.resourceCount);
   document.getElementById('stat-notes')!.textContent = String(stats.noteCount);

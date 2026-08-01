@@ -3859,6 +3859,8 @@ button#classroom-connect-confirm {
   font-weight: 600;
   letter-spacing: -0.02em;
 }
+.dashboard-intro .dashboard-weekday { color: var(--text); font-weight: 600; }
+.dashboard-intro .dashboard-date { color: var(--text-faint); font-weight: 400; }
 
 #dashboard-stats.signals {
   display: flex;
