@@ -6,7 +6,17 @@ Living snapshot of where the project actually is. This is the first thing to rea
 
 ## Next session — start here
 
-**Planning only, nothing built. Do not start implementation without the user explicitly saying to start.** Same rule as before, reaffirmed after the restart below.
+## Current session — 2026-08-01
+
+UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that no implementation exists is historical and superseded by this section.
+
+- Shared Direction A tokens and the rebuilt sidebar shell are complete. The sidebar’s icon column stays fixed between expanded and collapsed states.
+- The Dashboard has been structurally rebuilt toward `mockups/dashboard-a.html`: the date/search share the top row, courses render as a five-column horizontal strip with colour swatches and aggregate metadata, and compact unboxed lists replace dashboard filter chips and card separators.
+- The global default accent is now the mockup amber (`#d9a441`), so a legacy persisted blue setting no longer applies.
+- `npm run build` and the full Electron `npm run verify` passed after this dashboard change. The Electron CSP warning is pre-existing development-mode output.
+- Next: visually compare the running Dashboard against the literal mockup, then finish remaining Dashboard details (announcement data and final action labels) before moving to the next page surface. Do not return to incremental cosmetic patching.
+
+**Historical state follows.**
 
 **What actually happened (read this before assuming any earlier plan is still live):**
 

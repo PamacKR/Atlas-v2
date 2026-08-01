@@ -501,6 +501,7 @@ let currentPage: AppPage = 'dashboard';
 
 function showPage(page: AppPage): void {
   currentPage = page;
+  document.getElementById('main-area')!.dataset.page = page;
   document.querySelectorAll<HTMLElement>('.app-page').forEach((el) => {
     el.hidden = el.id !== `page-${page}`;
   });
@@ -1976,26 +1977,20 @@ async function renderDashboardCourses(): Promise<void> {
 
   for (const course of courses) {
     const li = document.createElement('li');
-    li.appendChild(makeCourseAvatar(course));
-
-    const info = document.createElement('div');
-    info.className = 'dashboard-course-info';
     const name = document.createElement('div');
     name.className = 'dashboard-course-name';
-    name.textContent = course.name;
-    info.appendChild(name);
-    if (course.code) {
-      const code = document.createElement('div');
-      code.className = 'dashboard-course-code';
-      code.textContent = course.code;
-      info.appendChild(code);
-    }
-    li.appendChild(info);
+    const swatch = document.createElement('span');
+    swatch.className = 'dashboard-course-swatch';
+    swatch.style.backgroundColor = courseAvatarColor(course.id);
+    name.append(swatch, document.createTextNode(course.name));
 
-    const count = document.createElement('span');
-    count.className = 'dashboard-course-count';
-    count.textContent = `${course.resource_count}`;
-    li.appendChild(count);
+    const code = document.createElement('div');
+    code.className = 'dashboard-course-code';
+    code.textContent = course.code || '—';
+    const meta = document.createElement('div');
+    meta.className = 'dashboard-course-meta';
+    meta.textContent = `${course.resource_count} files · ${course.deadline_count} due`;
+    li.append(name, code, meta);
 
     li.addEventListener('click', () => openDashboardCourse(course));
     list.appendChild(li);
@@ -2266,7 +2261,61 @@ function renderCalendarLegend(deadlines: DashboardDeadline[]): void {
 
 async function renderDashboardDeadlines(): Promise<void> {
   dashboardDeadlinesCache = await atlasApi.getUpcomingDeadlines();
-  renderDashboardDeadlineRows();
+  renderDashboardCompactDeadlineRows();
+}
+
+function renderDashboardCompactDeadlineRows(): void {
+  const list = document.getElementById('dashboard-deadlines')!;
+  list.innerHTML = '';
+
+  if (dashboardDeadlinesCache.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'Nothing upcoming.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const deadline of dashboardDeadlinesCache.slice(0, 5)) {
+    const li = document.createElement('li');
+    li.className = 'dashboard-compact-row';
+    const leading = document.createElement('span');
+    leading.className = 'dashboard-row-leading';
+    const title = document.createElement('span');
+    title.className = 'dashboard-row-title';
+    title.textContent = deadline.title;
+    const course = document.createElement('span');
+    course.className = 'dashboard-row-course';
+    const swatch = document.createElement('span');
+    swatch.className = 'dashboard-course-swatch';
+    swatch.style.backgroundColor = courseAvatarColor(deadline.course_id);
+    course.append(swatch, document.createTextNode(deadline.course_name));
+    const trailing = document.createElement('span');
+    trailing.className = 'dashboard-row-trailing';
+
+    if (deadline.due_at) {
+      const { year, month, day } = splitDueAt(deadline.due_at);
+      const date = new Date(year, month - 1, day);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const difference = Math.round((date.getTime() - today.getTime()) / 86400000);
+      leading.textContent = difference === 0 ? 'Today' : date.toLocaleDateString(undefined, { weekday: 'short' });
+      if (difference === 0) li.classList.add('is-today');
+      const time = deadline.due_at.match(/(?:T|\s)(\d{2}):(\d{2})/);
+      trailing.textContent = time ? `${time[1]}:${time[2]}` : '—';
+    } else {
+      leading.textContent = '—';
+      trailing.textContent = '—';
+    }
+
+    li.append(leading, title, course, trailing);
+    li.addEventListener('click', () => openDashboardDeadline(deadline));
+    li.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      showGoToMenu(event.clientX, event.clientY, () => goToDashboardDeadline(deadline));
+    });
+    list.appendChild(li);
+  }
 }
 
 function renderDashboardDeadlineRows(): void {
@@ -2375,8 +2424,7 @@ async function renderDashboardResources(): Promise<void> {
   }
 
   for (const resource of resources) {
-    const li = document.createElement('li');
-    li.appendChild(buildDashboardItemRows(resourceDisplayIcon(resource), resource.title, resource.course_name));
+    const li = makeDashboardListingRow(resource.title, resource.course_name, resource.course_id, relativeTime(resource.added_at));
     li.addEventListener('click', () => openDashboardResource(resource));
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -2386,10 +2434,42 @@ async function renderDashboardResources(): Promise<void> {
   }
 }
 
+function relativeTime(sqliteDatetime: string): string {
+  const date = new Date(sqliteDatetime.replace(' ', 'T') + 'Z');
+  const hours = Math.max(0, Math.round((Date.now() - date.getTime()) / 3600000));
+  if (hours < 1) return 'now';
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  return days < 7 ? `${days}d` : `${Math.round(days / 7)}w`;
+}
+
+function makeDashboardListingRow(title: string, courseName: string, courseId: number, age: string): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'dashboard-compact-row dashboard-listing-row';
+  const ageEl = document.createElement('span');
+  ageEl.className = 'dashboard-row-leading';
+  ageEl.textContent = age;
+  const titleEl = document.createElement('span');
+  titleEl.className = 'dashboard-row-title';
+  titleEl.textContent = title;
+  const courseEl = document.createElement('span');
+  courseEl.className = 'dashboard-row-course';
+  const swatch = document.createElement('span');
+  swatch.className = 'dashboard-course-swatch';
+  swatch.style.backgroundColor = courseAvatarColor(courseId);
+  courseEl.append(swatch, document.createTextNode(courseName));
+  li.append(ageEl, titleEl, courseEl);
+  return li;
+}
+
 async function renderDashboardActivity(): Promise<void> {
   const list = document.getElementById('dashboard-activity')!;
-  const activity = await atlasApi.getRecentActivity();
-  const todayItems = activity.filter((item) => isTodayLocal(item.timestamp));
+  const notes = await atlasApi.listAllNotes();
+  const todayItems = notes.filter((note): note is NoteWithCourse & { course_id: number } => note.course_id !== null).slice(0, 5).map((note) => ({
+    ...note,
+    timestamp: note.updated_at,
+    entity_type: 'note' as const,
+  }));
   list.innerHTML = '';
 
   if (todayItems.length === 0) {
@@ -2402,6 +2482,14 @@ async function renderDashboardActivity(): Promise<void> {
 
   for (const item of todayItems) {
     const li = document.createElement('li');
+    const compact = makeDashboardListingRow(item.title, item.course_name, item.course_id, relativeTime(item.timestamp));
+    compact.addEventListener('click', () => openDashboardActivityItem(item));
+    compact.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showGoToMenu(e.clientX, e.clientY, () => goToDashboardActivityItem(item));
+    });
+    list.appendChild(compact);
+    continue;
     const timeText = new Date(item.timestamp.replace(' ', 'T') + 'Z').toLocaleTimeString(undefined, {
       hour: 'numeric',
       minute: '2-digit',
@@ -4030,7 +4118,7 @@ function setTheme(theme: 'light' | 'dark'): void {
 // which already drives active states/buttons/highlights throughout the app,
 // so changing this one CSS custom property recolors all of them at once
 // rather than needing per-component theming.
-const ACCENT_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899'];
+const ACCENT_COLORS = ['#d9a441', '#8b5cf6', '#3ba55d', '#e0574a', '#ec4899'];
 const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
 
 function applyAccentColor(color: string): void {

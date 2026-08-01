@@ -3969,6 +3969,107 @@ button#classroom-connect-confirm {
 #dashboard-main-grid .section-head button:hover,
 #dashboard-main-grid .section-action:hover { color: var(--text); }
 
+/* Dashboard: literal Direction A structure — a full-width course strip and
+   two unboxed lists. These selectors intentionally replace the earlier card
+   widget geometry instead of layering cosmetic changes over it. */
+#main-area[data-page="dashboard"] { position: relative; }
+#main-area[data-page="dashboard"] #topbar {
+  position: absolute;
+  top: var(--space-7);
+  right: var(--space-8);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+}
+#main-area:not([data-page="dashboard"]) #dashboard-course-filter { display: none; }
+.dashboard-course-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 37px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+}
+.dashboard-course-filter svg { width: 12px; height: 12px; }
+#main-area[data-page="dashboard"] .dashboard-intro h1 { margin-bottom: var(--space-5); }
+#main-area[data-page="dashboard"] #dashboard-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: var(--space-7);
+  margin-top: var(--space-6);
+}
+#main-area[data-page="dashboard"] #dashboard-courses-widget {
+  position: relative;
+  grid-column: 1 / -1;
+  padding: 0 0 var(--space-5);
+  border-bottom: 1px solid var(--rule);
+}
+#main-area[data-page="dashboard"] #dashboard-course-list.dashboard-course-chips {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+#main-area[data-page="dashboard"] #dashboard-course-list.dashboard-course-chips li.dashboard-course-cell {
+  display: block;
+  min-width: 0;
+  padding: var(--space-3);
+  margin: calc(var(--space-3) * -1);
+  border: 0;
+}
+.dashboard-course-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+.dashboard-course-name > span:last-child,
+.dashboard-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-course-swatch { width: 6px; height: 6px; border-radius: 2px; flex: 0 0 6px; }
+.dashboard-course-code { margin: 2px 0 var(--space-2); padding-left: 14px; color: var(--text-faint); font-size: var(--text-xs); }
+.dashboard-course-meta { padding-left: 14px; color: var(--text-muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.dashboard-course-meta::first-line { color: var(--text-muted); }
+#main-area[data-page="dashboard"] #dashboard-upcoming-widget { grid-column: 1; }
+#main-area[data-page="dashboard"] #dashboard-upcoming-widget { position: relative; }
+#main-area[data-page="dashboard"] #dashboard-right-column { grid-column: 2; display: grid; gap: var(--space-7); }
+#main-area[data-page="dashboard"] #dashboard-main-grid ul { margin: 0; padding: 0; }
+#main-area[data-page="dashboard"] #dashboard-deadlines,
+#main-area[data-page="dashboard"] #dashboard-resources,
+#main-area[data-page="dashboard"] #dashboard-activity { display: grid; gap: 2px; }
+#main-area[data-page="dashboard"] li.dashboard-compact-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) minmax(120px, 150px) 46px;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: 8px var(--space-3);
+  margin: 0 calc(var(--space-3) * -1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+#main-area[data-page="dashboard"] li.dashboard-compact-row:hover { background: var(--bg-hover); transform: translateX(2px); }
+#main-area[data-page="dashboard"] .dashboard-listing-row { grid-template-columns: 34px minmax(0, 1fr) minmax(120px, 150px); }
+.dashboard-row-leading, .dashboard-row-trailing { color: var(--text-faint); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.dashboard-row-trailing { text-align: right; }
+.dashboard-compact-row.is-today .dashboard-row-leading { color: var(--urgent); font-weight: 500; }
+.dashboard-row-title { font-size: var(--text-md); font-weight: 450; }
+.dashboard-row-course { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--text-sm); white-space: nowrap; }
+#main-area[data-page="dashboard"] .dashboard-widget-footer-btn { margin-top: var(--space-2); }
+#main-area[data-page="dashboard"] #manage-courses-button,
+#main-area[data-page="dashboard"] #dashboard-view-calendar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+}
+
 /* Courses — the approved default is an information-dense list, with grid
    available as a secondary view rather than the default card wall. */
 #courses-list-view .page-header {

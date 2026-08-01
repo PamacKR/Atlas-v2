@@ -29,6 +29,9 @@
 
     <div id="main-area">
       <header id="topbar">
+        <button id="dashboard-course-filter" type="button" class="dashboard-course-filter">All courses
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
         <div id="search-box">
           <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
           <ul id="search-results" hidden></ul>
@@ -54,22 +57,15 @@
               <h2>Courses</h2>
             </div>
             <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
-            <button id="manage-courses-button" type="button" class="dashboard-widget-footer-btn">⚙️ Manage courses</button>
+            <button id="manage-courses-button" type="button" class="dashboard-widget-footer-btn">Manage →</button>
           </div>
 
           <div class="dashboard-widget dashboard-widget-stretch" id="dashboard-upcoming-widget">
             <div class="resources-header section-head">
               <h2>Up next</h2>
             </div>
-            <div class="chip-row" id="dashboard-upcoming-tabs">
-              <button class="chip active" type="button" data-upcoming-filter="">All</button>
-              <button class="chip" type="button" data-upcoming-filter="assignment">Assignments</button>
-              <button class="chip" type="button" data-upcoming-filter="exam">Exams</button>
-              <button class="chip" type="button" data-upcoming-filter="reading">Readings</button>
-              <button class="chip" type="button" data-upcoming-filter="other">Other</button>
-            </div>
             <ul id="dashboard-deadlines"></ul>
-            <button id="dashboard-view-calendar" type="button" class="dashboard-widget-footer-btn">View full calendar →</button>
+            <button id="dashboard-view-calendar" type="button" class="dashboard-widget-footer-btn">Calendar →</button>
           </div>
 
           <div id="dashboard-right-column">
