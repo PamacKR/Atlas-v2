@@ -4526,6 +4526,25 @@ button#classroom-connect-confirm {
 #note-overlay #note-editor-root .milkdown { min-height: 100%; background: transparent; }
 #note-overlay.fullscreen #note-overlay-panel { width: 100%; height: 100%; border-radius: 0; }
 
+/* The note's identity belongs in the header once. Keep title, course, origin,
+   and save state together there instead of repeating metadata in the body. */
+#note-overlay .note-overlay-header-titles { flex: 1; min-width: 0; }
+#note-overlay .note-overlay-header #note-title-input {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+#note-overlay .note-overlay-sub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
 /* Courses — the approved default is an information-dense list, with grid
    available as a secondary view rather than the default card wall. */
 #courses-list-view .page-header {

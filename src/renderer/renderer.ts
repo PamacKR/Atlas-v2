@@ -2883,8 +2883,7 @@ async function openNoteEditor(note: Note): Promise<void> {
   const course = courses.find((item) => item.id === note.course_id);
   const courseName = course?.name ?? 'Unsorted';
   document.getElementById('note-overlay-course')!.textContent = courseName;
-  document.getElementById('note-editor-course')!.textContent = courseName;
-  document.getElementById('note-editor-origin')!.textContent = note.generated_by_agent ? 'Agent-written' : 'Not agent-written';
+  document.getElementById('note-overlay-origin')!.textContent = note.generated_by_agent ? 'Agent-written' : 'Not agent-written';
   const swatch = document.getElementById('note-overlay-course-swatch')!;
   swatch.style.background = course ? courseAvatarColor(course.id) : 'var(--text-faint)';
   statusEl.textContent = `Saved ${formatRelativeTime(note.updated_at.replace(' ', 'T') + 'Z')}`;

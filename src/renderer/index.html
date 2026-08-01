@@ -534,8 +534,8 @@
     <div id="note-overlay-panel">
       <div class="note-overlay-header">
         <div class="note-overlay-header-titles">
-          <h3>Note</h3>
-          <div class="note-overlay-sub"><span id="note-overlay-course-swatch" class="swatch"></span><span id="note-overlay-course"></span><span>·</span><span id="note-save-status"></span></div>
+          <input id="note-title-input" type="text" placeholder="Untitled" />
+          <div class="note-overlay-sub"><span id="note-overlay-course-swatch" class="swatch"></span><span id="note-overlay-course"></span><span>·</span><span id="note-overlay-origin"></span><span>·</span><span id="note-save-status"></span></div>
         </div>
         <div class="note-overlay-actions">
           <button id="note-assign-course" type="button" hidden>Assign to course…</button>
@@ -554,8 +554,6 @@
         </div>
       </div>
       <div id="note-editor-body">
-        <input id="note-title-input" type="text" placeholder="Untitled" />
-        <div class="note-meta-row"><span id="note-editor-course"></span><span>·</span><span id="note-editor-origin"></span></div>
         <div id="note-content-area">
       <div id="note-scan-panel" hidden></div>
       <div id="note-ocr-preview" hidden>
