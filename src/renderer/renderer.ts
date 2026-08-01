@@ -207,6 +207,14 @@ interface DashboardActivityItem {
   course_name: string;
 }
 
+interface DashboardAnnouncement {
+  id: number;
+  course_id: number;
+  title: string;
+  posted_at: string;
+  course_name: string;
+}
+
 interface DashboardStats {
   courseCount: number;
   resourceCount: number;
@@ -367,6 +375,7 @@ interface AtlasApi {
   listAllDeadlinesWithCourse: () => Promise<DashboardDeadline[]>;
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
+  getRecentAnnouncements: () => Promise<DashboardAnnouncement[]>;
   getCourseSummaries: (archived?: boolean) => Promise<CourseSummary[]>;
   listAllResources: () => Promise<ResourceWithCourse[]>;
   listAllNotes: () => Promise<NoteWithCourse[]>;
@@ -1441,6 +1450,7 @@ async function renderDashboard(): Promise<void> {
     renderDashboardStats(),
     renderDashboardCourses(),
     renderDashboardDeadlines(),
+    renderDashboardAnnouncements(),
     renderDashboardResources(),
     renderDashboardActivity(),
   ]);
@@ -2479,6 +2489,38 @@ function makeDashboardListingRow(title: string, courseName: string, courseId: nu
   courseEl.append(swatch, document.createTextNode(courseName));
   li.append(ageEl, titleEl, courseEl);
   return li;
+}
+
+async function renderDashboardAnnouncements(): Promise<void> {
+  const list = document.getElementById('dashboard-announcements')!;
+  const announcements = await atlasApi.getRecentAnnouncements();
+  const visibleAnnouncements = dashboardCourseFilterId === null
+    ? announcements
+    : announcements.filter((announcement) => announcement.course_id === dashboardCourseFilterId);
+  list.innerHTML = '';
+
+  if (visibleAnnouncements.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No announcements.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const announcement of visibleAnnouncements.slice(0, 5)) {
+    const li = makeDashboardListingRow(
+      announcement.title,
+      announcement.course_name,
+      announcement.course_id,
+      relativeTime(announcement.posted_at)
+    );
+    li.addEventListener('click', async () => {
+      const courses = await atlasApi.listCourses();
+      const course = courses.find((item) => item.id === announcement.course_id);
+      if (course) await openDashboardCourse(course);
+    });
+    list.appendChild(li);
+  }
 }
 
 async function renderDashboardActivity(): Promise<void> {

@@ -1094,6 +1094,21 @@ ipcMain.handle('dashboard:upcomingDeadlines', () => {
     .all();
 });
 
+ipcMain.handle('dashboard:recentAnnouncements', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT announcements.id, announcements.course_id, announcements.title, announcements.posted_at,
+              courses.name AS course_name
+       FROM announcements
+       JOIN courses ON courses.id = announcements.course_id
+       WHERE courses.archived = 0
+       ORDER BY announcements.posted_at DESC
+       LIMIT 12`
+    )
+    .all();
+});
+
 // `archived` param: false (default, and every existing caller that doesn't
 // pass one) returns only active courses, matching the behavior this handler
 // always had. Passing true switches to *only* archived courses instead — the

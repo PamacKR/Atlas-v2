@@ -1511,9 +1511,12 @@ const fs = require('fs');
     oldDeadlineTabs: !!document.querySelector('#dashboard-upcoming-tabs'),
     compactDeadlineRows: document.querySelectorAll('#dashboard-deadlines .dashboard-compact-row').length,
     courseCells: document.querySelectorAll('#dashboard-course-list .dashboard-course-cell').length,
+    announcementList: !!document.querySelector('#dashboard-announcements'),
+    courseGridColumns: getComputedStyle(document.querySelector('#dashboard-course-list')).gridTemplateColumns.split(' ').length,
   }));
   console.log('dashboard continuous layout:', dashboardStructure);
-  if (!dashboardStructure.courseFilter || dashboardStructure.oldDeadlineTabs || dashboardStructure.compactDeadlineRows === 0) {
+  if (!dashboardStructure.courseFilter || dashboardStructure.oldDeadlineTabs || dashboardStructure.compactDeadlineRows === 0 ||
+      !dashboardStructure.announcementList || dashboardStructure.courseGridColumns < 5) {
     throw new Error('FAIL: dashboard did not render the continuous-layout structure');
   }
 
