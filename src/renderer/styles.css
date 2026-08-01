@@ -4991,7 +4991,7 @@ button#classroom-connect-confirm {
 #courses-detail-view .course-classroom-status .link-button:hover,
 #courses-detail-view .course-classroom-status .link-button:focus-visible { color: var(--text); outline: none; }
 #courses-detail-view .dashboard-widget ul,
-#courses-detail-view .course-detail-preview-list { margin: 0; padding: 0; list-style: none; }
+#courses-detail-view .course-detail-preview-list { max-height: none; overflow: visible; margin: 0; padding: 0; list-style: none; }
 #courses-detail-view .dashboard-widget li {
   display: flex;
   flex-direction: row;
@@ -5041,8 +5041,8 @@ button#classroom-connect-confirm {
 #courses-detail-view #deadlines-section > .resources-header { align-items: center; }
 #courses-detail-view #deadlines-section > .resources-header h4 { margin: 0; color: var(--text-faint); font-size: var(--text-xs); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
 #courses-detail-view #deadlines-section .view-toggle { margin: 0; }
-#courses-detail-view #new-deadline-button { height: 34px; margin-top: var(--space-5); padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--accent); color: #17140d; font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
-#courses-detail-view #new-deadline-button:hover { filter: brightness(1.06); }
+#courses-detail-view #new-deadline-button { height: 34px; margin-top: var(--space-5); padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: color var(--transition), border-color var(--transition), background var(--transition); }
+#courses-detail-view #new-deadline-button:hover, #courses-detail-view #new-deadline-button:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 #courses-detail-view #add-watch-folder { height: 34px; margin-top: var(--space-5); padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: color var(--transition), border-color var(--transition), background var(--transition); }
 #courses-detail-view #add-watch-folder:hover, #courses-detail-view #add-watch-folder:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 #courses-detail-view { min-width: 0; overflow-x: hidden; }
@@ -5067,6 +5067,14 @@ button#classroom-connect-confirm {
 #courses-detail-view .deadline-checkbox:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #17140d; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 #courses-detail-view .deadline-checkbox:focus-visible { outline: 2px solid var(--rule-strong); outline-offset: 2px; }
 #courses-detail-view #course-announcements-list .classroom-item-body { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+#courses-detail-view #deadlines-section .view-toggle button { border: 0; background: transparent; color: var(--text-faint); }
+#courses-detail-view #deadlines-section .view-toggle button.active { background: transparent; color: var(--text); }
+#courses-detail-view #deadlines-section .view-toggle button:hover, #courses-detail-view #deadlines-section .view-toggle button:focus-visible { background: var(--bg-hover); color: var(--text); outline: none; }
+#courses-detail-view .classroom-item-links { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+#courses-detail-view .classroom-attachment-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 30px; padding: 0 var(--space-2); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: color var(--transition), border-color var(--transition), background var(--transition); }
+#courses-detail-view .classroom-attachment-chip svg { width: 15px; height: 15px; flex: 0 0 auto; }
+#courses-detail-view .classroom-attachment-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#courses-detail-view .classroom-attachment-chip:hover, #courses-detail-view .classroom-attachment-chip:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 
 /* Course edit uses the shared overlays-a anatomy, not the legacy small modal. */
 #course-edit-overlay { background: rgba(0, 0, 0, .62); z-index: 70; }

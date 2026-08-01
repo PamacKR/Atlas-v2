@@ -3504,8 +3504,8 @@ function renderClassroomLinkList<T>(
       for (const link of row.links) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'link-button';
-        button.textContent = `${resourceDisplayIcon({ kind: 'link', title: link.title })} ${link.title}`;
+        button.className = 'classroom-attachment-chip';
+        button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg><span>${escapeHtml(link.title)}</span>`;
         // Stops the click from also bubbling up to the row's own click
         // handler (which would open the detail overlay right behind the
         // link the user actually meant to open).
