@@ -9,14 +9,17 @@
 <body>
   <div id="app-shell">
     <nav id="sidebar">
-      <div id="sidebar-brand">Atlas</div>
-      <button class="sidebar-nav-item active" type="button" data-page="dashboard"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="courses"><span class="nav-icon">📚</span><span class="nav-label">Courses</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="resources"><span class="nav-icon">🗂️</span><span class="nav-label">Resources</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="notes"><span class="nav-icon">📝</span><span class="nav-label">Notes</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="calendar"><span class="nav-icon">📅</span><span class="nav-label">Calendar</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></button>
-      <button id="sidebar-collapse-toggle" class="sidebar-nav-item" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">
+      <div id="sidebar-brand" class="wordmark"><span class="wm-a">A</span><span class="wm-rest">tlas</span></div>
+      <div class="sidebar-nav-list">
+      <button class="sidebar-nav-item nav-item active" type="button" data-page="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span><span class="nav-label">Dashboard</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="courses"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span><span class="nav-label">Courses</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="resources"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v8.5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5Z"/></svg></span><span class="nav-label">Resources</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="notes"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h11l5 5v13H4Z"/><path d="M15 3v5h5M8 13h8M8 17h6"/></svg></span><span class="nav-label">Notes</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="calendar"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></span><span class="nav-label">Calendar</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="settings"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1A1.7 1.7 0 0 0 10.7 18.6a1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.06 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.06 9.94 1.7 1.7 0 0 0 6.72 8.06l-.06-.06 2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg></span><span class="nav-label">Settings</span></button>
+      </div>
+      <div class="nav-spacer"></div>
+      <button id="sidebar-collapse-toggle" class="sidebar-nav-item sidebar-toggle" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">
         <span class="nav-icon" id="sidebar-collapse-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </span>
