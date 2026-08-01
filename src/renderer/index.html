@@ -532,10 +532,12 @@
 
   <div id="note-overlay" hidden>
     <div id="note-overlay-panel">
-      <div class="split-preview-header">
-        <input id="note-title-input" type="text" placeholder="Untitled" />
-        <div class="split-preview-actions">
-          <span id="note-save-status" class="muted"></span>
+      <div class="note-overlay-header">
+        <div class="note-overlay-header-titles">
+          <h3>Note</h3>
+          <div class="note-overlay-sub"><span id="note-overlay-course-swatch" class="swatch"></span><span id="note-overlay-course"></span><span>·</span><span id="note-save-status"></span></div>
+        </div>
+        <div class="note-overlay-actions">
           <button id="note-assign-course" type="button" hidden>Assign to course…</button>
           <button id="note-view-scan" type="button" title="View original scan" aria-label="View original scan" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -551,6 +553,10 @@
           </button>
         </div>
       </div>
+      <div id="note-editor-body">
+        <input id="note-title-input" type="text" placeholder="Untitled" />
+        <div class="note-meta-row"><span id="note-editor-course"></span><span>·</span><span id="note-editor-origin"></span></div>
+        <div id="note-content-area">
       <div id="note-scan-panel" hidden></div>
       <div id="note-ocr-preview" hidden>
         <p class="muted">OCR result — review before inserting. This replaces the note's current content.</p>
@@ -561,6 +567,8 @@
         </div>
       </div>
       <div id="note-editor-root"></div>
+        </div>
+      </div>
     </div>
   </div>
 
