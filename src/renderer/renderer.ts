@@ -1950,6 +1950,11 @@ async function importSelectedAshokaCourses(): Promise<void> {
 
 async function renderDashboardStats(): Promise<void> {
   const stats = await atlasApi.getDashboardStats();
+  document.getElementById('dashboard-heading')!.textContent = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date());
   document.getElementById('stat-courses')!.textContent = String(stats.courseCount);
   document.getElementById('stat-resources')!.textContent = String(stats.resourceCount);
   document.getElementById('stat-notes')!.textContent = String(stats.noteCount);

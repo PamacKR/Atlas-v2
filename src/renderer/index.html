@@ -36,7 +36,7 @@
       </header>
 
       <section id="page-dashboard" class="app-page">
-        <header class="dashboard-intro"><h1>Today</h1></header>
+        <header class="dashboard-intro"><h1 id="dashboard-heading">Today</h1></header>
 
         <div id="dashboard-stats" class="signals" aria-label="Academic overview">
           <button class="signal is-urgent" type="button" id="dashboard-deadline-signal"><span class="n" id="stat-deadlines">0</span><span class="t">due this week</span></button>
@@ -50,16 +50,16 @@
              width-widgets arrangement. -->
         <div id="dashboard-main-grid">
           <div class="dashboard-widget dashboard-widget-stretch" id="dashboard-courses-widget">
-            <div class="resources-header">
-              <h3>My courses</h3>
+            <div class="resources-header section-head">
+              <h2>Courses</h2>
             </div>
             <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
             <button id="manage-courses-button" type="button" class="dashboard-widget-footer-btn">⚙️ Manage courses</button>
           </div>
 
           <div class="dashboard-widget dashboard-widget-stretch" id="dashboard-upcoming-widget">
-            <div class="resources-header">
-              <h3>Upcoming</h3>
+            <div class="resources-header section-head">
+              <h2>Up next</h2>
             </div>
             <div class="chip-row" id="dashboard-upcoming-tabs">
               <button class="chip active" type="button" data-upcoming-filter="">All</button>
@@ -74,11 +74,11 @@
 
           <div id="dashboard-right-column">
             <div class="dashboard-widget">
-              <h3>Recently added resources</h3>
+              <div class="section-head"><h2>Recent</h2></div>
               <ul id="dashboard-resources"></ul>
             </div>
             <div class="dashboard-widget">
-              <h3>What changed today</h3>
+              <div class="section-head"><h2>What changed today</h2></div>
               <ul id="dashboard-activity"></ul>
             </div>
           </div>
