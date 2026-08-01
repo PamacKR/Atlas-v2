@@ -1506,6 +1506,17 @@ const fs = require('fs');
   await window.waitForTimeout(200);
   await goToPage('dashboard');
 
+  const dashboardStructure = await window.evaluate(() => ({
+    courseFilter: !!document.querySelector('#dashboard-course-filter'),
+    oldDeadlineTabs: !!document.querySelector('#dashboard-upcoming-tabs'),
+    compactDeadlineRows: document.querySelectorAll('#dashboard-deadlines .dashboard-compact-row').length,
+    courseCells: document.querySelectorAll('#dashboard-course-list .dashboard-course-cell').length,
+  }));
+  console.log('dashboard continuous layout:', dashboardStructure);
+  if (!dashboardStructure.courseFilter || dashboardStructure.oldDeadlineTabs || dashboardStructure.compactDeadlineRows === 0) {
+    throw new Error('FAIL: dashboard did not render the continuous-layout structure');
+  }
+
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
 
