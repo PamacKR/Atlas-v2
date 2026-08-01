@@ -5041,10 +5041,10 @@ button#classroom-connect-confirm {
 #courses-detail-view #deadlines-section > .resources-header { align-items: center; }
 #courses-detail-view #deadlines-section > .resources-header h4 { margin: 0; color: var(--text-faint); font-size: var(--text-xs); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
 #courses-detail-view #deadlines-section .view-toggle { margin: 0; }
-#courses-detail-view #new-deadline-button,
-#courses-detail-view #add-watch-folder { height: 34px; margin-top: var(--space-5); padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--accent); color: #17140d; font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
-#courses-detail-view #new-deadline-button:hover,
-#courses-detail-view #add-watch-folder:hover { filter: brightness(1.06); }
+#courses-detail-view #new-deadline-button { height: 34px; margin-top: var(--space-5); padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--accent); color: #17140d; font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+#courses-detail-view #new-deadline-button:hover { filter: brightness(1.06); }
+#courses-detail-view #add-watch-folder { height: 34px; margin-top: var(--space-5); padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: color var(--transition), border-color var(--transition), background var(--transition); }
+#courses-detail-view #add-watch-folder:hover, #courses-detail-view #add-watch-folder:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 #courses-detail-view { min-width: 0; overflow-x: hidden; }
 #courses-detail-view .course-detail-header > div:not(.course-detail-header-actions) { min-width: 0; }
 #courses-detail-view .course-detail-header-actions { display: flex; align-items: center; gap: var(--space-4); margin-left: auto; flex: 0 0 auto; }
