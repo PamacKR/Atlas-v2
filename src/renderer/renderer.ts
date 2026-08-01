@@ -3974,9 +3974,10 @@ async function openDeadlineViewer(deadline: Deadline): Promise<void> {
   currentViewingDeadline = deadline;
 
   document.getElementById('deadline-view-title')!.textContent = deadline.title;
-  document.getElementById('deadline-view-kind')!.textContent =
-    DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
+  document.getElementById('deadline-view-course')!.textContent = selectedCourse?.name ?? '';
   document.getElementById('deadline-view-due')!.textContent = formatDueDate(deadline.due_at);
+  document.getElementById('deadline-view-status')!.textContent = deadline.local_overrides ? 'Edited by you' : 'Unchanged';
+  document.getElementById('deadline-view-source')!.textContent = deadline.source === 'classroom' ? 'Google Classroom' : 'Manual';
 
   // Conflict handling (open-questions.md #3) — both notices are mutually
   // independent (a deadline can be both locally overridden and removed at
@@ -3994,8 +3995,10 @@ async function openDeadlineViewer(deadline: Deadline): Promise<void> {
         overrides.length > 1 ? 'these' : 'this'
       } won't overwrite your changes.`;
     overrideNotice.hidden = false;
+    document.getElementById('deadline-reset-override-button')!.hidden = false;
   } else {
     overrideNotice.hidden = true;
+    document.getElementById('deadline-reset-override-button')!.hidden = true;
   }
 
   const descriptionEl = document.getElementById('deadline-view-description')!;
@@ -5121,6 +5124,7 @@ async function init(): Promise<void> {
     void resetCurrentDeadlineOverrides();
   });
   document.getElementById('deadline-view-close')!.addEventListener('click', closeDeadlineEditor);
+  document.getElementById('deadline-view-close-footer')!.addEventListener('click', closeDeadlineEditor);
   document.getElementById('deadline-cancel-button')!.addEventListener('click', closeDeadlineEditor);
 
   const dateTextInput = document.getElementById('deadline-edit-date-text') as HTMLInputElement;

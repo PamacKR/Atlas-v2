@@ -666,22 +666,20 @@
     <div id="deadline-editor-panel">
       <div id="deadline-view-mode">
         <div id="deadline-view-header">
-          <h3 id="deadline-view-title"></h3>
-          <span id="deadline-view-kind" class="code"></span>
+          <div><h3 id="deadline-view-title"></h3><p id="deadline-view-course"></p></div>
+          <div id="deadline-view-header-actions"><button id="deadline-view-tab" type="button" class="active">View</button><button id="deadline-edit-button" type="button">Edit</button><button id="deadline-view-close" type="button" aria-label="Close">×</button></div>
         </div>
-        <p id="deadline-view-due" class="muted"></p>
+        <div id="deadline-view-facts"><div><span>Due</span><strong id="deadline-view-due"></strong></div><div><span>Status</span><strong id="deadline-view-status"></strong></div><div><span>Source</span><strong id="deadline-view-source"></strong></div><div id="deadline-view-notes-row"><span>Notes</span><strong id="deadline-view-description"></strong></div></div>
         <!-- Conflict handling (open-questions.md #3) — shown only for a
              Classroom-synced deadline the user has locally edited, or one
              whose Classroom coursework was deleted at the source. -->
         <p id="deadline-view-removed-notice" class="deadline-conflict-notice" hidden>This assignment is no longer in Google Classroom. Delete it here if you want to remove it.</p>
         <div id="deadline-view-override-notice" class="deadline-conflict-notice" hidden>
           <span id="deadline-view-override-text"></span>
-          <button id="deadline-reset-override-button" type="button" class="link-button">Reset to Classroom version</button>
+          <span class="deadline-override-copy">Classroom version available</span>
         </div>
-        <div id="deadline-view-description"></div>
         <div id="deadline-view-actions">
-          <button id="deadline-edit-button" type="button">Edit</button>
-          <button id="deadline-view-close" type="button">Close</button>
+          <button id="deadline-reset-override-button" type="button" class="link-button" hidden>Reset to Classroom</button><span></span><button id="deadline-view-close-footer" type="button">Close</button>
         </div>
       </div>
 

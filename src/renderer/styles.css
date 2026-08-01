@@ -4233,6 +4233,23 @@ button#classroom-connect-confirm {
 #dashboard-resources::-webkit-scrollbar-thumb:hover,
 #dashboard-activity::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
 
+/* Deadline viewer — Direction A overlay structure. */
+#deadline-editor-panel { max-width: 420px; padding: 0; overflow: hidden; border-radius: var(--radius-lg); background: var(--bg-panel); }
+#deadline-view-header { align-items: flex-start; justify-content: space-between; padding: var(--space-5); margin: 0; border-bottom: 1px solid var(--rule); }
+#deadline-view-header h3 { color: var(--text); font-size: var(--text-lg); }
+#deadline-view-course { margin: var(--space-1) 0 0; color: var(--text-faint); font-size: var(--text-sm); }
+#deadline-view-header-actions { display: flex; align-items: center; gap: var(--space-2); }
+#deadline-view-header-actions button { border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); padding: 6px 10px; }
+#deadline-view-header-actions button.active { color: var(--text); background: var(--bg-hover); }
+#deadline-view-header-actions #deadline-view-close { font-size: 20px; padding: 2px 8px; }
+#deadline-view-facts { padding: var(--space-4) var(--space-5); }
+#deadline-view-facts > div { display: flex; justify-content: space-between; gap: var(--space-5); padding: var(--space-3) 0; border-bottom: 1px solid var(--rule); font-size: var(--text-sm); }
+#deadline-view-facts > div:last-child { border-bottom: 0; }
+#deadline-view-facts span { color: var(--text-faint); }
+#deadline-view-facts strong { color: var(--text); text-align: right; font-weight: 500; white-space: pre-wrap; }
+#deadline-view-actions { margin: 0; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--rule); justify-content: space-between; }
+#deadline-view-actions span { flex: 1; }
+
 /* Courses — the approved default is an information-dense list, with grid
    available as a secondary view rather than the default card wall. */
 #courses-list-view .page-header {
