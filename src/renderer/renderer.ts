@@ -4032,21 +4032,6 @@ async function resetCurrentDeadlineOverrides(): Promise<void> {
 // separate from the native <input type="date">'s own yyyy-mm-dd value so
 // both entry methods (typing, or the picker button) can drive the same
 // field without fighting each other's format.
-function typedDateToIso(text: string): string | null {
-  const match = text.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (!match) return null;
-  const [, dd, mm, yyyy] = match;
-  const month = Number(mm);
-  const day = Number(dd);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-}
-
-function isoDateToTyped(iso: string): string {
-  const [year, month, day] = iso.split('-');
-  return `${day}-${month}-${year}`;
-}
-
 async function openDeadlineEditForm(deadline: Deadline | null): Promise<void> {
   if (!selectedCourse) return;
   await loadMentionCandidates(selectedCourse.id);
@@ -4055,20 +4040,8 @@ async function openDeadlineEditForm(deadline: Deadline | null): Promise<void> {
   (document.getElementById('deadline-edit-title') as HTMLInputElement).value = deadline?.title ?? '';
   (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value = deadline?.kind ?? 'assignment';
 
-  const dateText = document.getElementById('deadline-edit-date-text') as HTMLInputElement;
-  const dateNative = document.getElementById('deadline-edit-date-native') as HTMLInputElement;
-  const timeInput = document.getElementById('deadline-edit-time') as HTMLInputElement;
-  if (deadline?.due_at) {
-    const [datePart, timePart] = deadline.due_at.split('T');
-    dateText.value = isoDateToTyped(datePart);
-    dateNative.value = datePart;
-    timeInput.value = timePart ?? '';
-  } else {
-    dateText.value = '';
-    dateNative.value = '';
-    timeInput.value = '';
-  }
-  document.getElementById('deadline-date-error')!.hidden = true;
+  const dueInput = document.getElementById('deadline-edit-due') as HTMLInputElement;
+  dueInput.value = deadline?.due_at ? deadline.due_at.slice(0, 16) : '';
 
   (document.getElementById('deadline-edit-description') as HTMLTextAreaElement).value =
     deadline?.description ?? '';
@@ -5131,31 +5104,6 @@ async function init(): Promise<void> {
   });
   document.getElementById('deadline-cancel-button')!.addEventListener('click', closeDeadlineEditor);
 
-  const dateTextInput = document.getElementById('deadline-edit-date-text') as HTMLInputElement;
-  const dateNativeInput = document.getElementById('deadline-edit-date-native') as HTMLInputElement;
-  const dateErrorEl = document.getElementById('deadline-date-error')!;
-
-  dateTextInput.addEventListener('input', () => {
-    const iso = typedDateToIso(dateTextInput.value);
-    dateErrorEl.hidden = dateTextInput.value.trim() === '' || iso !== null;
-    dateNativeInput.value = iso ?? '';
-  });
-
-  document.getElementById('deadline-edit-date-pick')!.addEventListener('click', () => {
-    // showPicker() is the modern way to open a date input's native picker
-    // programmatically (Chromium 99+, so available in Electron) — needed
-    // since the native input itself is visually hidden in favor of the
-    // typed text field being the visible/primary way to enter a date.
-    if (typeof dateNativeInput.showPicker === 'function') dateNativeInput.showPicker();
-    else dateNativeInput.focus();
-  });
-
-  dateNativeInput.addEventListener('change', () => {
-    if (!dateNativeInput.value) return;
-    dateTextInput.value = isoDateToTyped(dateNativeInput.value);
-    dateErrorEl.hidden = true;
-  });
-
   const descriptionTextarea = document.getElementById('deadline-edit-description') as HTMLTextAreaElement;
   descriptionTextarea.addEventListener('input', updateMentionSuggestions);
   descriptionTextarea.addEventListener('blur', () => {
@@ -5199,16 +5147,8 @@ async function init(): Promise<void> {
     const title = (document.getElementById('deadline-edit-title') as HTMLInputElement).value.trim();
     if (!title) return;
 
-    const typedDate = dateTextInput.value.trim();
-    if (typedDate && typedDateToIso(typedDate) === null) {
-      dateErrorEl.hidden = false;
-      return;
-    }
-
     const kind = (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value;
-    const isoDate = typedDate ? typedDateToIso(typedDate) : null;
-    const time = (document.getElementById('deadline-edit-time') as HTMLInputElement).value;
-    const dueAt = isoDate ? (time ? `${isoDate}T${time}` : isoDate) : null;
+    const dueAt = (document.getElementById('deadline-edit-due') as HTMLInputElement).value || null;
     const description = descriptionTextarea.value.trim() || null;
 
     const saved =

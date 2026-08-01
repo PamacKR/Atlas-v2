@@ -4272,6 +4272,68 @@ button#classroom-connect-confirm {
 #deadline-save-button { background: var(--accent) !important; border-color: var(--accent) !important; color: #18140a !important; }
 #deadline-save-button:hover { filter: brightness(1.08); }
 
+/* Deadline overlay controls deliberately use the exact shared overlay-control
+   scale from overlays-a.html.  Keep this together: a view/edit transition
+   should not turn the panel into a mixture of old square and new rounded UI. */
+#deadline-view-actions button,
+#deadline-edit-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+#deadline-view-actions button:hover,
+#deadline-edit-actions button:hover {
+  border-color: var(--rule-strong);
+  color: var(--text);
+}
+#deadline-reset-override-button {
+  margin-right: auto;
+  color: var(--urgent) !important;
+}
+#deadline-reset-override-button:hover {
+  border-color: var(--urgent) !important;
+  background: rgba(224, 87, 74, 0.08) !important;
+  color: var(--urgent) !important;
+}
+#deadline-view-close-footer,
+#deadline-cancel-button {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+}
+
+#deadline-edit-form input,
+#deadline-edit-form select,
+#deadline-edit-form textarea {
+  padding: 9px var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+#deadline-edit-due {
+  min-height: 38px;
+}
+
+/* Notices belong to the panel body, not its edge. */
+#deadline-editor-panel .deadline-conflict-notice {
+  margin: 0 var(--space-5) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
 /* Courses — the approved default is an information-dense list, with grid
    available as a secondary view rather than the default card wall. */
 #courses-list-view .page-header {

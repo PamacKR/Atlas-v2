@@ -697,13 +697,8 @@
           <option value="manual">Other</option>
         </select></label>
         <label>Due
-        <div id="deadline-date-row">
-          <input id="deadline-edit-date-text" type="text" placeholder="dd-mm-yyyy" autocomplete="off" />
-          <button id="deadline-edit-date-pick" type="button" title="Pick a date" aria-label="Pick a date">📅</button>
-          <input id="deadline-edit-date-native" type="date" />
-          <input id="deadline-edit-time" type="time" />
-        </div></label>
-        <span id="deadline-date-error" class="muted" hidden>Invalid date — use dd-mm-yyyy</span>
+          <input id="deadline-edit-due" type="datetime-local" />
+        </label>
         <div id="deadline-mention-box"><label>Notes</label>
           <textarea
             id="deadline-edit-description"
