@@ -4035,16 +4035,61 @@ async function resetCurrentDeadlineOverrides(): Promise<void> {
 // separate from the native <input type="date">'s own yyyy-mm-dd value so
 // both entry methods (typing, or the picker button) can drive the same
 // field without fighting each other's format.
+const deadlineKindLabels: Record<string, string> = {
+  assignment: 'Assignment', reading: 'Reading', quiz: 'Quiz', lab: 'Lab', project: 'Project', exam: 'Exam', manual: 'Other'
+};
+
+function formatDeadlineDueLabel(dateText: string, timeText: string): string {
+  return dateText ? `${dateText}${timeText ? ` · ${timeText}` : ''}` : 'Set date and time';
+}
+
+function parseDeadlineDue(dateText: string, timeText: string): { dueAt: string | null; error: string | null } {
+  const date = dateText.trim();
+  const time = timeText.trim();
+  if (!date && !time) return { dueAt: null, error: null };
+  const match = date.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return { dueAt: null, error: 'Use DD-MM-YYYY for the date.' };
+  const [, dayText, monthText, yearText] = match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
+    return { dueAt: null, error: 'Enter a real calendar date.' };
+  }
+  if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { dueAt: null, error: 'Use HH:MM for the time.' };
+  const isoDate = `${yearText}-${monthText}-${dayText}`;
+  return { dueAt: time ? `${isoDate}T${time}` : isoDate, error: null };
+}
+
+function setDeadlineKind(value: string): void {
+  (document.getElementById('deadline-edit-kind') as HTMLInputElement).value = value;
+  document.getElementById('deadline-kind-label')!.textContent = deadlineKindLabels[value] ?? 'Other';
+  document.querySelectorAll<HTMLButtonElement>('#deadline-kind-menu .dselect-option').forEach((option) => {
+    option.classList.toggle('selected', option.dataset.value === value);
+  });
+}
+
+function setDeadlineDueLabel(): void {
+  const date = (document.getElementById('deadline-due-date') as HTMLInputElement).value.trim();
+  const time = (document.getElementById('deadline-due-time') as HTMLInputElement).value.trim();
+  document.getElementById('deadline-due-label')!.textContent = formatDeadlineDueLabel(date, time);
+}
+
 async function openDeadlineEditForm(deadline: Deadline | null): Promise<void> {
   if (!selectedCourse) return;
   await loadMentionCandidates(selectedCourse.id);
 
   currentEditingDeadlineId = deadline ? deadline.id : null;
   (document.getElementById('deadline-edit-title') as HTMLInputElement).value = deadline?.title ?? '';
-  (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value = deadline?.kind ?? 'assignment';
-
-  const dueInput = document.getElementById('deadline-edit-due') as HTMLInputElement;
-  dueInput.value = deadline?.due_at ? deadline.due_at.slice(0, 16) : '';
+  setDeadlineKind(deadline?.kind ?? 'assignment');
+  const [isoDate = '', dueTime = ''] = deadline?.due_at?.split('T') ?? [];
+  (document.getElementById('deadline-due-date') as HTMLInputElement).value = isoDate
+    ? `${isoDate.slice(8, 10)}-${isoDate.slice(5, 7)}-${isoDate.slice(0, 4)}`
+    : '';
+  (document.getElementById('deadline-due-time') as HTMLInputElement).value = dueTime.slice(0, 5);
+  setDeadlineDueLabel();
+  document.getElementById('deadline-due-error')!.hidden = true;
 
   (document.getElementById('deadline-edit-description') as HTMLTextAreaElement).value =
     deadline?.description ?? '';
@@ -5107,6 +5152,71 @@ async function init(): Promise<void> {
   });
   document.getElementById('deadline-cancel-button')!.addEventListener('click', closeDeadlineEditor);
 
+  const kindSelect = document.getElementById('deadline-kind-select')!;
+  const kindTrigger = document.getElementById('deadline-kind-trigger')!;
+  const kindMenu = document.getElementById('deadline-kind-menu')!;
+  const closeKindSelect = () => {
+    kindMenu.hidden = true;
+    kindSelect.classList.remove('open');
+    kindTrigger.setAttribute('aria-expanded', 'false');
+  };
+  kindTrigger.addEventListener('click', () => {
+    const isOpen = !kindMenu.hidden;
+    kindMenu.hidden = isOpen;
+    kindSelect.classList.toggle('open', !isOpen);
+    kindTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+  kindMenu.addEventListener('click', (event) => {
+    const option = (event.target as HTMLElement).closest<HTMLButtonElement>('.dselect-option');
+    if (!option?.dataset.value) return;
+    setDeadlineKind(option.dataset.value);
+    closeKindSelect();
+  });
+
+  const dueSelect = document.getElementById('deadline-due-select')!;
+  const dueTrigger = document.getElementById('deadline-due-trigger')!;
+  const dueMenu = document.getElementById('deadline-due-menu')!;
+  const dueDateInput = document.getElementById('deadline-due-date') as HTMLInputElement;
+  const dueTimeInput = document.getElementById('deadline-due-time') as HTMLInputElement;
+  const dueError = document.getElementById('deadline-due-error')!;
+  const closeDueSelect = () => {
+    dueMenu.hidden = true;
+    dueSelect.classList.remove('open');
+    dueTrigger.setAttribute('aria-expanded', 'false');
+  };
+  const applyDueSelection = (): string | null => {
+    const parsed = parseDeadlineDue(dueDateInput.value, dueTimeInput.value);
+    if (parsed.error) {
+      dueError.textContent = parsed.error;
+      dueError.hidden = false;
+      return null;
+    }
+    dueError.hidden = true;
+    setDeadlineDueLabel();
+    return parsed.dueAt;
+  };
+  dueTrigger.addEventListener('click', () => {
+    const isOpen = !dueMenu.hidden;
+    dueMenu.hidden = isOpen;
+    dueSelect.classList.toggle('open', !isOpen);
+    dueTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+  document.getElementById('deadline-due-apply')!.addEventListener('click', () => {
+    if (applyDueSelection() !== null || (!dueDateInput.value.trim() && !dueTimeInput.value.trim())) closeDueSelect();
+  });
+  document.getElementById('deadline-due-clear')!.addEventListener('click', () => {
+    dueDateInput.value = '';
+    dueTimeInput.value = '';
+    dueError.hidden = true;
+    setDeadlineDueLabel();
+    closeDueSelect();
+  });
+  document.addEventListener('click', (event) => {
+    const target = event.target as Node;
+    if (!kindSelect.contains(target)) closeKindSelect();
+    if (!dueSelect.contains(target)) closeDueSelect();
+  });
+
   const descriptionTextarea = document.getElementById('deadline-edit-description') as HTMLTextAreaElement;
   descriptionTextarea.addEventListener('input', updateMentionSuggestions);
   descriptionTextarea.addEventListener('blur', () => {
@@ -5150,8 +5260,14 @@ async function init(): Promise<void> {
     const title = (document.getElementById('deadline-edit-title') as HTMLInputElement).value.trim();
     if (!title) return;
 
-    const kind = (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value;
-    const dueAt = (document.getElementById('deadline-edit-due') as HTMLInputElement).value || null;
+    const kind = (document.getElementById('deadline-edit-kind') as HTMLInputElement).value;
+    const parsedDue = parseDeadlineDue(dueDateInput.value, dueTimeInput.value);
+    if (parsedDue.error) {
+      dueError.textContent = parsedDue.error;
+      dueError.hidden = false;
+      return;
+    }
+    const dueAt = parsedDue.dueAt;
     const description = descriptionTextarea.value.trim() || null;
 
     const saved =
