@@ -29,9 +29,13 @@
 
     <div id="main-area" data-page="dashboard">
       <header id="topbar">
-        <select id="dashboard-course-filter" class="dashboard-course-filter" aria-label="Filter dashboard by course">
-          <option value="">All courses</option>
-        </select>
+        <div id="dashboard-course-filter" class="dselect dashboard-course-filter">
+          <button id="dashboard-course-filter-trigger" class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span id="dashboard-course-filter-label">All courses</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="dashboard-course-filter-menu" class="dselect-menu" role="listbox" hidden></div>
+        </div>
         <div id="search-box">
           <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
           <ul id="search-results" hidden></ul>
@@ -80,7 +84,7 @@
               <ul id="dashboard-resources"></ul>
             </div>
             <div class="dashboard-widget">
-              <div class="section-head"><h2>Notes</h2></div>
+              <div class="section-head"><h2>Notes</h2><button id="dashboard-view-notes" type="button" class="section-action">Notes →</button></div>
               <ul id="dashboard-activity"></ul>
             </div>
           </div>

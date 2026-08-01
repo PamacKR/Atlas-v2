@@ -2283,11 +2283,20 @@ async function renderDashboardDeadlines(): Promise<void> {
 }
 
 function renderDashboardCourseFilter(courses: CourseSummary[]): void {
-  const select = document.getElementById('dashboard-course-filter') as HTMLSelectElement;
-  const selectedValue = dashboardCourseFilterId === null ? '' : String(dashboardCourseFilterId);
-  select.replaceChildren(new Option('All courses', ''));
-  for (const course of courses) select.add(new Option(course.name, String(course.id)));
-  select.value = selectedValue;
+  const label = document.getElementById('dashboard-course-filter-label')!;
+  const menu = document.getElementById('dashboard-course-filter-menu')!;
+  const selectedCourse = courses.find((course) => course.id === dashboardCourseFilterId);
+  label.textContent = selectedCourse?.name ?? 'All courses';
+  menu.innerHTML = '';
+  for (const course of [{ id: null, name: 'All courses' }, ...courses]) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'dselect-option';
+    option.dataset.courseId = course.id === null ? '' : String(course.id);
+    option.textContent = course.name;
+    option.classList.toggle('selected', course.id === dashboardCourseFilterId);
+    menu.appendChild(option);
+  }
 }
 
 function renderDashboardCompactDeadlineRows(): void {
@@ -4818,12 +4827,32 @@ async function init(): Promise<void> {
   document.querySelectorAll<HTMLButtonElement>('#dashboard-upcoming-tabs .chip').forEach((chip) => {
     chip.addEventListener('click', () => setDashboardUpcomingFilter(chip.dataset.upcomingFilter ?? ''));
   });
-  document.getElementById('dashboard-course-filter')!.addEventListener('change', (event) => {
-    const value = (event.target as HTMLSelectElement).value;
-    dashboardCourseFilterId = value === '' ? null : Number(value);
+  const dashboardCourseFilter = document.getElementById('dashboard-course-filter')!;
+  const dashboardCourseFilterTrigger = document.getElementById('dashboard-course-filter-trigger')!;
+  const dashboardCourseFilterMenu = document.getElementById('dashboard-course-filter-menu')!;
+  dashboardCourseFilterTrigger.addEventListener('click', () => {
+    const isOpen = !dashboardCourseFilterMenu.hidden;
+    dashboardCourseFilterMenu.hidden = isOpen;
+    dashboardCourseFilter.classList.toggle('open', !isOpen);
+    dashboardCourseFilterTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+  dashboardCourseFilterMenu.addEventListener('click', (event) => {
+    const option = (event.target as HTMLElement).closest<HTMLButtonElement>('.dselect-option');
+    if (!option) return;
+    dashboardCourseFilterId = option.dataset.courseId ? Number(option.dataset.courseId) : null;
+    dashboardCourseFilterMenu.hidden = true;
+    dashboardCourseFilter.classList.remove('open');
+    dashboardCourseFilterTrigger.setAttribute('aria-expanded', 'false');
     void renderDashboard();
   });
+  document.addEventListener('click', (event) => {
+    if (dashboardCourseFilter.contains(event.target as Node)) return;
+    dashboardCourseFilterMenu.hidden = true;
+    dashboardCourseFilter.classList.remove('open');
+    dashboardCourseFilterTrigger.setAttribute('aria-expanded', 'false');
+  });
   document.getElementById('dashboard-view-calendar')!.addEventListener('click', () => showPage('calendar'));
+  document.getElementById('dashboard-view-notes')!.addEventListener('click', () => showPage('notes'));
 
   document.getElementById('calendar-prev-month')!.addEventListener('click', () => changeCalendarMonth(-1));
   document.getElementById('calendar-next-month')!.addEventListener('click', () => changeCalendarMonth(1));

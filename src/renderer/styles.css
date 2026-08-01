@@ -3983,17 +3983,57 @@ button#classroom-connect-confirm {
   margin: 0;
 }
 #main-area:not([data-page="dashboard"]) #dashboard-course-filter { display: none; }
-.dashboard-course-filter {
-  height: 37px;
-  padding: 0 var(--space-4);
+.dashboard-course-filter { width: 120px; }
+.dselect { position: relative; }
+.dselect-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 8px var(--space-3);
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font);
   font-size: var(--text-sm);
+  cursor: pointer;
 }
-.dashboard-course-filter svg { width: 12px; height: 12px; }
+.dselect-trigger:hover { border-color: var(--rule-strong); color: var(--text); }
+.dselect-trigger svg { width: 13px; height: 13px; color: var(--text-faint); transition: transform var(--transition); }
+.dselect.open .dselect-trigger svg { transform: rotate(180deg); }
+.dselect-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding: 4px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+.dselect-menu[hidden] { display: none; }
+.dselect-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.dselect-option:hover { background: var(--bg-hover); color: var(--text); }
+.dselect-option.selected { color: var(--text); }
+.dselect-option.selected::after { content: '✓'; color: var(--accent); }
 #main-area[data-page="dashboard"] .dashboard-intro h1 { margin-bottom: var(--space-5); }
 #page-dashboard {
   min-height: 0;
@@ -4018,6 +4058,9 @@ button#classroom-connect-confirm {
   grid-column: 1 / -1;
   padding: 0 0 var(--space-5);
   border-bottom: 1px solid var(--rule);
+}
+#main-area[data-page="dashboard"] #dashboard-courses-widget .resources-header {
+  margin-bottom: var(--space-4);
 }
 #main-area[data-page="dashboard"] #dashboard-course-list.dashboard-course-chips {
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -4056,7 +4099,7 @@ button#classroom-connect-confirm {
   grid-template-columns: 48px minmax(0, 1fr) minmax(180px, 240px) 46px;
   gap: var(--space-3);
   align-items: baseline;
-  padding: 8px var(--space-3);
+  padding: 8px var(--space-4);
   margin: 0 calc(var(--space-3) * -1);
   border: 0;
   border-radius: var(--radius-sm);
@@ -4095,9 +4138,16 @@ button#classroom-connect-confirm {
 #dashboard-course-list.dashboard-course-chips li.dashboard-course-cell {
   display: block !important;
   min-width: 0;
-  padding: var(--space-3);
+  padding: var(--space-4);
   margin: calc(var(--space-3) * -1);
   border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+}
+#dashboard-course-list.dashboard-course-chips li.dashboard-course-cell:hover {
+  background: var(--bg-hover);
+  transform: translateY(-1px);
 }
 #manage-courses-button,
 #dashboard-view-calendar {
