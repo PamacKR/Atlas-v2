@@ -4794,6 +4794,60 @@ button#classroom-connect-confirm {
   #course-list .course-row { grid-template-columns: minmax(0, 1fr) 140px; }
 }
 
+/* Remaining course detail tabs share the mockup's unboxed row language. */
+#courses-detail-view #deadline-list.view-list,
+#courses-detail-view #course-announcements-list,
+#courses-detail-view #course-assignments-list,
+#courses-detail-view #course-classwork-list,
+#courses-detail-view #watched-folder-list { list-style: none; margin: 0; padding: 0; }
+#courses-detail-view #deadline-list.view-list .deadline-item {
+  display: grid;
+  grid-template-columns: 20px 24px minmax(0, 1fr) auto 120px;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  margin: 0 calc(var(--space-3) * -1);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+#courses-detail-view #deadline-list.view-list .deadline-item:hover { background: var(--bg-hover); }
+#courses-detail-view #deadline-list .deadline-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--text-md); font-weight: 500; }
+#courses-detail-view #deadline-list .deadline-due { color: var(--text-muted); font-size: var(--text-sm); text-align: right; font-variant-numeric: tabular-nums; }
+#courses-detail-view #deadline-list .code,
+#courses-detail-view #deadline-list .deadline-edited-badge,
+#courses-detail-view #deadline-list .deadline-classroom-removed-badge { color: var(--text-faint); font-size: var(--text-xs); }
+#courses-detail-view #deadline-list.view-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-4); }
+#courses-detail-view #deadline-list.view-grid .deadline-item { border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; }
+#courses-detail-view #course-announcements-section h4,
+#courses-detail-view #course-assignments-section h4,
+#courses-detail-view #course-classwork-section h4,
+#courses-detail-view #watched-folders-section h4 { margin: 0 0 var(--space-3); color: var(--text-faint); font-size: var(--text-xs); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+#courses-detail-view #course-announcements-list li,
+#courses-detail-view #course-assignments-list li,
+#courses-detail-view #course-classwork-list li,
+#courses-detail-view #watched-folder-list li {
+  padding: var(--space-3);
+  margin: 0 calc(var(--space-3) * -1);
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-md);
+  transition: background var(--transition);
+}
+#courses-detail-view .classroom-item-row:hover,
+#courses-detail-view #watched-folder-list li:hover { background: var(--bg-hover); }
+#courses-detail-view .classroom-item-meta,
+#courses-detail-view .classroom-item-body { color: var(--text-muted); font-size: var(--text-sm); }
+#courses-detail-view .classroom-item-links a { color: var(--text-muted); }
+#courses-detail-view #watched-folders-section > .muted { margin: 0 0 var(--space-4); color: var(--text-faint); font-size: var(--text-sm); }
+
 /* Course detail: course-detail-a.html's hierarchy, applied to the existing
    functional detail tabs rather than replacing those behaviours with static
    mockup markup. */
