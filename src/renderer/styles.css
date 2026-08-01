@@ -3780,16 +3780,21 @@ button#classroom-connect-confirm {
 }
 
 #sidebar.collapsed .sidebar-nav-item.nav-item {
+  /* 10px left inset is retained so the icon never moves; the slightly
+     smaller right inset lets the complete rounded hit area fit inside the
+     collapsed rail instead of being clipped at its right edge. */
+  width: 52px;
+  padding: 0 8px 0 10px;
   border-radius: var(--radius-md);
 }
 
 #sidebar.collapsed .sidebar-nav-item.nav-item:hover {
-  background: transparent;
+  background: var(--bg-hover);
 }
 
 #sidebar.collapsed .sidebar-nav-item.nav-item:hover .nav-icon {
   border-radius: var(--radius-md);
-  background: var(--bg-hover);
+  background: transparent;
 }
 
 #sidebar.collapsed .sidebar-toggle {
@@ -4204,6 +4209,29 @@ button#classroom-connect-confirm {
 #dashboard-main-grid .dashboard-widget-footer-btn:hover {
   background: var(--bg-hover);
 }
+
+/* Dashboard widgets own their scrollbars: no square track ends or clipped
+   thumb corners when a list becomes scrollable. */
+#dashboard-deadlines::-webkit-scrollbar,
+#dashboard-announcements::-webkit-scrollbar,
+#dashboard-resources::-webkit-scrollbar,
+#dashboard-activity::-webkit-scrollbar { width: 8px; height: 8px; }
+#dashboard-deadlines::-webkit-scrollbar-track,
+#dashboard-announcements::-webkit-scrollbar-track,
+#dashboard-resources::-webkit-scrollbar-track,
+#dashboard-activity::-webkit-scrollbar-track { border-radius: 999px; background: transparent; }
+#dashboard-deadlines::-webkit-scrollbar-thumb,
+#dashboard-announcements::-webkit-scrollbar-thumb,
+#dashboard-resources::-webkit-scrollbar-thumb,
+#dashboard-activity::-webkit-scrollbar-thumb {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+#dashboard-deadlines::-webkit-scrollbar-thumb:hover,
+#dashboard-announcements::-webkit-scrollbar-thumb:hover,
+#dashboard-resources::-webkit-scrollbar-thumb:hover,
+#dashboard-activity::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
 
 /* Courses — the approved default is an information-dense list, with grid
    available as a secondary view rather than the default card wall. */
