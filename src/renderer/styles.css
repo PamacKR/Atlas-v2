@@ -2862,7 +2862,6 @@ li.deadline-item.classroom-removed {
    the "removed at source" notice and the "you've edited this" + reset
    action share the same box treatment, distinguished only by their text. */
 .deadline-conflict-notice {
-  display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 0.7rem;
@@ -2873,6 +2872,7 @@ li.deadline-item.classroom-removed {
   color: var(--color-text-muted);
   margin-bottom: 0.75rem;
 }
+.deadline-conflict-notice:not([hidden]) { display: flex; }
 
 button#new-deadline-button {
   padding: 0.5rem 1rem;
@@ -4300,6 +4300,7 @@ button#classroom-connect-confirm {
   margin-right: auto;
   color: var(--urgent) !important;
 }
+#deadline-reset-override-button[hidden] { display: none !important; }
 #deadline-reset-override-button:hover {
   border-color: var(--urgent) !important;
   background: rgba(224, 87, 74, 0.08) !important;
