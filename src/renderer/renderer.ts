@@ -3364,6 +3364,7 @@ async function selectCourse(course: Course): Promise<void> {
   document.getElementById('course-detail-note-count')!.textContent = String(summary?.note_count ?? 0);
 
   await renderCourseDetailPreviews(course.id);
+  await renderCourseDetailUpNext(course.id);
   await renderDeadlines();
   await renderWatchedFolders();
   await renderCourseClassroomSection(course);
@@ -4177,6 +4178,33 @@ function formatDeadlineDueLabel(dateText: string, timeText: string): string {
   return dateText ? `${dateText}${timeText ? ` · ${timeText}` : ''}` : 'Set date and time';
 }
 
+async function renderCourseDetailUpNext(courseId: number): Promise<void> {
+  const list = document.getElementById('course-detail-up-next')!;
+  const deadlines = (await atlasApi.listDeadlines(courseId))
+    .filter(isCurrentOrFutureDeadline)
+    .sort((a, b) => (a.due_at ?? '').localeCompare(b.due_at ?? ''))
+    .slice(0, COURSE_DETAIL_PREVIEW_LIMIT);
+  list.innerHTML = '';
+  if (deadlines.length === 0) {
+    const item = document.createElement('li');
+    item.className = 'muted';
+    item.textContent = 'No upcoming deadlines.';
+    list.appendChild(item);
+    return;
+  }
+  for (const deadline of deadlines) {
+    const item = document.createElement('li');
+    item.className = 'course-detail-deadline-row';
+    const title = document.createElement('span');
+    title.textContent = deadline.title;
+    const due = document.createElement('span');
+    due.textContent = formatDueDate(deadline.due_at);
+    item.append(title, due);
+    item.addEventListener('click', () => void openDeadlineViewer(deadline));
+    list.appendChild(item);
+  }
+}
+
 function parseDeadlineDue(dateText: string, timeText: string): { dueAt: string | null; error: string | null } {
   const date = dateText.trim();
   const time = timeText.trim();
@@ -4937,6 +4965,9 @@ async function init(): Promise<void> {
     if (!selectedCourse) return;
     notesCourseFilterId = selectedCourse.id;
     showPage('notes');
+  });
+  document.getElementById('course-detail-view-deadlines')!.addEventListener('click', () => {
+    setCourseDetailTab('deadlines');
   });
 
   document.getElementById('upload-button')!.addEventListener('click', () => openCoursePicker('upload'));

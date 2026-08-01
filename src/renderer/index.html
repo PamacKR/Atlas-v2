@@ -144,10 +144,10 @@
             Back to Courses
           </button>
 
-          <div class="course-detail-header">
+          <div class="course-detail-header course-header">
             <div id="course-detail-avatar-slot"></div>
             <div>
-              <h2 id="course-detail-heading"></h2>
+              <h1 id="course-detail-heading"></h1>
               <p id="course-detail-meta" class="muted"></p>
             </div>
             <!-- Phase 4 Part E fallback (phase4-spec.md §7) — a plain-Markdown
@@ -163,13 +163,15 @@
                Overview/Deadlines/Files always shown; Announcements/
                Assignments/Classwork tabs only appear once the course is
                connected to Classroom (toggled in renderer.ts). -->
-          <div id="course-detail-tabs">
+          <div id="course-detail-tabs" class="course-tabs-row">
+            <div class="course-tabs">
             <button class="course-detail-tab active" type="button" data-course-tab="overview">Overview</button>
             <button class="course-detail-tab" type="button" data-course-tab="deadlines">Deadlines</button>
             <button class="course-detail-tab" type="button" data-course-tab="announcements" id="course-tab-announcements" hidden>Announcements</button>
             <button class="course-detail-tab" type="button" data-course-tab="assignments" id="course-tab-assignments" hidden>Assignments</button>
             <button class="course-detail-tab" type="button" data-course-tab="classwork" id="course-tab-classwork" hidden>Classwork</button>
             <button class="course-detail-tab" type="button" data-course-tab="files">Files</button>
+            </div>
           </div>
 
           <div class="course-detail-tab-panel" data-course-tab-panel="overview">
@@ -188,9 +190,16 @@
                 </div>
                 <ul id="course-detail-notes-preview"></ul>
               </div>
+              <div class="dashboard-widget course-detail-up-next">
+                <div class="resources-header">
+                  <h3>Up next</h3>
+                  <button id="course-detail-view-deadlines" type="button" class="link-button">Deadlines &#8594;</button>
+                </div>
+                <ul id="course-detail-up-next"></ul>
+              </div>
             </div>
 
-            <section id="course-classroom-section">
+            <section id="course-classroom-section" class="course-classroom-status">
               <h4>Classroom</h4>
               <div id="course-classroom-connected" hidden>
                 <p class="muted">Connected to <span id="course-classroom-name"></span></p>
