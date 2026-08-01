@@ -3755,6 +3755,9 @@ button#classroom-connect-confirm {
 
 #sidebar.collapsed #sidebar-brand.wordmark {
   display: flex;
+  width: 44px;
+  flex: 0 0 44px;
+  overflow: visible;
 }
 
 #sidebar.collapsed .wordmark .wm-a {
