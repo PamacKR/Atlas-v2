@@ -90,7 +90,7 @@ Implement against `calendar-a.html`, `settings-a.html`, `settings-light-a.html`,
 
 After every stage:
 
-1. Run the smallest relevant Electron Playwright check, then `npm run verify` before committing.
+1. During incremental UI work, use focused build/type checks. Run `npm run verify` and inspect its screenshot after a completed major surface or a cross-cutting change, rather than after every small edit.
 2. Run `verify:mcp`, `verify:extraction`, and `verify:remote` after changes that could affect builds, startup, data access, or shared renderer/main contracts.
 3. Inspect the saved screenshot rather than treating a passing DOM assertion as visual verification.
 4. Record completed work, verification, decisions, and any remaining mismatch in `STATUS.md`.

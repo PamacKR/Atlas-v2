@@ -74,6 +74,8 @@ Atlas is an Electron desktop app, not a website — there's no browser tab to pr
 
 Use it as the default way to confirm a UI/renderer change actually works before telling the user it's done — extend `scripts/verify-app.js` as new features get added (uploads, viewers, notes, search) rather than only ever asking the user to click around. Still worth having the user glance at real usage periodically, but don't make them your only verification method.
 
+**Verification cadence (2026-08-01 user instruction):** Don't run the full `npm run verify` suite after every incremental UI edit; it wastes time and resources during a large overhaul. Use focused build/type checks while iterating, then run the full Electron suite and inspect its screenshot after a completed major surface or a cross-cutting change, and before reporting that work complete.
+
 ### A recurring CSS bug to check for explicitly
 
 This exact bug has been hit **three separate times** (`#preview-overlay`, `#confirm-overlay`, `#zoom-controls`) before finally being called out here — each time it looked like a JS logic bug but wasn't:
