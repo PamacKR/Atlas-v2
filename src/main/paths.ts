@@ -32,6 +32,10 @@ export function getFilesDir(): string {
   return path.join(getDataDir(), 'files');
 }
 
+export function getBackupsDir(): string {
+  return path.join(getDataDir(), 'backups');
+}
+
 // App config that isn't per-course data — currently just the user's own
 // bring-your-own Google OAuth client credentials (open-questions.md
 // #7). Lives alongside the DB/files per the data-directory decision

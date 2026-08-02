@@ -34,6 +34,7 @@
           <h1 id="resources-topbar-title" hidden>Resources <span id="resources-page-count" class="dim">0</span></h1>
           <h1 id="notes-topbar-title" hidden>Notes <span id="notes-page-count" class="dim">0</span></h1>
           <h1 id="calendar-topbar-title" hidden>Calendar</h1>
+          <h1 id="settings-topbar-title" hidden>Settings</h1>
         </div>
         <div id="topbar-right">
           <div id="courses-topbar-actions" class="topbar-page-actions" hidden>
@@ -381,24 +382,20 @@
       </section>
 
       <section id="page-settings" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Settings</h2>
-            <p class="muted">Customize Atlas to fit your workflow.</p>
-          </div>
-        </div>
-
         <div id="settings-layout">
           <nav id="settings-nav">
-            <button class="settings-nav-item active" type="button" data-settings-tab="general">General</button>
-            <button class="settings-nav-item" type="button" data-settings-tab="sources">Sources</button>
-            <button class="settings-nav-item" type="button" data-settings-tab="shortcuts">Shortcuts</button>
-            <button class="settings-nav-item" type="button" data-settings-tab="about">About</button>
+            <button class="settings-nav-item active" type="button" data-settings-tab="appearance"><span>Appearance</span><small>Theme, accent</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="sources"><span>Sources</span><small>Drive, Classroom, sync</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="shortcuts"><span>Shortcuts</span><small>Keybindings</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="ai"><span>AI &amp; Integration</span><small>Agent &amp; MCP connection</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="storage"><span>Storage</span><small>Usage &amp; backup</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="about"><span>About</span><small>Version info</small></button>
           </nav>
 
-          <div class="settings-panel" data-settings-panel="general">
+          <div id="settings-panels">
+          <div class="settings-panel" data-settings-panel="appearance">
             <section class="settings-section">
-              <h3>Appearance</h3>
+              <h2>Appearance</h2>
               <div class="settings-row">
                 <div>
                   <div class="settings-row-label">Theme</div>
@@ -427,23 +424,14 @@
                  failing with no way to notice (see open-questions.md #21,
                  where exactly that happened for weeks). -->
             <section class="settings-section">
-              <h3>Sync</h3>
+              <h2>Sync</h2>
               <div class="settings-row">
                 <div>
                   <div class="settings-row-label">Google Drive</div>
                   <div id="sync-status-drive" class="settings-row-hint"></div>
                 </div>
                 <div class="sync-row-controls">
-                  <select id="sync-config-drive">
-                    <option value="off">Off</option>
-                    <option value="launch">On launch only</option>
-                    <option value="interval:20">Every 20 seconds</option>
-                    <option value="interval:60">Every 1 minute</option>
-                    <option value="interval:300">Every 5 minutes</option>
-                    <option value="interval:900">Every 15 minutes</option>
-                    <option value="interval:1800">Every 30 minutes</option>
-                    <option value="interval:3600">Every 60 minutes</option>
-                  </select>
+                  <div id="sync-config-drive" class="dselect sync-config-select"></div>
                   <button id="sync-now-drive" type="button" class="link-button">Sync now</button>
                 </div>
               </div>
@@ -453,57 +441,47 @@
                   <div id="sync-status-classroom" class="settings-row-hint"></div>
                 </div>
                 <div class="sync-row-controls">
-                  <select id="sync-config-classroom">
-                    <option value="off">Off</option>
-                    <option value="launch">On launch only</option>
-                    <option value="interval:300">Every 5 minutes</option>
-                    <option value="interval:900">Every 15 minutes</option>
-                    <option value="interval:1800">Every 30 minutes</option>
-                    <option value="interval:3600">Every 60 minutes</option>
-                  </select>
+                  <div id="sync-config-classroom" class="dselect sync-config-select"></div>
                   <button id="sync-now-classroom" type="button" class="link-button">Sync now</button>
                 </div>
               </div>
 
-              <button id="sync-now-all" type="button">Sync everything now</button>
+              <button id="sync-now-all" type="button" class="settings-button">Sync everything now</button>
             </section>
 
             <section class="settings-section">
-              <h3>Google Drive</h3>
-              <p id="drive-status" class="muted">Not connected.</p>
-              <button id="drive-connect-button" type="button">Connect Google Drive</button>
-              <button id="drive-disconnect-button" type="button" hidden>Disconnect</button>
+              <h2>Google Drive</h2>
+              <div class="settings-row">
+                <div><div id="drive-status" class="settings-status-pill"><span class="settings-status-dot"></span>Not connected.</div><div class="settings-row-hint">Connect Drive to watch a folder and open Office files in Drive.</div></div>
+                <div class="settings-row-controls"><button id="drive-connect-button" type="button" class="settings-button">Connect Google Drive</button><button id="drive-disconnect-button" type="button" class="settings-button" hidden>Disconnect</button></div>
+              </div>
               <div id="drive-folder-form" hidden>
                 <label for="drive-folder-input">Drive folder to watch</label>
                 <div id="drive-folder-row">
                   <input id="drive-folder-input" type="text" placeholder="Paste your Drive folder link" />
-                  <button id="drive-folder-save" type="button">Save</button>
+                  <button id="drive-folder-save" type="button" class="settings-button">Save</button>
                 </div>
               </div>
               <p id="drive-pending-status" class="muted" hidden></p>
-              <button id="drive-review-button" type="button" hidden>Review new files</button>
+              <button id="drive-review-button" type="button" class="settings-button" hidden>Review new files</button>
             </section>
 
             <section class="settings-section">
-              <h3>Office file previews</h3>
-              <p class="muted">PowerPoint/Word/Excel files opened via "Open in Google Drive" are uploaded to a dedicated "Atlas Previews" folder in your Drive, so later opens are instant instead of re-uploading every time.</p>
-              <button id="drive-clear-preview-cache-button" type="button">Clear Drive preview cache</button>
+              <h2>Office file previews</h2>
+              <div class="settings-row"><div><div class="settings-row-label">Drive preview cache</div><div class="settings-row-hint">PowerPoint, Word, and Excel files opened in Drive are cached there so later opens are instant.</div></div><button id="drive-clear-preview-cache-button" type="button" class="settings-button">Clear cache</button></div>
               <p id="drive-clear-preview-cache-status" class="muted" hidden></p>
             </section>
 
             <section class="settings-section">
-              <h3>Text extraction</h3>
-              <p class="muted">Atlas reads the text out of your PDFs, slides, and documents so an AI agent (Phase 4) can search inside them, not just by filename.</p>
-              <p id="extraction-status" class="muted"></p>
+              <h2>Text extraction</h2>
+              <div class="settings-row"><div><div id="extraction-status" class="settings-row-label"></div><div class="settings-row-hint">Atlas reads PDFs, slides, and documents so search and an agent can look inside them.</div></div></div>
             </section>
 
             <section class="settings-section">
-              <h3>Google Classroom</h3>
-              <p id="classroom-status" class="muted">Not connected.</p>
-              <button id="classroom-connect-button" type="button">Connect Google Classroom</button>
-              <button id="classroom-disconnect-button" type="button" hidden>Disconnect</button>
+              <h2>Google Classroom</h2>
+              <div class="settings-row"><div><div id="classroom-status" class="settings-status-pill"><span class="settings-status-dot"></span>Not connected.</div><div class="settings-row-hint">Connect Classroom to bring in courses, deadlines, and announcements.</div></div><div class="settings-row-controls"><button id="classroom-connect-button" type="button" class="settings-button">Connect Google Classroom</button><button id="classroom-disconnect-button" type="button" class="settings-button" hidden>Disconnect</button></div></div>
               <p id="classroom-pending-status" class="muted" hidden></p>
-              <button id="classroom-review-button" type="button" hidden>Review new courses</button>
+              <button id="classroom-review-button" type="button" class="settings-button" hidden>Review new courses</button>
             </section>
           </div>
 
@@ -515,7 +493,7 @@
             <section class="settings-section">
               <div class="settings-row">
                 <div>
-                  <h3>Keyboard shortcuts</h3>
+                  <h2>Keyboard shortcuts</h2>
                   <div class="settings-row-hint">Click a binding to change it. Esc cancels; typing a combo already in use asks before stealing it.</div>
                 </div>
                 <button id="settings-shortcuts-reset-all" type="button">Reset all to defaults</button>
@@ -524,12 +502,25 @@
             </section>
           </div>
 
+          <div class="settings-panel" data-settings-panel="ai" hidden>
+            <section class="settings-section"><h2>Agent access</h2><div class="settings-row"><div><div class="settings-row-label">Allow agent access</div><div class="settings-row-hint">The MCP server checks this before every tool call. Turning it off immediately blocks a connected agent.</div></div><button id="settings-agent-access" class="settings-toggle" type="button" role="switch" aria-checked="true"><span></span></button></div></section>
+            <section class="settings-section"><h2>Connect an agent</h2><p class="settings-muted-block">Atlas includes a working <code>.mcp.json</code> at the project root. For another MCP-compatible tool, use this configuration.</p><div class="mcp-config"><code id="settings-mcp-config">{ "mcpServers": { "atlas": { "command": "node", "args": ["scripts/run-mcp-server.js"] } } }</code><button id="settings-copy-mcp" class="settings-button" type="button">Copy</button></div></section>
+          </div>
+
+          <div class="settings-panel" data-settings-panel="storage" hidden>
+            <section class="settings-section"><h2>Usage</h2><div class="settings-row settings-row-no-rule"><div><div id="storage-total" class="settings-row-label"></div><div id="storage-legend" class="storage-legend"></div></div></div></section>
+            <section class="settings-section"><h2>By course</h2><div id="storage-courses"></div></section>
+            <section class="settings-section"><h2>Text extraction</h2><div class="settings-row"><div><div id="storage-extraction-title" class="settings-row-label"></div><div id="storage-extraction-hint" class="settings-row-hint"></div></div></div></section>
+            <section class="settings-section"><h2>Backup</h2><div class="settings-row"><div><div class="settings-row-label">Local backup</div><div id="storage-backup-hint" class="settings-row-hint"></div></div><div class="settings-row-controls"><div id="settings-backup-frequency" class="dselect sync-config-select"></div><button id="settings-backup-now" type="button" class="settings-button">Back up now</button></div></div><div id="storage-backups"></div></section>
+          </div>
+
           <div class="settings-panel" data-settings-panel="about" hidden>
             <section class="settings-section">
               <h3>About Atlas</h3>
               <p id="settings-about-description">Atlas is your single academic knowledge base — courses, resources, notes, and deadlines pulled automatically from Google Classroom and Drive, local folders, and manual uploads, all kept in one searchable place. Atlas doesn't reason or generate anything itself: it's the source of truth an AI agent (like Claude Code, connected via MCP) reads from and writes back to, for studying, planning, and assignment help.</p>
               <p id="settings-about-version" class="muted"></p>
             </section>
+          </div>
           </div>
         </div>
       </section>

@@ -235,6 +235,9 @@ contextBridge.exposeInMainWorld('atlas', {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
+  getStorageStatus: (): Promise<unknown> => ipcRenderer.invoke('settings:getStorageStatus'),
+  createBackup: (): Promise<unknown> => ipcRenderer.invoke('settings:createBackup'),
+  setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off'): Promise<void> => ipcRenderer.invoke('settings:setBackupFrequency', frequency),
   isDriveConnected: (): Promise<boolean> => ipcRenderer.invoke('google:isDriveConnected'),
   connectDrive: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:connectDrive'),

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
 import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
-import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir } from './paths';
+import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir, getBackupsDir, getDbPath } from './paths';
 import { getPreview } from './preview';
 import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
 import { extractDocumentParts } from './textExtraction';
@@ -842,6 +842,8 @@ Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
   const db = getDb(); // initializes DB + schema in Downloads/Atlas on first launch
+  createScheduledBackupIfDue();
+  setInterval(createScheduledBackupIfDue, 60 * 60 * 1000);
   await startLocalServer(); // backs "Open in browser" — see localServer.ts
   createWindow();
 
@@ -2582,6 +2584,82 @@ ipcMain.handle('deadlines:listAllWithCourse', () => {
        WHERE deadlines.due_at IS NOT NULL`
     )
     .all();
+});
+
+function pathSize(filePath: string): number {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.isFile()) return stat.size;
+    return fs.readdirSync(filePath).reduce((total, entry) => total + pathSize(path.join(filePath, entry)), 0);
+  } catch {
+    return 0;
+  }
+}
+
+function listBackups(): { name: string; size: number; createdAt: string }[] {
+  const dir = getBackupsDir();
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => name.endsWith('.db'))
+    .map((name) => {
+      const stat = fs.statSync(path.join(dir, name));
+      return { name, size: stat.size, createdAt: stat.mtime.toISOString() };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function createLocalBackup(): { name: string; size: number; createdAt: string } {
+  const db = getDb();
+  fs.mkdirSync(getBackupsDir(), { recursive: true });
+  db.pragma('wal_checkpoint(TRUNCATE)');
+  const name = `atlas-${new Date().toISOString().replace(/[:.]/g, '-')}.db`;
+  const destination = path.join(getBackupsDir(), name);
+  fs.copyFileSync(getDbPath(), destination);
+  listBackups().slice(5).forEach((backup) => fs.unlinkSync(path.join(getBackupsDir(), backup.name)));
+  const stat = fs.statSync(destination);
+  return { name, size: stat.size, createdAt: stat.mtime.toISOString() };
+}
+
+type BackupFrequency = 'daily' | 'weekly' | 'off';
+const BACKUP_INTERVAL_MS: Record<Exclude<BackupFrequency, 'off'>, number> = {
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+};
+
+function getBackupFrequency(): BackupFrequency {
+  const row = getDb().prepare("SELECT value FROM app_settings WHERE key = 'backup_frequency'").get() as { value: string } | undefined;
+  return row?.value === 'weekly' || row?.value === 'off' ? row.value : 'daily';
+}
+
+function setBackupFrequency(frequency: BackupFrequency): void {
+  getDb().prepare("INSERT INTO app_settings (key, value) VALUES ('backup_frequency', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(frequency);
+}
+
+// Atlas can only make scheduled copies while it is running. Checking on
+// startup and then hourly makes that boundary explicit and reliable.
+function createScheduledBackupIfDue(): void {
+  const frequency = getBackupFrequency();
+  if (frequency === 'off') return;
+  const latest = listBackups()[0];
+  if (latest && Date.now() - new Date(latest.createdAt).getTime() < BACKUP_INTERVAL_MS[frequency]) return;
+  createLocalBackup();
+}
+
+ipcMain.handle('settings:getStorageStatus', () => {
+  const db = getDb();
+  const courses = db.prepare('SELECT id, name, folder_name FROM courses WHERE archived = 0 ORDER BY name').all() as { id: number; name: string; folder_name: string }[];
+  const extraction = db.prepare("SELECT extraction_status AS status, COUNT(*) AS count FROM resources GROUP BY extraction_status").all() as { status: string; count: number }[];
+  const courseStorage = courses.map((course) => ({ ...course, size: pathSize(path.join(getFilesDir(), course.folder_name)) }));
+  const resourceBytes = courseStorage.reduce((total, course) => total + course.size, 0);
+  const databaseBytes = pathSize(getDbPath());
+  return { resourceBytes, databaseBytes, totalBytes: resourceBytes + databaseBytes, courseStorage, extraction, backups: listBackups(), backupFrequency: getBackupFrequency() };
+});
+
+ipcMain.handle('settings:createBackup', () => createLocalBackup());
+ipcMain.handle('settings:setBackupFrequency', (_event, frequency: BackupFrequency) => {
+  if (!['daily', 'weekly', 'off'].includes(frequency)) throw new Error('Invalid backup frequency');
+  setBackupFrequency(frequency);
+  createScheduledBackupIfDue();
 });
 
 // Calendar uses the actual announcement posting date as an event date. This

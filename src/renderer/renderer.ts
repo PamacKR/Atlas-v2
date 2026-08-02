@@ -251,6 +251,9 @@ interface AtlasApi {
   getAppVersion: () => Promise<string>;
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
+  getStorageStatus: () => Promise<StorageStatus>;
+  createBackup: () => Promise<BackupInfo>;
+  setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off') => Promise<void>;
   isDriveConnected: () => Promise<boolean>;
   connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectDrive: () => Promise<void>;
@@ -512,7 +515,7 @@ let dashboardCourseFilterId: number | null = null;
 
 function showPage(page: AppPage): void {
   currentPage = page;
-  for (const name of ['courses', 'resources', 'notes', 'calendar'] as const) {
+  for (const name of ['courses', 'resources', 'notes', 'calendar', 'settings'] as const) {
     document.getElementById(`${name}-topbar-title`)!.hidden = page !== name;
     const actions = document.getElementById(`${name}-topbar-actions`);
     if (actions) actions.hidden = page !== name;
@@ -560,7 +563,40 @@ async function renderSettingsPage(): Promise<void> {
     renderClassroomStatus(),
     renderSettingsAbout(),
     renderSettingsShortcuts(),
+    renderSettingsStorage(),
+    renderAgentAccess(),
   ]);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(0, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+async function renderAgentAccess(): Promise<void> {
+  const enabled = (await atlasApi.getSetting('agentAccess')) !== '0';
+  const button = document.getElementById('settings-agent-access')!;
+  button.classList.toggle('on', enabled);
+  button.setAttribute('aria-checked', String(enabled));
+}
+
+async function renderSettingsStorage(): Promise<void> {
+  const status = await atlasApi.getStorageStatus();
+  document.getElementById('storage-total')!.textContent = `${formatBytes(status.totalBytes)} total`;
+  document.getElementById('storage-legend')!.innerHTML = `<span><b>${formatBytes(status.resourceBytes)}</b> resources</span><span><b>${formatBytes(status.databaseBytes)}</b> database & extracted text</span>`;
+  document.getElementById('storage-courses')!.innerHTML = status.courseStorage.map((course) => `<div class="storage-course-row"><span><i class="swatch" style="background:${courseAvatarColor(course.id)}"></i>${escapeHtml(course.name)}</span><span>${formatBytes(course.size)}</span></div>`).join('') || '<p class="settings-row-hint">No active courses.</p>';
+  const counts = new Map(status.extraction.map((entry) => [entry.status, entry.count]));
+  const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+  const done = counts.get('done') ?? 0;
+  const empty = counts.get('empty') ?? 0;
+  document.getElementById('storage-extraction-title')!.textContent = `${done} of ${total} files extracted`;
+  document.getElementById('storage-extraction-hint')!.textContent = empty ? `${empty} files have no readable text and may need OCR.` : 'Atlas can search inside extracted documents.';
+  const latest = status.backups[0];
+  document.getElementById('storage-backup-hint')!.textContent = status.backupFrequency === 'off'
+    ? 'Scheduled backups are off. Existing backups are kept until Atlas makes a newer one.'
+    : `A ${status.backupFrequency} copy of atlas.db while Atlas is running — ${latest ? `last one ${formatRelativeTime(latest.createdAt)}` : 'none yet'}, keeping the last five.`;
+  renderBackupFrequencySelect(status.backupFrequency);
+  document.getElementById('storage-backups')!.innerHTML = status.backups.map((backup) => `<div class="storage-backup-row"><span>${escapeHtml(formatRelativeTime(backup.createdAt))}</span><span>${formatBytes(backup.size)}</span></div>`).join('') || '<p class="settings-row-hint">No backups yet.</p>';
 }
 
 // Sync schedule (open-questions.md #2) — one dropdown + last-synced/error
@@ -586,7 +622,7 @@ async function renderSyncStatus(): Promise<void> {
   for (const source of ['drive', 'classroom'] as const) {
     const info = status[source];
     const value = info.mode === 'interval' ? `interval:${info.intervalSeconds}` : info.mode;
-    (document.getElementById(`sync-config-${source}`) as HTMLSelectElement).value = value;
+    renderSyncConfigSelect(source, value);
 
     const statusEl = document.getElementById(`sync-status-${source}`)!;
     const lastSyncedText = `Last synced: ${formatRelativeTime(info.lastSuccess)}`;
@@ -1796,7 +1832,7 @@ async function renderDashboard(): Promise<void> {
 // something's tagged, Drive is just the inbox.
 async function renderDriveStatus(): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
-  document.getElementById('drive-status')!.textContent = connected ? 'Connected.' : 'Not connected.';
+  document.getElementById('drive-status')!.innerHTML = `<span class="settings-status-dot${connected ? ' is-connected' : ''}"></span>${connected ? 'Connected' : 'Not connected'}.`;
   (document.getElementById('drive-connect-button') as HTMLButtonElement).hidden = connected;
   (document.getElementById('drive-disconnect-button') as HTMLButtonElement).hidden = !connected;
   (document.getElementById('drive-folder-form') as HTMLElement).hidden = !connected;
@@ -2006,7 +2042,7 @@ function toggleDriveReviewSelectAll(): void {
 // syncs — only which course a Classroom course maps to is gated here.
 async function renderClassroomStatus(): Promise<void> {
   const connected = await atlasApi.isClassroomConnected();
-  document.getElementById('classroom-status')!.textContent = connected ? 'Connected.' : 'Not connected.';
+  document.getElementById('classroom-status')!.innerHTML = `<span class="settings-status-dot${connected ? ' is-connected' : ''}"></span>${connected ? 'Connected' : 'Not connected'}.`;
   (document.getElementById('classroom-connect-button') as HTMLButtonElement).hidden = connected;
   (document.getElementById('classroom-disconnect-button') as HTMLButtonElement).hidden = !connected;
 
@@ -2437,6 +2473,17 @@ interface CalendarEvent {
   deadline?: DashboardDeadline;
 }
 
+interface BackupInfo { name: string; size: number; createdAt: string; }
+interface StorageStatus {
+  resourceBytes: number;
+  databaseBytes: number;
+  totalBytes: number;
+  courseStorage: { id: number; name: string; folder_name: string; size: number }[];
+  extraction: { status: string; count: number }[];
+  backups: BackupInfo[];
+  backupFrequency: 'daily' | 'weekly' | 'off';
+}
+
 let calendarViewDate = startOfDay(new Date());
 let calendarView: CalendarView = 'month';
 let calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
@@ -2593,6 +2640,44 @@ function renderCalendarGrid(byDate: Map<string, CalendarEvent[]>): void {
     });
     grid.appendChild(cell);
   }
+}
+
+const SYNC_CONFIG_OPTIONS: Record<'drive' | 'classroom', { value: string; label: string }[]> = {
+  drive: [{ value: 'off', label: 'Off' }, { value: 'launch', label: 'On launch only' }, { value: 'interval:20', label: 'Every 20 seconds' }, { value: 'interval:60', label: 'Every 1 minute' }, { value: 'interval:300', label: 'Every 5 minutes' }, { value: 'interval:900', label: 'Every 15 minutes' }, { value: 'interval:1800', label: 'Every 30 minutes' }, { value: 'interval:3600', label: 'Every 60 minutes' }],
+  classroom: [{ value: 'off', label: 'Off' }, { value: 'launch', label: 'On launch only' }, { value: 'interval:300', label: 'Every 5 minutes' }, { value: 'interval:900', label: 'Every 15 minutes' }, { value: 'interval:1800', label: 'Every 30 minutes' }, { value: 'interval:3600', label: 'Every 60 minutes' }],
+};
+
+const BACKUP_FREQUENCY_OPTIONS = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'off', label: 'Off' },
+] as const;
+
+function renderBackupFrequencySelect(value: 'daily' | 'weekly' | 'off'): void {
+  const root = document.getElementById('settings-backup-frequency')!;
+  root.innerHTML = `<button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span>${BACKUP_FREQUENCY_OPTIONS.find((option) => option.value === value)!.label}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button><div class="dselect-menu" role="listbox" hidden>${BACKUP_FREQUENCY_OPTIONS.map((option) => `<button type="button" class="dselect-option${option.value === value ? ' selected' : ''}" data-value="${option.value}">${option.label}</button>`).join('')}</div>`;
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => { menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', String(!menu.hidden)); });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    void atlasApi.setBackupFrequency(option.dataset.value as 'daily' | 'weekly' | 'off').then(renderSettingsStorage);
+  }));
+}
+
+function renderSyncConfigSelect(source: 'drive' | 'classroom', value: string): void {
+  const root = document.getElementById(`sync-config-${source}`)!;
+  const options = SYNC_CONFIG_OPTIONS[source];
+  root.innerHTML = `<button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span>${escapeHtml(options.find((option) => option.value === value)?.label ?? 'Off')}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button><div class="dselect-menu" role="listbox" hidden>${options.map((option) => `<button type="button" class="dselect-option${option.value === value ? ' selected' : ''}" data-value="${option.value}">${escapeHtml(option.label)}</button>`).join('')}</div>`;
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => { menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', String(!menu.hidden)); });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    void atlasApi.setSyncConfig(source, option.dataset.value!).then(renderSyncStatus);
+  }));
 }
 
 function makeCalendarEventLine(event: CalendarEvent): HTMLElement {
@@ -5429,6 +5514,26 @@ async function init(): Promise<void> {
 
   document.getElementById('settings-theme-dark')!.addEventListener('click', () => setTheme('dark'));
   document.getElementById('settings-theme-light')!.addEventListener('click', () => setTheme('light'));
+  document.getElementById('settings-agent-access')!.addEventListener('click', async () => {
+    const enabled = (await atlasApi.getSetting('agentAccess')) !== '0';
+    await atlasApi.setSetting('agentAccess', enabled ? '0' : '1');
+    await renderAgentAccess();
+  });
+  document.getElementById('settings-copy-mcp')!.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(document.getElementById('settings-mcp-config')!.textContent ?? '');
+    const button = document.getElementById('settings-copy-mcp') as HTMLButtonElement;
+    button.textContent = 'Copied';
+    window.setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+  });
+  document.getElementById('settings-backup-now')!.addEventListener('click', async () => {
+    const button = document.getElementById('settings-backup-now') as HTMLButtonElement;
+    button.disabled = true;
+    button.textContent = 'Backing up…';
+    await atlasApi.createBackup();
+    button.disabled = false;
+    button.textContent = 'Back up now';
+    await renderSettingsStorage();
+  });
 
   document.getElementById('settings-shortcuts-reset-all')!.addEventListener('click', async () => {
     if (!(await showConfirm('Reset every keyboard shortcut back to its default binding?'))) return;
@@ -5452,12 +5557,6 @@ async function init(): Promise<void> {
   document.getElementById('dashboard-resource-signal')!.addEventListener('click', () => showPage('resources'));
   document.getElementById('dashboard-note-signal')!.addEventListener('click', () => showPage('notes'));
 
-  document.getElementById('sync-config-drive')!.addEventListener('change', (e) => {
-    void atlasApi.setSyncConfig('drive', (e.target as HTMLSelectElement).value).then(renderSyncStatus);
-  });
-  document.getElementById('sync-config-classroom')!.addEventListener('change', (e) => {
-    void atlasApi.setSyncConfig('classroom', (e.target as HTMLSelectElement).value).then(renderSyncStatus);
-  });
   document.getElementById('sync-now-drive')!.addEventListener('click', () => void syncSourceNowClicked('drive'));
   document
     .getElementById('sync-now-classroom')!

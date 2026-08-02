@@ -43,7 +43,15 @@ function openDb(): Database.Database {
 // Every tool response is JSON text — simplest, most literal way to hand
 // back the exact same shape contextBuilder.ts already returns, without a
 // second per-tool formatting layer to keep in sync.
-function jsonResult(value: unknown) {
+function agentAccessAllowed(db: Database.Database): boolean {
+  const access = db.prepare("SELECT value FROM app_settings WHERE key = 'agentAccess'").get() as { value: string } | undefined;
+  return access?.value !== '0';
+}
+
+function jsonResult(db: Database.Database, value: unknown) {
+  if (!agentAccessAllowed(db)) {
+    return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'Agent access is disabled in Atlas Settings.' }) }] };
+  }
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
 
@@ -76,7 +84,7 @@ async function main(): Promise<void> {
         "Get the current semester's active courses plus overall counts, and the general (not course-specific) memory file. Always call this first in a new conversation.",
       inputSchema: {},
     },
-    async () => jsonResult(getOverview(db))
+    async () => jsonResult(db, getOverview(db))
   );
 
   server.registerTool(
@@ -86,7 +94,7 @@ async function main(): Promise<void> {
         'Get one course\'s memory file, upcoming deadlines, recent announcements, and an inventory summary. Accepts either a course name or numeric id.',
       inputSchema: { course: z.union([z.string(), z.number()]) },
     },
-    async ({ course }) => jsonResult(getCourseBriefing(db, course))
+    async ({ course }) => jsonResult(db, getCourseBriefing(db, course))
   );
 
   server.registerTool(
@@ -101,7 +109,7 @@ async function main(): Promise<void> {
         limit: z.number().int().positive().optional(),
       },
     },
-    async ({ query, course, types, limit }) => jsonResult(searchAtlas(db, query, { course, types, limit }))
+    async ({ query, course, types, limit }) => jsonResult(db, searchAtlas(db, query, { course, types, limit }))
   );
 
   server.registerTool(
@@ -115,7 +123,7 @@ async function main(): Promise<void> {
         offset: z.number().int().nonnegative().optional(),
       },
     },
-    async ({ course, kind, limit, offset }) => jsonResult(listResources(db, course, { kind, limit, offset }))
+    async ({ course, kind, limit, offset }) => jsonResult(db, listResources(db, course, { kind, limit, offset }))
   );
 
   server.registerTool(
@@ -127,7 +135,7 @@ async function main(): Promise<void> {
         days: z.number().int().positive().optional(),
       },
     },
-    async ({ course, days }) => jsonResult(listDeadlines(db, course, days))
+    async ({ course, days }) => jsonResult(db, listDeadlines(db, course, days))
   );
 
   server.registerTool(
@@ -141,7 +149,7 @@ async function main(): Promise<void> {
         to: z.number().int().positive().optional(),
       },
     },
-    async ({ resource_id, from, to }) => jsonResult(readDocument(db, resource_id, from, to))
+    async ({ resource_id, from, to }) => jsonResult(db, readDocument(db, resource_id, from, to))
   );
 
   server.registerTool(
@@ -150,7 +158,7 @@ async function main(): Promise<void> {
       description: "Read a note's full Markdown content by id.",
       inputSchema: { note_id: z.number().int() },
     },
-    async ({ note_id }) => jsonResult(readNote(db, note_id))
+    async ({ note_id }) => jsonResult(db, readNote(db, note_id))
   );
 
   server.registerTool(
@@ -163,7 +171,10 @@ async function main(): Promise<void> {
         content: z.string(),
       },
     },
-    async ({ course, content }) => jsonResult(writeCourseOrGeneralMemory(db, course, content))
+    async ({ course, content }) => {
+      if (!agentAccessAllowed(db)) return jsonResult(db, null);
+      return jsonResult(db, writeCourseOrGeneralMemory(db, course, content));
+    }
   );
 
   server.registerTool(
@@ -178,12 +189,13 @@ async function main(): Promise<void> {
       },
     },
     async ({ course, title, content_markdown }) => {
+      if (!agentAccessAllowed(db)) return jsonResult(db, null);
       const result = createAgentNote(db, course, title, content_markdown);
       if (result.ok) {
         const noteRow = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(result.noteId) as { course_id: number };
         indexNoteForSearch(db, result.noteId, noteRow.course_id, title, content_markdown);
       }
-      return jsonResult(result);
+      return jsonResult(db, result);
     }
   );
 
