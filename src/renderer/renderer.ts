@@ -1924,8 +1924,8 @@ async function openDriveReviewPanel(): Promise<void> {
   const overlay = document.getElementById('drive-review-overlay')!;
   const courses = await atlasApi.listCourses();
   const courseOptions = courses.map((course) => ({ value: String(course.id), label: course.name }));
-  renderDriveReviewSelect('drive-review-bulk-course', courseOptions, courseOptions[0]?.value ?? '');
-  renderDriveReviewSelect('drive-review-bulk-type', [
+  renderDriveReviewSelect(document.getElementById('drive-review-bulk-course')!, courseOptions, courseOptions[0]?.value ?? '');
+  renderDriveReviewSelect(document.getElementById('drive-review-bulk-type')!, [
     { value: 'resource', label: 'Resource' },
     { value: 'note', label: 'Note' },
   ], 'resource');
@@ -1945,8 +1945,7 @@ const DRIVE_REVIEW_TYPES: DriveReviewOption[] = [
   { value: 'note', label: 'Note' },
 ];
 
-function renderDriveReviewSelect(id: string, options: DriveReviewOption[], selectedValue: string): void {
-  const root = document.getElementById(id)!;
+function renderDriveReviewSelect(root: HTMLElement, options: DriveReviewOption[], selectedValue: string): void {
   const selected = options.find((option) => option.value === selectedValue) ?? options[0];
   root.dataset.value = selected?.value ?? '';
   root.innerHTML = `
@@ -1994,11 +1993,11 @@ async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promis
       <input type="checkbox" class="drive-review-row-check" />
       <div class="r-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>
       <div class="r-main"><div class="r-title drive-review-row-name">${escapeHtml(file.name)}</div><div class="r-sub">Choose where to add this file.</div></div>
-      <div class="drive-review-row-controls"><div id="drive-review-course-${escapeHtml(file.drive_file_id)}" class="dselect drive-review-select"></div><div id="drive-review-type-${escapeHtml(file.drive_file_id)}" class="dselect drive-review-select drive-review-type-select"></div></div>
+      <div class="drive-review-row-controls"><div class="dselect drive-review-select"></div><div class="dselect drive-review-select drive-review-type-select"></div></div>
       <div class="drive-review-row-actions"><button type="button" class="drive-review-row-import btn">Import</button><button type="button" class="drive-review-row-ignore btn">Ignore</button></div>
     `;
-    renderDriveReviewSelect(`drive-review-course-${file.drive_file_id}`, courseOptions, courseOptions[0]?.value ?? '');
-    renderDriveReviewSelect(`drive-review-type-${file.drive_file_id}`, DRIVE_REVIEW_TYPES, 'resource');
+    renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-select')!, courseOptions, courseOptions[0]?.value ?? '');
+    renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-type-select')!, DRIVE_REVIEW_TYPES, 'resource');
     li.querySelector('.drive-review-row-import')!.addEventListener('click', () => importOneDriveFile(li));
     li.querySelector('.drive-review-row-ignore')!.addEventListener('click', () => ignoreOneDriveFile(li));
     list.appendChild(li);

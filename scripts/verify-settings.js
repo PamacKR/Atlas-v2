@@ -62,6 +62,12 @@ const fs = require('fs');
     if ((await window.textContent('#settings-backup-frequency .dselect-trigger'))?.includes('Weekly') !== true) throw new Error('Backup frequency did not apply selection');
     if (!await window.isHidden('#settings-review-extraction')) throw new Error('Extraction review should be hidden when no resources need OCR');
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings.png') });
+    await window.keyboard.press('Control+/');
+    await window.waitForSelector('#shortcuts-cheatsheet-overlay:not([hidden])');
+    if (await window.isHidden('#shortcuts-cheatsheet-overlay')) throw new Error('Shortcut cheat sheet did not open');
+    await window.screenshot({ path: path.join(__dirname, '..', 'verify-shortcuts-overlay.png') });
+    await window.click('#shortcuts-cheatsheet-close');
+    if (!await window.isHidden('#shortcuts-cheatsheet-overlay')) throw new Error('Shortcut cheat sheet did not close');
     console.log('settings verify: PASS');
   } finally { await app.close(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
