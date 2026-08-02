@@ -45,6 +45,7 @@ UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that
 - Topbar regression fixed: `.topbar-page-actions` had an unconditional `display:flex`, which overrode `hidden` and showed every page's actions at once. It is now `:not([hidden])`, per the project's hidden-selector safeguard. All topbar actions have an explicit neutral bordered style. Notes rail course labels are now wrapped label elements with `overflow-wrap`, not anonymous flex text that could overflow. `npm run build` passed.
 - Topbar colour correction: legacy ID styles for Add course and Upload file were still more specific than the shared control rule, leaving amber buttons in the new topbar. The shared rule now deliberately outranks those IDs, so Courses, Resources, and Notes use one neutral bordered action treatment. `npm run build` passed.
 - Notes/topbar correction: reverted the Notes rail to its compact 200px filter width; long names are safely ellipsized within it rather than wrapping and expanding the surface. The New note button has an explicit neutral hover/focus transition. Non-dashboard topbars now top-align their title/actions/search so the search field begins at the same vertical position as the Dashboard search. `npm run build` passed.
+- Notes list correction: the long-name problem was in the right-aligned course/time field of list rows, not the filter rail. Its fixed 170px width has been replaced with a 330–430px responsive column so course names remain visible alongside the relative timestamp. `npm run build` passed.
 
 **Historical state follows.**
 
