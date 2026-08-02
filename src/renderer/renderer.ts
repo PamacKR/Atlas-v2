@@ -4832,7 +4832,10 @@ function setTheme(theme: 'light' | 'dark'): void {
 // which already drives active states/buttons/highlights throughout the app,
 // so changing this one CSS custom property recolors all of them at once
 // rather than needing per-component theming.
-const ACCENT_COLORS = ['#d9a441', '#8b5cf6', '#3ba55d', '#e0574a', '#ec4899'];
+// These are the five literal Direction A swatches. Both token families are
+// updated below because pre-overhaul surfaces still use --color-accent while
+// the rebuilt pages use --accent.
+const ACCENT_COLORS = ['#d9a441', '#3b82f6', '#8b5cf6', '#3ba55d', '#ec4899'];
 const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
 
 function applyAccentColor(color: string): void {
