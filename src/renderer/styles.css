@@ -3906,6 +3906,25 @@ button#classroom-connect-confirm {
 @media (max-width: 900px) { #resources-layout { grid-template-columns: 170px minmax(0, 1fr); gap: var(--space-5); } #page-resources .resources-kindrow { align-items: flex-start; flex-wrap: wrap; } #page-resources .resources-toolbar-spacer { display: none; } #page-resources .resource-file-row { grid-template-columns: 26px minmax(0, 1fr) 120px 80px; } #page-resources .resource-file-source { display: none; } }
 @media (max-width: 650px) { #resources-layout { grid-template-columns: 1fr; } #page-resources .resources-course-rail ul { flex-direction: row; flex-wrap: wrap; } #page-resources .resource-rail-item { margin: 0; } #page-resources .resource-file-row { grid-template-columns: 26px minmax(0, 1fr) 72px; } #page-resources .resource-file-course { display: none; } }
 
+/* Resource preview uses the common overlay anatomy: one header, a true
+   canvas body, and compact icon actions rather than its old bespoke chrome. */
+#preview-overlay { background: rgba(5, 5, 4, .72); padding: var(--space-6); }
+#preview-panel.overlay-panel { width: min(1040px, 100%); height: min(720px, calc(100vh - (var(--space-6) * 2))); max-width: none; padding: 0; background: var(--bg-panel); border-color: var(--rule-strong); border-radius: var(--radius-lg); box-shadow: 0 24px 64px rgba(0, 0, 0, .5); overflow: hidden; }
+#preview-panel .preview-overlay-header { padding: var(--space-4) var(--space-5); }
+#preview-title { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; letter-spacing: -.01em; }
+#preview-note.sub { margin: 1px 0 0; color: var(--text-faint); font-size: var(--text-sm); }
+#preview-panel .split-preview-actions { gap: var(--space-3); }
+#preview-panel .split-preview-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
+#preview-panel .split-preview-actions button:hover, #preview-panel .split-preview-actions button:focus-visible { color: var(--text); background: var(--bg-hover); outline: none; }
+#preview-panel #preview-close:hover, #preview-panel #preview-close:focus-visible { color: var(--urgent); background: rgba(224, 87, 74, .12); }
+#preview-panel #preview-body { flex: 1; min-height: 0; padding: 0; background: #000; }
+#preview-panel #preview-body:not(.centered) { background: var(--bg); }
+#preview-panel #preview-body.centered { background: #000; }
+#preview-panel #zoom-controls:not([hidden]) { bottom: var(--space-4); padding: 6px var(--space-3); border: 1px solid var(--rule-strong); border-radius: 999px; background: rgba(23, 23, 20, .9); backdrop-filter: blur(6px); }
+#preview-panel #zoom-controls button { border-radius: 6px; }
+#preview-overlay.fullscreen { padding: 0; }
+#preview-overlay.fullscreen #preview-panel.overlay-panel { width: 100%; height: 100%; border: 0; border-radius: 0; }
+
 #dashboard-stats.signals {
   display: flex;
   gap: var(--space-5);

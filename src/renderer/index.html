@@ -607,10 +607,13 @@
   </div>
 
   <div id="preview-overlay" hidden>
-    <div id="preview-panel">
-      <div class="split-preview-header">
-        <span id="preview-title"></span>
-        <div class="split-preview-actions">
+    <div id="preview-panel" class="overlay-panel size-xl">
+      <div class="overlay-header preview-overlay-header">
+        <div class="overlay-header-titles">
+          <h3 id="preview-title"></h3>
+          <p id="preview-note" class="sub" hidden></p>
+        </div>
+        <div class="overlay-header-actions split-preview-actions">
           <span id="preview-ocr-status" class="muted"></span>
           <span id="preview-drive-status" class="muted"></span>
           <button id="preview-run-ocr" type="button" title="Run OCR on this PDF" aria-label="Run OCR on this PDF" hidden>
@@ -627,7 +630,6 @@
           </button>
         </div>
       </div>
-      <p id="preview-note" class="muted" hidden></p>
       <div id="zoom-controls" hidden>
         <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
         <span id="zoom-level">100%</span>
@@ -642,7 +644,7 @@
           <button id="preview-ocr-save" type="button">Save extracted text</button>
         </div>
       </div>
-      <div id="preview-body"></div>
+      <div id="preview-body" class="overlay-body no-pad"></div>
     </div>
   </div>
 
