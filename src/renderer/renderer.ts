@@ -511,7 +511,7 @@ let dashboardCourseFilterId: number | null = null;
 
 function showPage(page: AppPage): void {
   currentPage = page;
-  for (const name of ['courses', 'resources', 'notes'] as const) {
+  for (const name of ['courses', 'resources', 'notes', 'calendar'] as const) {
     document.getElementById(`${name}-topbar-title`)!.hidden = page !== name;
     document.getElementById(`${name}-topbar-actions`)!.hidden = page !== name;
   }

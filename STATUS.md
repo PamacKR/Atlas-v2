@@ -47,6 +47,7 @@ UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that
 - Notes/topbar correction: reverted the Notes rail to its compact 200px filter width; long names are safely ellipsized within it rather than wrapping and expanding the surface. The New note button has an explicit neutral hover/focus transition. Non-dashboard topbars now top-align their title/actions/search so the search field begins at the same vertical position as the Dashboard search. `npm run build` passed.
 - Notes list correction: the long-name problem was in the right-aligned course/time field of list rows, not the filter rail. Its fixed 170px width has been replaced with a 330–430px responsive column so course names remain visible alongside the relative timestamp. `npm run build` passed.
 - Notes list refinement: restored the compact course/time column rather than widening the layout. Course name and timestamp are now separate elements, so the course name truncates with an ellipsis like the sidebar while the timestamp remains readable. `npm run build` passed.
+- Calendar pass started: Calendar has joined the common topbar contract (title left, month navigation immediately before search), and its main month grid/right rail has been converted from the legacy elevated-card treatment to the continuous `calendar-a.html` structure. `npm run build` passed. Do not call Calendar complete yet: its mockup mini-calendar, filters, and month/week/day behavior still need their functional implementation and whole-surface review.
 
 **Historical state follows.**
 
