@@ -1487,8 +1487,12 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
       swatch.className = 'swatch';
       swatch.style.background = courseAvatarColor(note.course_id ?? 0);
       const course = document.createElement('span');
+      course.className = 'note-course-name';
       course.textContent = note.course_name;
-      meta.append(swatch, course, document.createTextNode(` · ${formatRelativeTime(note.updated_at.replace(' ', 'T') + 'Z')}`));
+      const time = document.createElement('span');
+      time.className = 'note-time';
+      time.textContent = ` · ${formatRelativeTime(note.updated_at.replace(' ', 'T') + 'Z')}`;
+      meta.append(swatch, course, time);
       if (notesViewMode === 'grid') {
         const excerpt = document.createElement('span');
         excerpt.className = 'note-excerpt';
