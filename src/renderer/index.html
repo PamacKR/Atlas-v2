@@ -555,20 +555,23 @@
   </div>
 
   <div id="course-picker-overlay" hidden>
-    <div id="course-picker-panel">
-      <div class="modal-header">
-        <h3 id="course-picker-title">Choose a course</h3>
-        <button id="course-picker-close" type="button" title="Close" aria-label="Close">
+    <div id="course-picker-panel" class="overlay-panel size-sm">
+      <div class="overlay-header course-picker-header">
+        <div class="overlay-header-titles"><h3 id="course-picker-title">Choose a course</h3></div>
+        <div class="overlay-header-actions"><button id="course-picker-close" type="button" title="Close" aria-label="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        </button></div>
       </div>
-      <input id="course-picker-search" type="text" placeholder="Search courses…" autocomplete="off" />
-      <ul id="course-picker-list"></ul>
-      <div id="course-picker-dropzone" hidden>
-        <p id="course-picker-dropzone-hint" class="muted">Select a course above, then drop a file here</p>
-        <button id="course-picker-browse" type="button">Browse files…</button>
+      <div class="overlay-body course-picker-body">
+        <input id="course-picker-search" type="text" placeholder="Search courses…" autocomplete="off" />
+        <div id="course-picker-dropzone" hidden>
+          <p id="course-picker-dropzone-hint" class="muted">Select a course above, then drop a file here</p>
+          <button id="course-picker-browse" type="button">Browse files…</button>
+        </div>
+        <p id="course-picker-list-label">Assign to a course</p>
+        <ul id="course-picker-list"></ul>
+        <p id="course-picker-progress" class="muted" hidden></p>
       </div>
-      <p id="course-picker-progress" class="muted" hidden></p>
     </div>
   </div>
 
@@ -630,21 +633,23 @@
           </button>
         </div>
       </div>
-      <div id="zoom-controls" hidden>
-        <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
-        <span id="zoom-level">100%</span>
-        <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
-        <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
-      </div>
-      <div id="preview-ocr-review" hidden>
-        <p class="muted">OCR result — review before saving. Saved text makes this PDF searchable in Atlas.</p>
-        <div id="preview-ocr-review-text"></div>
-        <div id="preview-ocr-review-actions">
-          <button id="preview-ocr-discard" type="button">Discard</button>
-          <button id="preview-ocr-save" type="button">Save extracted text</button>
+      <div id="preview-content">
+        <div id="zoom-controls" hidden>
+          <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+          <span id="zoom-level">100%</span>
+          <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+          <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
         </div>
+        <div id="preview-ocr-review" hidden>
+          <p class="muted">OCR result — review before saving. Saved text makes this PDF searchable in Atlas.</p>
+          <div id="preview-ocr-review-text"></div>
+          <div id="preview-ocr-review-actions">
+            <button id="preview-ocr-discard" type="button">Discard</button>
+            <button id="preview-ocr-save" type="button">Save extracted text</button>
+          </div>
+        </div>
+        <div id="preview-body" class="overlay-body no-pad"></div>
       </div>
-      <div id="preview-body" class="overlay-body no-pad"></div>
     </div>
   </div>
 

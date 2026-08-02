@@ -1115,8 +1115,20 @@ function renderCoursePickerList(filterText: string): void {
 
   for (const course of filtered) {
     const li = document.createElement('li');
-    li.textContent = course.name;
-    li.classList.toggle('selected', coursePickerSelectedId === course.id);
+    const selected = coursePickerSelectedId === course.id;
+    li.classList.toggle('selected', selected);
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = courseAvatarColor(course.id);
+    const label = document.createElement('span');
+    label.textContent = course.name;
+    li.append(swatch, label);
+    if (selected) {
+      const check = document.createElement('span');
+      check.className = 'course-picker-check';
+      check.textContent = '✓';
+      li.appendChild(check);
+    }
     li.addEventListener('click', () => selectCoursePickerCourse(course.id));
     list.appendChild(li);
   }
@@ -1177,7 +1189,13 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
   const title = document.getElementById('course-picker-title')!;
   const searchInput = document.getElementById('course-picker-search') as HTMLInputElement;
   const dropzone = document.getElementById('course-picker-dropzone')!;
+  const panel = document.getElementById('course-picker-panel')!;
+  const listLabel = document.getElementById('course-picker-list-label')!;
   searchInput.value = '';
+
+  panel.classList.toggle('upload-picker', mode === 'upload');
+  searchInput.hidden = mode === 'upload';
+  listLabel.hidden = mode !== 'upload';
 
   document.getElementById('course-picker-progress')!.hidden = true;
 

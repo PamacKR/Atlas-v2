@@ -3925,6 +3925,45 @@ button#classroom-connect-confirm {
 #preview-overlay.fullscreen { padding: 0; }
 #preview-overlay.fullscreen #preview-panel.overlay-panel { width: 100%; height: 100%; border: 0; border-radius: 0; }
 
+/* Upload picker: the upload flow follows the compact shared overlay rather
+   than the legacy search-first picker. It still supports every picker mode. */
+#course-picker-overlay { background: rgba(5, 5, 4, .72); padding: var(--space-6); }
+#course-picker-panel.overlay-panel { width: min(420px, 100%); max-height: min(640px, calc(100vh - (var(--space-6) * 2))); padding: 0; background: var(--bg-panel); border-color: var(--rule-strong); border-radius: var(--radius-lg); box-shadow: 0 24px 64px rgba(0, 0, 0, .5); overflow: hidden; }
+#course-picker-panel .course-picker-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin: 0; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--rule); }
+#course-picker-panel .overlay-header-titles h3 { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; }
+#course-picker-panel .overlay-header-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
+#course-picker-panel .overlay-header-actions button:hover, #course-picker-panel .overlay-header-actions button:focus-visible { color: var(--urgent); background: rgba(224, 87, 74, .12); outline: none; }
+#course-picker-panel .course-picker-body { min-height: 0; padding: var(--space-4) var(--space-5); overflow-y: auto; }
+#course-picker-panel #course-picker-search { width: 100%; margin: 0 0 var(--space-3); padding: 9px var(--space-3); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-sm); }
+#course-picker-panel #course-picker-search:focus { outline: none; border-color: var(--text-faint); }
+#course-picker-panel #course-picker-dropzone { margin: 0 0 var(--space-4); padding: var(--space-6) var(--space-4); border: 1px dashed var(--rule-strong); border-radius: var(--radius-md); text-align: center; }
+#course-picker-panel #course-picker-dropzone.disabled { opacity: 1; pointer-events: auto; }
+#course-picker-panel #course-picker-dropzone p { margin: 0 0 var(--space-3); color: var(--text-faint); font-size: var(--text-sm); }
+#course-picker-panel #course-picker-dropzone.disabled p { color: var(--text-faint); }
+#course-picker-panel #course-picker-dropzone.drag-active { border-color: var(--accent); background: rgba(217, 164, 65, .08); }
+#course-picker-panel #course-picker-browse { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition); }
+#course-picker-panel #course-picker-browse:hover { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); }
+#course-picker-list-label { margin: 0 0 var(--space-2); color: var(--text-muted); font-size: var(--text-sm); }
+#course-picker-panel ul#course-picker-list { max-height: none; overflow: visible; }
+#course-picker-panel #course-picker-list li { display: flex; align-items: center; min-height: 36px; margin: 0 calc(var(--space-2) * -1); padding: 7px var(--space-2); border-radius: var(--radius-sm); color: var(--text); font-size: var(--text-sm); }
+#course-picker-panel #course-picker-list li:hover { background: var(--bg-hover); }
+#course-picker-panel #course-picker-list li.selected { background: var(--bg-hover); color: var(--text); font-weight: 500; }
+#course-picker-panel #course-picker-list .swatch { width: 6px; height: 6px; margin-right: var(--space-2); }
+#course-picker-panel .course-picker-check { margin-left: auto; color: var(--accent); font-size: var(--text-md); }
+#course-picker-panel #course-picker-progress { margin: var(--space-3) 0 0; }
+
+/* Keep preview controls inside the canvas. The old sibling flow made their
+   box span the panel width and pushed the utility actions below the title. */
+#preview-panel .preview-overlay-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-shrink: 0; }
+#preview-panel .overlay-header-titles { min-width: 0; flex: 1; }
+#preview-panel .overlay-header-actions { display: flex; align-items: center; flex-shrink: 0; }
+#preview-content { position: relative; display: flex; flex: 1; min-height: 0; }
+#preview-panel #preview-body { position: relative; width: 100%; }
+#preview-panel #zoom-controls:not([hidden]) { position: absolute; z-index: 2; left: 50%; bottom: var(--space-4); width: auto; margin: 0; transform: translateX(-50%); display: flex; }
+#preview-panel #zoom-controls button { width: 26px; height: 26px; border: 0; background: transparent; color: var(--text-muted); }
+#preview-panel #zoom-controls #zoom-reset { width: auto !important; padding: 0 6px !important; }
+#preview-panel #zoom-controls button:hover { background: var(--bg-hover); color: var(--text); }
+
 #dashboard-stats.signals {
   display: flex;
   gap: var(--space-5);
