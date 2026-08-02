@@ -1922,24 +1922,68 @@ async function saveDriveFolder(): Promise<void> {
 // pending list is exactly what a fresh scan would find again.
 async function openDriveReviewPanel(): Promise<void> {
   const overlay = document.getElementById('drive-review-overlay')!;
-  const bulkCourseSelect = document.getElementById('drive-review-bulk-course') as HTMLSelectElement;
-
   const courses = await atlasApi.listCourses();
-  const courseOptionsHtml = courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-  bulkCourseSelect.innerHTML = courseOptionsHtml;
+  const courseOptions = courses.map((course) => ({ value: String(course.id), label: course.name }));
+  renderDriveReviewSelect('drive-review-bulk-course', courseOptions, courseOptions[0]?.value ?? '');
+  renderDriveReviewSelect('drive-review-bulk-type', [
+    { value: 'resource', label: 'Resource' },
+    { value: 'note', label: 'Note' },
+  ], 'resource');
 
   overlay.hidden = false;
-  await renderDriveReviewList(courseOptionsHtml);
+  await renderDriveReviewList(courseOptions);
 }
 
 function closeDriveReviewPanel(): void {
   document.getElementById('drive-review-overlay')!.hidden = true;
 }
 
-async function renderDriveReviewList(courseOptionsHtml: string): Promise<void> {
+type DriveReviewOption = { value: string; label: string };
+
+const DRIVE_REVIEW_TYPES: DriveReviewOption[] = [
+  { value: 'resource', label: 'Resource' },
+  { value: 'note', label: 'Note' },
+];
+
+function renderDriveReviewSelect(id: string, options: DriveReviewOption[], selectedValue: string): void {
+  const root = document.getElementById(id)!;
+  const selected = options.find((option) => option.value === selectedValue) ?? options[0];
+  root.dataset.value = selected?.value ?? '';
+  root.innerHTML = `
+    <button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <span>${escapeHtml(selected?.label ?? 'Choose a course')}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="dselect-menu" role="listbox" hidden>${options.map((option) => `<button type="button" class="dselect-option${option.value === selected?.value ? ' selected' : ''}" data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`).join('')}</div>`;
+
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    root.classList.toggle('open', !menu.hidden);
+    trigger.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    root.dataset.value = option.dataset.value ?? '';
+    trigger.querySelector('span')!.textContent = option.textContent;
+    root.querySelectorAll('.dselect-option').forEach((item) => item.classList.toggle('selected', item === option));
+    menu.hidden = true;
+    root.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+  }));
+}
+
+function driveReviewSelectValue(root: Element): string {
+  return (root as HTMLElement).dataset.value ?? '';
+}
+
+async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promise<void> {
   const list = document.getElementById('drive-review-list')!;
   const pending = await atlasApi.listPendingDriveFiles();
   list.innerHTML = '';
+  document.getElementById('drive-review-subtitle')!.textContent = pending.length === 1
+    ? '1 new file found since the last sync.'
+    : `${pending.length} new files found since the last sync.`;
 
   for (const file of pending) {
     const li = document.createElement('li');
@@ -1948,15 +1992,13 @@ async function renderDriveReviewList(courseOptionsHtml: string): Promise<void> {
     li.dataset.fileName = file.name;
     li.innerHTML = `
       <input type="checkbox" class="drive-review-row-check" />
-      <span class="drive-review-row-name">${escapeHtml(file.name)}</span>
-      <select class="drive-review-row-course">${courseOptionsHtml}</select>
-      <select class="drive-review-row-type">
-        <option value="resource">Resource</option>
-        <option value="note">Note</option>
-      </select>
-      <button type="button" class="drive-review-row-import">Import</button>
-      <button type="button" class="drive-review-row-ignore">Ignore</button>
+      <div class="r-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>
+      <div class="r-main"><div class="r-title drive-review-row-name">${escapeHtml(file.name)}</div><div class="r-sub">Choose where to add this file.</div></div>
+      <div class="drive-review-row-controls"><div id="drive-review-course-${escapeHtml(file.drive_file_id)}" class="dselect drive-review-select"></div><div id="drive-review-type-${escapeHtml(file.drive_file_id)}" class="dselect drive-review-select drive-review-type-select"></div></div>
+      <div class="drive-review-row-actions"><button type="button" class="drive-review-row-import btn">Import</button><button type="button" class="drive-review-row-ignore btn">Ignore</button></div>
     `;
+    renderDriveReviewSelect(`drive-review-course-${file.drive_file_id}`, courseOptions, courseOptions[0]?.value ?? '');
+    renderDriveReviewSelect(`drive-review-type-${file.drive_file_id}`, DRIVE_REVIEW_TYPES, 'resource');
     li.querySelector('.drive-review-row-import')!.addEventListener('click', () => importOneDriveFile(li));
     li.querySelector('.drive-review-row-ignore')!.addEventListener('click', () => ignoreOneDriveFile(li));
     list.appendChild(li);
@@ -1984,8 +2026,8 @@ async function afterDriveRowResolved(): Promise<void> {
 async function importOneDriveFile(row: HTMLElement): Promise<void> {
   const driveFileId = row.dataset.driveFileId!;
   const name = row.dataset.fileName!;
-  const courseId = Number((row.querySelector('.drive-review-row-course') as HTMLSelectElement).value);
-  const importAs = (row.querySelector('.drive-review-row-type') as HTMLSelectElement).value as 'resource' | 'note';
+  const courseId = Number(driveReviewSelectValue(row.querySelector('.drive-review-select')!));
+  const importAs = driveReviewSelectValue(row.querySelector('.drive-review-type-select')!) as 'resource' | 'note';
   const button = row.querySelector('.drive-review-row-import') as HTMLButtonElement;
 
   button.disabled = true;
@@ -2008,15 +2050,15 @@ async function ignoreOneDriveFile(row: HTMLElement): Promise<void> {
 }
 
 async function importSelectedDriveFiles(): Promise<void> {
-  const bulkCourseSelect = document.getElementById('drive-review-bulk-course') as HTMLSelectElement;
-  const bulkTypeSelect = document.getElementById('drive-review-bulk-type') as HTMLSelectElement;
+  const bulkCourseId = driveReviewSelectValue(document.getElementById('drive-review-bulk-course')!);
+  const bulkType = driveReviewSelectValue(document.getElementById('drive-review-bulk-type')!);
   const rows = Array.from(document.querySelectorAll('.drive-review-row')) as HTMLElement[];
 
   for (const row of rows) {
     const checkbox = row.querySelector('.drive-review-row-check') as HTMLInputElement;
     if (!checkbox.checked) continue;
-    (row.querySelector('.drive-review-row-course') as HTMLSelectElement).value = bulkCourseSelect.value;
-    (row.querySelector('.drive-review-row-type') as HTMLSelectElement).value = bulkTypeSelect.value;
+    (row.querySelector('.drive-review-select') as HTMLElement).dataset.value = bulkCourseId;
+    (row.querySelector('.drive-review-type-select') as HTMLElement).dataset.value = bulkType;
     await importOneDriveFile(row);
   }
 }

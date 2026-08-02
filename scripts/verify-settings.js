@@ -21,12 +21,13 @@ const fs = require('fs');
       }
     }
     await window.click('[data-settings-tab="appearance"]');
-    await window.click('.settings-accent-swatch[data-accent-color="#8b5cf6"]');
+    await window.click('.settings-accent-swatch[data-accent-color="#3b82f6"]');
     const accent = await window.evaluate(() => ({
       modern: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
       legacy: getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim(),
+      subtle: getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim(),
     }));
-    if (accent.modern !== '#8b5cf6' || accent.legacy !== '#8b5cf6') throw new Error(`Accent did not apply across the UI: ${JSON.stringify(accent)}`);
+    if (accent.modern !== '#3b82f6' || accent.legacy !== '#3b82f6' || !accent.subtle.includes('#3b82f6')) throw new Error(`Accent did not apply across the UI: ${JSON.stringify(accent)}`);
     await window.click('.settings-accent-swatch[data-accent-color="#d9a441"]');
     await window.click('[data-settings-tab="ai"]');
     const before = await window.getAttribute('#settings-agent-access', 'aria-checked');

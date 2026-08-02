@@ -23,6 +23,9 @@
   --rule: #24241f;
   --rule-strong: #302f29;
   --accent: #d9a441;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 24%, var(--bg));
+  --accent-rule: color-mix(in srgb, var(--accent) 42%, var(--rule));
   --urgent: #e0574a;
   --good: #3ba55d;
   --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
@@ -5383,4 +5386,193 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
   #courses-detail-view .course-tabs { gap: var(--space-4); overflow: visible; }
   #courses-detail-view .course-detail-widgets { grid-template-columns: 1fr; grid-template-rows: auto; gap: var(--space-6); }
   #courses-detail-view .course-detail-widgets .dashboard-widget:nth-child(n) { grid-column: 1; grid-row: auto; }
+}
+
+/* Settings Sources and Drive review — shared Direction A control and overlay
+   language. These selectors deliberately outrank the pre-overhaul source
+   controls above, which otherwise retain their old padding and colours. */
+#settings-panels .chip.active {
+  border-color: var(--accent-rule);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+#settings-panels .settings-button:hover,
+#settings-panels .settings-button:focus-visible {
+  border-color: var(--rule-strong);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+#settings-panels #sync-now-drive:not([hidden]),
+#settings-panels #sync-now-classroom:not([hidden]),
+#settings-panels #sync-now-all:not([hidden]),
+#settings-panels #drive-connect-button:not([hidden]),
+#settings-panels #drive-disconnect-button:not([hidden]),
+#settings-panels #drive-folder-save:not([hidden]),
+#settings-panels #drive-review-button:not([hidden]),
+#settings-panels #drive-clear-preview-cache-button:not([hidden]),
+#settings-panels #classroom-connect-button:not([hidden]),
+#settings-panels #classroom-disconnect-button:not([hidden]),
+#settings-panels #classroom-review-button:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  margin: 0;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+#settings-panels #sync-now-drive:hover,
+#settings-panels #sync-now-classroom:hover,
+#settings-panels #sync-now-all:hover,
+#settings-panels #drive-connect-button:hover,
+#settings-panels #drive-disconnect-button:hover,
+#settings-panels #drive-folder-save:hover,
+#settings-panels #drive-review-button:hover,
+#settings-panels #drive-clear-preview-cache-button:hover,
+#settings-panels #classroom-connect-button:hover,
+#settings-panels #classroom-disconnect-button:hover,
+#settings-panels #classroom-review-button:hover {
+  border-color: var(--rule-strong);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+#drive-review-overlay:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, .62);
+  z-index: 60;
+}
+
+#drive-review-panel.overlay-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-width: none;
+  max-height: min(680px, calc(100vh - (var(--space-4) * 2)));
+  padding: 0;
+  background: var(--bg-panel);
+  border-color: var(--rule-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .5);
+  overflow: hidden;
+}
+
+#drive-review-panel .overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--rule);
+}
+
+#drive-review-panel .overlay-header-titles { min-width: 0; }
+#drive-review-panel .overlay-header h3 { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; }
+#drive-review-panel .overlay-header .sub { margin-top: 1px; color: var(--text-faint); font-size: var(--text-sm); }
+#drive-review-panel .overlay-header-actions { display: flex; flex-shrink: 0; }
+#drive-review-panel #drive-review-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+#drive-review-panel #drive-review-close svg { width: 16px; height: 16px; }
+#drive-review-panel #drive-review-close:hover,
+#drive-review-panel #drive-review-close:focus-visible { background: rgba(224, 87, 74, .12); color: var(--urgent); outline: none; }
+
+#drive-review-panel .drive-review-body { flex: 1; min-height: 0; padding: var(--space-3) var(--space-5) var(--space-4); overflow: auto; }
+#drive-review-bulk.drive-review-bulk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px 112px auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 0 var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+#drive-review-bulk label { display: inline-flex; grid-column: auto; align-items: center; gap: var(--space-2); }
+#drive-review-panel input[type='checkbox'] { appearance: none; position: relative; width: 14px; height: 14px; margin: 0; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--bg); cursor: pointer; }
+#drive-review-panel input[type='checkbox']:checked { border-color: var(--accent); background: var(--accent); }
+#drive-review-panel input[type='checkbox']:checked::after { content: ''; position: absolute; inset: 0; width: 4px; height: 8px; margin: auto; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+#drive-review-panel .drive-review-select { width: 100%; min-width: 0; }
+#drive-review-panel .dselect-trigger { min-height: 34px; padding: 0 var(--space-3); }
+#drive-review-panel .dselect-menu { z-index: 2; }
+#drive-review-panel .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition), filter var(--transition);
+}
+#drive-review-panel .btn:hover, #drive-review-panel .btn:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
+#drive-review-panel .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--bg); font-weight: 500; }
+#drive-review-panel .btn.primary:hover, #drive-review-panel .btn.primary:focus-visible { border-color: var(--accent); background: var(--accent); color: var(--bg); filter: brightness(1.08); }
+
+#drive-review-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; overflow: visible; }
+#drive-review-list > .muted { padding: var(--space-4) 0; color: var(--text-faint); font-size: var(--text-sm); }
+.drive-review-row {
+  display: grid;
+  grid-template-columns: 14px 32px minmax(0, 1fr) minmax(260px, 310px) auto;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: inherit;
+}
+.drive-review-row:last-child { border-bottom: 0; }
+.drive-review-row .r-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--bg-hover); color: var(--text-faint); }
+.drive-review-row .r-icon svg { width: 16px; height: 16px; }
+.drive-review-row .r-main { min-width: 0; }
+.drive-review-row .r-title { overflow: hidden; color: var(--text); font-size: var(--text-md); text-overflow: ellipsis; white-space: nowrap; }
+.drive-review-row .r-sub { margin-top: 2px; color: var(--text-faint); font-size: var(--text-sm); }
+.drive-review-row-controls, .drive-review-row-actions { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.drive-review-row-controls { justify-content: flex-end; }
+.drive-review-row-controls .drive-review-select:first-child { min-width: 150px; }
+.drive-review-row-controls .drive-review-type-select { width: 110px; }
+.drive-review-row-actions .btn { height: 30px; padding: 0 var(--space-3); font-size: var(--text-sm); }
+.drive-review-row-actions .drive-review-row-import { border-color: var(--rule-strong); color: var(--text); }
+.drive-review-row-actions .drive-review-row-ignore { color: var(--text-muted); }
+
+@media (max-width: 760px) {
+  #drive-review-bulk.drive-review-bulk { grid-template-columns: 1fr 1fr; }
+  #drive-review-bulk label { grid-column: 1 / -1; }
+  #drive-review-bulk .btn { grid-column: span 1; }
+  .drive-review-row { grid-template-columns: 14px 32px minmax(0, 1fr); }
+  .drive-review-row-controls { grid-column: 3; justify-content: flex-start; }
+  .drive-review-row-actions { grid-column: 3; }
 }

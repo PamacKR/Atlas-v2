@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-02 (UI overhaul in progress on `ui-overhaul-v2`; the current-session section below supersedes historical notes.)
+**Last updated:** 2026-08-03 (UI overhaul in progress on `ui-overhaul-v2`; the current-session section below supersedes historical notes.)
 
 ## Next session — start here
 
@@ -54,6 +54,7 @@ UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that
 - `scripts/verify-settings.js` validates all six panels' hidden state, the agent switch, the Atlas-themed Drive and backup dropdowns, and storage rendering in a throwaway data directory. `npm run build` and the focused Settings Electron check pass; the Settings and Sources screenshots were inspected.
 - Settings refinement: accent swatches now update both the legacy and Direction A accent tokens, so the selected colour reaches every remaining UI surface rather than only older selectors. Sources' sync controls and action rows were re-aligned to the mockup's shared control anatomy; Settings navigation is sticky while a long panel scrolls; Shortcuts uses the mockup's compact uppercase heading/section-label language, neutral reset control, and application font keycaps; and the MCP configuration retains literal multiline indentation. Storage now gives the total/legend the mockup's separation and exposes a context-aware Review action only when files have an `empty` extraction result; it opens the existing Resources surface filtered to those files. About uses the mockup's uppercase heading and muted body colour. `npm run build` and the focused Settings Electron check pass after this correction.
 - Settings follow-up: Source buttons now use the shared flex-centred control treatment, eliminating baseline drift; the duplicate Sources text-extraction block was removed (Storage remains the single extraction-status/review surface); and the Direction A palette now includes its literal blue swatch. The common `settings-button` rule has an explicit `[hidden]` safeguard, so a conditionally absent control such as Extraction Review cannot leak into the page. `npm run build` and focused Settings Electron verification pass.
+- Settings Sources/review pass: accent-derived soft and border tokens now follow the selected swatch, so active/tinted controls no longer retain the default amber hue after choosing blue, purple, green, or pink. All Source actions now deliberately override their older per-ID styles to use the same neutral 34px Direction A buttons; Office previews has one boundary line instead of a redundant row divider. The Drive new-files review was rebuilt as the shared `overlays-a.html` panel: header/subtitle/close anatomy, custom Atlas selects, themed checks, and readable file rows while preserving individual and bulk Import/Ignore behavior. `npm run build` and the focused Settings Electron check pass; Sources screenshot inspected.
 
 **Historical state follows.**
 
