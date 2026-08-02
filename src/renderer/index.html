@@ -769,22 +769,24 @@
   </div>
 
   <div id="classroom-review-overlay" hidden>
-    <div id="classroom-review-panel">
-      <div class="split-preview-header">
-        <span>New courses from Google Classroom</span>
-        <div class="split-preview-actions">
-          <button id="classroom-review-close" type="button" title="Later" aria-label="Later">
+    <div id="classroom-review-panel" class="overlay-panel size-md">
+      <div class="overlay-header">
+        <div class="overlay-header-titles"><h3>New courses from Google Classroom</h3><div id="classroom-review-subtitle" class="sub">Review course mappings before importing them.</div></div>
+        <div class="overlay-header-actions">
+          <button id="classroom-review-close" type="button" aria-label="Close review">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       </div>
-      <div id="classroom-review-bulk">
-        <label><input type="checkbox" id="classroom-review-select-all" /> Select all</label>
-        <select id="classroom-review-bulk-course"></select>
-        <button id="classroom-review-bulk-confirm" type="button">Confirm</button>
-        <button id="classroom-review-bulk-ignore" type="button">Ignore</button>
+      <div class="overlay-body classroom-review-body">
+        <div id="classroom-review-bulk" class="classroom-review-bulk">
+          <label><input type="checkbox" id="classroom-review-select-all" /> Select all</label>
+          <div id="classroom-review-bulk-course" class="dselect classroom-review-select"></div>
+          <button id="classroom-review-bulk-confirm" class="btn primary" type="button">Confirm selected</button>
+          <button id="classroom-review-bulk-ignore" class="btn" type="button">Ignore selected</button>
+        </div>
+        <ul id="classroom-review-list"></ul>
       </div>
-      <ul id="classroom-review-list"></ul>
     </div>
   </div>
 

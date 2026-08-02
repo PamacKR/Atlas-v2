@@ -2620,6 +2620,21 @@ function createLocalBackup(): { name: string; size: number; createdAt: string } 
   return { name, size: stat.size, createdAt: stat.mtime.toISOString() };
 }
 
+function deleteBackup(name: string): void {
+  // A backup name only ever originates from listBackups(), but validate the
+  // final path at the IPC boundary so this can never delete outside backups/.
+  if (name !== path.basename(name) || !name.startsWith('atlas-') || !name.endsWith('.db')) {
+    throw new Error('Invalid backup name');
+  }
+  const backupPath = path.join(getBackupsDir(), name);
+  if (!fs.existsSync(backupPath)) return;
+  fs.unlinkSync(backupPath);
+}
+
+function deleteAllBackups(): void {
+  for (const backup of listBackups()) deleteBackup(backup.name);
+}
+
 type BackupFrequency = 'daily' | 'weekly' | 'off';
 const BACKUP_INTERVAL_MS: Record<Exclude<BackupFrequency, 'off'>, number> = {
   daily: 24 * 60 * 60 * 1000,
@@ -2656,6 +2671,8 @@ ipcMain.handle('settings:getStorageStatus', () => {
 });
 
 ipcMain.handle('settings:createBackup', () => createLocalBackup());
+ipcMain.handle('settings:deleteBackup', (_event, name: string) => deleteBackup(name));
+ipcMain.handle('settings:deleteAllBackups', () => deleteAllBackups());
 ipcMain.handle('settings:setBackupFrequency', (_event, frequency: BackupFrequency) => {
   if (!['daily', 'weekly', 'off'].includes(frequency)) throw new Error('Invalid backup frequency');
   setBackupFrequency(frequency);

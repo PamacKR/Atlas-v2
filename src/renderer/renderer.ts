@@ -253,6 +253,8 @@ interface AtlasApi {
   setSetting: (key: string, value: string) => Promise<void>;
   getStorageStatus: () => Promise<StorageStatus>;
   createBackup: () => Promise<BackupInfo>;
+  deleteBackup: (name: string) => Promise<void>;
+  deleteAllBackups: () => Promise<void>;
   setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off') => Promise<void>;
   isDriveConnected: () => Promise<boolean>;
   connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -597,7 +599,24 @@ async function renderSettingsStorage(): Promise<void> {
     ? 'Scheduled backups are off. Existing backups are kept until Atlas makes a newer one.'
     : `A ${status.backupFrequency} copy of atlas.db while Atlas is running — ${latest ? `last one ${formatRelativeTime(latest.createdAt)}` : 'none yet'}, keeping the last five.`;
   renderBackupFrequencySelect(status.backupFrequency);
-  document.getElementById('storage-backups')!.innerHTML = status.backups.map((backup) => `<div class="storage-backup-row"><span>${escapeHtml(formatRelativeTime(backup.createdAt))}</span><span>${formatBytes(backup.size)}</span></div>`).join('') || '<p class="settings-row-hint">No backups yet.</p>';
+  const backups = document.getElementById('storage-backups')!;
+  backups.innerHTML = status.backups.length
+    ? `<div class="storage-backups-heading"><span>${status.backups.length} saved backup${status.backups.length === 1 ? '' : 's'}</span><button id="settings-backup-delete-all" class="settings-button settings-button-danger" type="button">Delete all</button></div>${status.backups.map((backup) => `<div class="storage-backup-row"><span>${escapeHtml(formatRelativeTime(backup.createdAt))}</span><span>${formatBytes(backup.size)}</span><button class="settings-backup-delete settings-button settings-button-danger" type="button" data-backup-name="${escapeHtml(backup.name)}">Delete</button></div>`).join('')}`
+    : '<p class="settings-row-hint">No backups yet.</p>';
+  backups.querySelectorAll<HTMLButtonElement>('.settings-backup-delete').forEach((button) => button.addEventListener('click', () => void deleteBackup(button.dataset.backupName!)));
+  backups.querySelector<HTMLButtonElement>('#settings-backup-delete-all')?.addEventListener('click', () => void deleteAllBackups());
+}
+
+async function deleteBackup(name: string): Promise<void> {
+  if (!(await showConfirm('Delete this backup? This cannot be undone.'))) return;
+  await atlasApi.deleteBackup(name);
+  await renderSettingsStorage();
+}
+
+async function deleteAllBackups(): Promise<void> {
+  if (!(await showConfirm('Delete every local backup? This cannot be undone.'))) return;
+  await atlasApi.deleteAllBackups();
+  await renderSettingsStorage();
 }
 
 // Sync schedule (open-questions.md #2) — one dropdown + last-synced/error
@@ -2139,26 +2158,28 @@ async function disconnectClassroom(): Promise<void> {
 // is exactly what a fresh scan would find again.
 async function openClassroomReviewPanel(): Promise<void> {
   const overlay = document.getElementById('classroom-review-overlay')!;
-  const bulkCourseSelect = document.getElementById('classroom-review-bulk-course') as HTMLSelectElement;
-
   const courses = await atlasApi.listCourses();
-  const courseOptionsHtml =
-    '<option value="__new__">Create new course</option>' +
-    courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-  bulkCourseSelect.innerHTML = courseOptionsHtml;
+  const courseOptions: DriveReviewOption[] = [
+    { value: '__new__', label: 'Create new course' },
+    ...courses.map((course) => ({ value: String(course.id), label: course.name })),
+  ];
+  renderDriveReviewSelect(document.getElementById('classroom-review-bulk-course')!, courseOptions, '__new__');
 
   overlay.hidden = false;
-  await renderClassroomReviewList(courseOptionsHtml);
+  await renderClassroomReviewList(courseOptions);
 }
 
 function closeClassroomReviewPanel(): void {
   document.getElementById('classroom-review-overlay')!.hidden = true;
 }
 
-async function renderClassroomReviewList(courseOptionsHtml: string): Promise<void> {
+async function renderClassroomReviewList(courseOptions: DriveReviewOption[]): Promise<void> {
   const list = document.getElementById('classroom-review-list')!;
   const pending = await atlasApi.listPendingClassroomCourses();
   list.innerHTML = '';
+  document.getElementById('classroom-review-subtitle')!.textContent = pending.length === 1
+    ? '1 new course found since the last sync.'
+    : `${pending.length} new courses found since the last sync.`;
 
   for (const course of pending) {
     const li = document.createElement('li');
@@ -2167,16 +2188,12 @@ async function renderClassroomReviewList(courseOptionsHtml: string): Promise<voi
     li.dataset.courseName = course.name;
     li.innerHTML = `
       <input type="checkbox" class="classroom-review-row-check" />
-      <span class="classroom-review-row-name">
-        <span class="classroom-review-row-title">${escapeHtml(course.name)}</span>
-        ${course.section ? `<span class="classroom-review-row-section">${escapeHtml(course.section)}</span>` : ''}
-      </span>
-      <select class="classroom-review-row-course">${courseOptionsHtml}</select>
-      <button type="button" class="classroom-review-row-confirm">Confirm</button>
-      <button type="button" class="classroom-review-row-ignore">Ignore</button>
+      <div class="r-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></svg></div>
+      <div class="r-main"><div class="r-title classroom-review-row-title">${escapeHtml(course.name)}</div>${course.section ? `<div class="r-sub classroom-review-row-section">${escapeHtml(course.section)}</div>` : '<div class="r-sub">Choose an existing Atlas course or create one.</div>'}</div>
+      <div class="classroom-review-row-controls"><div class="dselect classroom-review-select"></div></div>
+      <div class="classroom-review-row-actions"><button type="button" class="classroom-review-row-confirm btn">Confirm</button><button type="button" class="classroom-review-row-ignore btn">Ignore</button></div>
     `;
-    const select = li.querySelector('.classroom-review-row-course') as HTMLSelectElement;
-    if (course.suggested_course_id !== null) select.value = String(course.suggested_course_id);
+    renderDriveReviewSelect(li.querySelector<HTMLElement>('.classroom-review-select')!, courseOptions, course.suggested_course_id === null ? '__new__' : String(course.suggested_course_id));
     li.querySelector('.classroom-review-row-confirm')!.addEventListener('click', () => confirmOneClassroomCourse(li));
     li.querySelector('.classroom-review-row-ignore')!.addEventListener('click', () => ignoreOneClassroomCourse(li));
     list.appendChild(li);
@@ -2203,15 +2220,15 @@ async function afterClassroomRowResolved(): Promise<void> {
 async function confirmOneClassroomCourse(row: HTMLElement): Promise<void> {
   const classroomCourseId = row.dataset.classroomCourseId!;
   const name = row.dataset.courseName!;
-  const select = row.querySelector('.classroom-review-row-course') as HTMLSelectElement;
+  const selectValue = driveReviewSelectValue(row.querySelector('.classroom-review-select')!);
   const button = row.querySelector('.classroom-review-row-confirm') as HTMLButtonElement;
 
   button.disabled = true;
   button.textContent = 'Confirming…';
   const result =
-    select.value === '__new__'
+    selectValue === '__new__'
       ? await atlasApi.mapClassroomCourseToNew(classroomCourseId, name, null, null)
-      : await atlasApi.mapClassroomCourseToExisting(classroomCourseId, Number(select.value));
+      : await atlasApi.mapClassroomCourseToExisting(classroomCourseId, Number(selectValue));
   row.remove();
   await afterClassroomRowResolved();
   if (result.errors.length > 0) {
@@ -2234,13 +2251,13 @@ async function ignoreOneClassroomCourse(row: HTMLElement): Promise<void> {
 }
 
 async function confirmSelectedClassroomCourses(): Promise<void> {
-  const bulkCourseSelect = document.getElementById('classroom-review-bulk-course') as HTMLSelectElement;
+  const bulkCourseValue = driveReviewSelectValue(document.getElementById('classroom-review-bulk-course')!);
   const rows = Array.from(document.querySelectorAll('.classroom-review-row')) as HTMLElement[];
 
   for (const row of rows) {
     const checkbox = row.querySelector('.classroom-review-row-check') as HTMLInputElement;
     if (!checkbox.checked) continue;
-    (row.querySelector('.classroom-review-row-course') as HTMLSelectElement).value = bulkCourseSelect.value;
+    (row.querySelector('.classroom-review-select') as HTMLElement).dataset.value = bulkCourseValue;
     await confirmOneClassroomCourse(row);
   }
 }

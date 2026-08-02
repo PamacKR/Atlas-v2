@@ -5673,3 +5673,54 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 #classroom-item-detail-links .classroom-attachment-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #classroom-item-detail-links .classroom-attachment-chip:hover,
 #classroom-item-detail-links .classroom-attachment-chip:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
+
+/* Classroom mapping review shares Drive's deliberate review anatomy rather
+   than retaining its older, native-select grid. */
+#classroom-review-overlay:not([hidden]) { display: flex; align-items: center; justify-content: center; padding: var(--space-4); background: rgba(0, 0, 0, .62); z-index: 60; }
+#classroom-review-panel.overlay-panel { display: flex; flex-direction: column; width: min(760px, 100%); max-width: none; max-height: min(680px, calc(100vh - (var(--space-4) * 2))); padding: 0; background: var(--bg-panel); border-color: var(--rule-strong); border-radius: var(--radius-lg); box-shadow: 0 24px 64px rgba(0, 0, 0, .5); overflow: hidden; }
+#classroom-review-panel .overlay-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--rule); }
+#classroom-review-panel .overlay-header-titles { min-width: 0; }
+#classroom-review-panel .overlay-header h3 { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; }
+#classroom-review-panel .overlay-header .sub { margin-top: 1px; color: var(--text-faint); font-size: var(--text-sm); }
+#classroom-review-panel .overlay-header-actions { display: flex; flex-shrink: 0; }
+#classroom-review-panel #classroom-review-close { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
+#classroom-review-panel #classroom-review-close svg { width: 16px; height: 16px; }
+#classroom-review-panel #classroom-review-close:hover, #classroom-review-panel #classroom-review-close:focus-visible { background: rgba(224, 87, 74, .12); color: var(--urgent); outline: none; }
+#classroom-review-panel .classroom-review-body { flex: 1; min-height: 0; padding: var(--space-3) var(--space-5) var(--space-4); overflow: auto; }
+#classroom-review-bulk.classroom-review-bulk { display: grid; grid-template-columns: minmax(0, 1fr) 200px auto auto; align-items: center; gap: var(--space-2); margin: 0; padding: 0 0 var(--space-3); border-bottom: 1px solid var(--rule); color: var(--text-muted); font-size: var(--text-sm); }
+#classroom-review-bulk label { display: inline-flex; grid-column: auto; align-items: center; gap: var(--space-2); }
+#classroom-review-panel input[type='checkbox'] { appearance: none; position: relative; width: 14px; height: 14px; margin: 0; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--bg); cursor: pointer; }
+#classroom-review-panel input[type='checkbox']:checked { border-color: var(--accent); background: var(--accent); }
+#classroom-review-panel input[type='checkbox']:checked::after { content: ''; position: absolute; inset: 0; width: 4px; height: 8px; margin: auto; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+#classroom-review-panel .classroom-review-select { width: 100%; min-width: 0; }
+#classroom-review-panel .dselect-trigger { min-height: 34px; padding: 0 var(--space-3); }
+#classroom-review-panel .dselect-menu { z-index: 2; }
+#classroom-review-panel .btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); white-space: nowrap; cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition), filter var(--transition); }
+#classroom-review-panel .btn:hover, #classroom-review-panel .btn:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
+#classroom-review-panel .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--bg); font-weight: 500; }
+#classroom-review-panel .btn.primary:hover, #classroom-review-panel .btn.primary:focus-visible { border-color: var(--accent); background: var(--accent); color: var(--bg); filter: brightness(1.08); }
+#classroom-review-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; overflow: visible; }
+#classroom-review-list > .muted { padding: var(--space-4) 0; color: var(--text-faint); font-size: var(--text-sm); }
+.classroom-review-row { display: grid; grid-template-columns: 14px 32px minmax(0, 1fr) minmax(200px, 250px) auto; align-items: center; gap: var(--space-3); margin: 0; padding: var(--space-3) 0; border: 0; border-bottom: 1px solid var(--rule); font-size: inherit; }
+.classroom-review-row:last-child { border-bottom: 0; }
+.classroom-review-row .r-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--bg-hover); color: var(--text-faint); }
+.classroom-review-row .r-icon svg { width: 16px; height: 16px; }
+.classroom-review-row .r-main { min-width: 0; }
+.classroom-review-row .r-title { overflow: hidden; color: var(--text); font-size: var(--text-md); text-overflow: ellipsis; white-space: nowrap; }
+.classroom-review-row .r-sub { margin-top: 2px; overflow: hidden; color: var(--text-faint); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.classroom-review-row-controls, .classroom-review-row-actions { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.classroom-review-row-controls { justify-content: flex-end; }
+.classroom-review-row-actions .btn { height: 30px; padding: 0 var(--space-3); font-size: var(--text-sm); }
+.classroom-review-row-actions .classroom-review-row-confirm { border-color: var(--rule-strong); color: var(--text); }
+
+#settings-panels .storage-backups-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding-top: var(--space-3); color: var(--text-faint); font-size: var(--text-sm); }
+#settings-panels .storage-backup-row { grid-template-columns: minmax(0, 1fr) 90px auto; align-items: center; }
+#settings-panels .storage-backup-row .settings-button, #settings-panels .storage-backups-heading .settings-button { height: 28px; padding: 0 var(--space-3); font-size: var(--text-xs); }
+#settings-panels .settings-button-danger:hover, #settings-panels .settings-button-danger:focus-visible { border-color: rgba(224, 87, 74, .45); background: rgba(224, 87, 74, .08); color: var(--urgent); }
+
+@media (max-width: 760px) {
+  #classroom-review-bulk.classroom-review-bulk { grid-template-columns: 1fr 1fr; }
+  #classroom-review-bulk label { grid-column: 1 / -1; }
+  .classroom-review-row { grid-template-columns: 14px 32px minmax(0, 1fr); }
+  .classroom-review-row-controls, .classroom-review-row-actions { grid-column: 3; justify-content: flex-start; }
+}
