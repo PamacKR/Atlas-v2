@@ -2584,6 +2584,23 @@ ipcMain.handle('deadlines:listAllWithCourse', () => {
     .all();
 });
 
+// Calendar uses the actual announcement posting date as an event date. This
+// is intentionally a complete, unbounded list: the page owns its view/date
+// filters instead of inheriting the Dashboard's small "recent" window.
+ipcMain.handle('announcements:listAllWithCourse', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT announcements.id, announcements.course_id, announcements.title, announcements.posted_at,
+              courses.name AS course_name
+       FROM announcements
+       JOIN courses ON courses.id = announcements.course_id
+       WHERE courses.archived = 0
+       ORDER BY announcements.posted_at DESC`
+    )
+    .all();
+});
+
 ipcMain.handle('deadlines:listByCourse', (_event, courseId: number) => {
   const db = getDb();
   // Incomplete first, then soonest due date first within each group; items

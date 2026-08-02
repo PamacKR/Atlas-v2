@@ -108,7 +108,19 @@ const fs = require('fs');
     throw new Error('FAIL: new course card did not show a resource count');
   }
 
-  // Semester filter: the course was created with term "Monsoon 26" above.
+  // Create a second term so this throwaway-data run can exercise both sides
+  // of the semester filter. A fresh verification database otherwise only
+  // contains the one Monsoon course created above, so a hard-coded Spring
+  // option does not exist to click.
+  await window.click('#add-course-toggle');
+  await window.waitForTimeout(100);
+  await window.fill('#course-name', 'Verify Other Term Course');
+  await window.fill('#course-code', 'VERIFY102');
+  await window.fill('#course-term', 'Spring 27');
+  await window.click('#course-form button[type="submit"]');
+  await window.waitForTimeout(250);
+
+  // Semester filter: the first course was created with term "Monsoon 26" above.
   // Filtering to a different term should hide it; filtering back (or to
   // "All semesters") should show it again. Reset to "All" before continuing
   // so the rest of the script can keep finding it in the course collection.
@@ -1518,6 +1530,32 @@ const fs = require('fs');
       !dashboardStructure.announcementList || dashboardStructure.courseGridColumns < 5) {
     throw new Error('FAIL: dashboard did not render the continuous-layout structure');
   }
+
+  // --- Calendar: six-week continuous month grid plus real view/filter controls. ---
+  await goToPage('calendar');
+  const calendarStructure = await window.evaluate(() => ({
+    cells: document.querySelectorAll('#calendar-grid .cal-cell').length,
+    miniDays: document.querySelectorAll('#calendar-mini-grid .mc-day').length,
+    filters: document.querySelectorAll('#calendar-type-filters input, #calendar-course-filters input').length,
+    sidebar: !!document.querySelector('#calendar-sidebar'),
+  }));
+  console.log('calendar continuous layout:', calendarStructure);
+  if (calendarStructure.cells !== 42 || calendarStructure.miniDays !== 42 || !calendarStructure.sidebar || calendarStructure.filters < 2) {
+    throw new Error(`FAIL: calendar did not render its six-week layout/controls: ${JSON.stringify(calendarStructure)}`);
+  }
+  await window.click('#calendar-view-week');
+  await window.waitForTimeout(150);
+  if (await window.isHidden('#calendar-week-view')) throw new Error('FAIL: week view did not become visible');
+  await window.click('#calendar-view-day');
+  await window.waitForTimeout(150);
+  if (await window.isHidden('#calendar-day-view')) throw new Error('FAIL: day view did not become visible');
+  await window.click('#calendar-view-month');
+  await window.waitForTimeout(150);
+  const checkedBefore = await window.isChecked('#calendar-type-filters input');
+  await window.click('#calendar-type-filters input');
+  await window.waitForTimeout(150);
+  const checkedAfter = await window.isChecked('#calendar-type-filters input');
+  if (checkedBefore === checkedAfter) throw new Error('FAIL: calendar type filter did not toggle');
 
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');

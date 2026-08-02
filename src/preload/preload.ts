@@ -430,6 +430,8 @@ contextBridge.exposeInMainWorld('atlas', {
   getUpcomingDeadlines: (): Promise<DashboardDeadline[]> => ipcRenderer.invoke('dashboard:upcomingDeadlines'),
   listAllDeadlinesWithCourse: (): Promise<DashboardDeadline[]> =>
     ipcRenderer.invoke('deadlines:listAllWithCourse'),
+  listAllAnnouncementsWithCourse: (): Promise<DashboardAnnouncement[]> =>
+    ipcRenderer.invoke('announcements:listAllWithCourse'),
   getRecentResources: (): Promise<DashboardResource[]> => ipcRenderer.invoke('dashboard:recentResources'),
   getRecentActivity: (): Promise<DashboardActivityItem[]> => ipcRenderer.invoke('dashboard:recentActivity'),
   getRecentAnnouncements: (): Promise<DashboardAnnouncement[]> => ipcRenderer.invoke('dashboard:recentAnnouncements'),

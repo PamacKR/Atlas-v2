@@ -373,6 +373,7 @@ interface AtlasApi {
   getDashboardStats: () => Promise<DashboardStats>;
   getUpcomingDeadlines: () => Promise<DashboardDeadline[]>;
   listAllDeadlinesWithCourse: () => Promise<DashboardDeadline[]>;
+  listAllAnnouncementsWithCourse: () => Promise<DashboardAnnouncement[]>;
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
   getRecentAnnouncements: () => Promise<DashboardAnnouncement[]>;
@@ -511,9 +512,10 @@ let dashboardCourseFilterId: number | null = null;
 
 function showPage(page: AppPage): void {
   currentPage = page;
-  for (const name of ['courses', 'resources', 'notes'] as const) {
+  for (const name of ['courses', 'resources', 'notes', 'calendar'] as const) {
     document.getElementById(`${name}-topbar-title`)!.hidden = page !== name;
-    document.getElementById(`${name}-topbar-actions`)!.hidden = page !== name;
+    const actions = document.getElementById(`${name}-topbar-actions`);
+    if (actions) actions.hidden = page !== name;
   }
   document.getElementById('main-area')!.dataset.page = page;
   document.querySelectorAll<HTMLElement>('.app-page').forEach((el) => {
@@ -2423,189 +2425,346 @@ function formatDueInLabel(dueAt: string | null): string {
   return `${diffDays} days`;
 }
 
-// --- Calendar page (v1 — month grid + Upcoming sidebar only) ---
-// Day/Week view toggle, a mini date-picker, and per-kind/course filter
-// checkboxes (all present in the shared screenshot's "Filters" panel) are
-// deliberate fast-follows, not silently cut — see open-questions.md.
-let calendarViewDate = new Date();
+// --- Calendar page — copied from calendar-a.html's month/week/day model. ---
+type CalendarView = 'month' | 'week' | 'day';
+type CalendarEventKind = 'deadline' | 'assignment' | 'announcement';
+interface CalendarEvent {
+  kind: CalendarEventKind;
+  date: Date;
+  courseId: number;
+  courseName: string;
+  title: string;
+  deadline?: DashboardDeadline;
+}
+
+let calendarViewDate = startOfDay(new Date());
+let calendarView: CalendarView = 'month';
+let calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
+let calendarEnabledKinds = new Set<CalendarEventKind>(['deadline', 'assignment']);
+let calendarEnabledCourses = new Set<number>();
+let calendarCourseFiltersInitialized = false;
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function calendarDateFromTimestamp(value: string): Date {
+  const { year, month, day } = splitDueAt(value);
+  return new Date(year, month - 1, day);
+}
+
+function formatDueTime(value: string): string {
+  const { hour, minute } = splitDueAt(value);
+  if (hour === null || minute === null) return '—';
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
 
 async function renderCalendarPage(): Promise<void> {
-  const deadlines = await atlasApi.listAllDeadlinesWithCourse();
+  const [deadlines, announcements] = await Promise.all([
+    atlasApi.listAllDeadlinesWithCourse(),
+    atlasApi.listAllAnnouncementsWithCourse(),
+  ]);
+  const events: CalendarEvent[] = [
+    ...deadlines.filter((deadline) => deadline.due_at).map((deadline) => ({
+      kind: deadline.kind.toLowerCase() === 'assignment' ? 'assignment' : 'deadline' as CalendarEventKind,
+      date: calendarDateFromTimestamp(deadline.due_at!),
+      courseId: deadline.course_id,
+      courseName: deadline.course_name,
+      title: deadline.title,
+      deadline,
+    })),
+    ...announcements.filter((announcement) => announcement.posted_at).map((announcement) => ({
+      kind: 'announcement' as const,
+      date: calendarDateFromTimestamp(announcement.posted_at),
+      courseId: announcement.course_id,
+      courseName: announcement.course_name,
+      title: announcement.title,
+    })),
+  ];
+  // Populate the initial all-courses state once. An empty set after that is
+  // a meaningful user choice (all course filters unchecked), not a signal to
+  // silently turn every course back on during the next render.
+  if (!calendarCourseFiltersInitialized) {
+    events.forEach((event) => calendarEnabledCourses.add(event.courseId));
+    calendarCourseFiltersInitialized = true;
+  }
+  const visibleEvents = events.filter((event) => calendarEnabledKinds.has(event.kind) && calendarEnabledCourses.has(event.courseId));
   renderCalendarMonthLabel();
-  renderCalendarGrid(deadlines);
-  renderCalendarUpcomingList(deadlines);
-  renderCalendarLegend(deadlines);
+  renderCalendarViews(visibleEvents);
+  renderCalendarMiniDatePicker(visibleEvents);
+  renderCalendarFilters(events);
+  renderCalendarUpcomingList(visibleEvents);
 }
 
 function renderCalendarMonthLabel(): void {
-  document.getElementById('calendar-month-label')!.textContent = calendarViewDate.toLocaleDateString(undefined, {
-    month: 'long',
-    year: 'numeric',
-  });
+  const label = calendarViewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  document.getElementById('calendar-month-label')!.textContent = label;
+  document.getElementById('calendar-mini-label')!.textContent = calendarMiniDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
 function changeCalendarMonth(delta: number): void {
-  calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + delta, 1);
+  const base = calendarViewDate;
+  calendarViewDate = new Date(base.getFullYear(), base.getMonth() + delta, 1);
+  calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
   void renderCalendarPage();
 }
 
 function goToCalendarToday(): void {
-  calendarViewDate = new Date();
+  calendarViewDate = startOfDay(new Date());
+  calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
   void renderCalendarPage();
 }
 
-// Deadlines grouped by their calendar date (YYYY-MM-DD, local) — both the
-// month grid's day cells and the Upcoming sidebar list key off this.
-function groupDeadlinesByDate(deadlines: DashboardDeadline[]): Map<string, DashboardDeadline[]> {
-  const byDate = new Map<string, DashboardDeadline[]>();
-  for (const deadline of deadlines) {
-    if (!deadline.due_at) continue;
-    const { year, month, day } = splitDueAt(deadline.due_at);
-    const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const list = byDate.get(key) ?? [];
-    list.push(deadline);
-    byDate.set(key, list);
-  }
-  return byDate;
+function setCalendarView(view: CalendarView): void {
+  calendarView = view;
+  void renderCalendarPage();
 }
 
-// Lowered from 3 to 2 when the chips became two-line (title + course name)
-// and visually bigger, per the user's request to make them more legible —
-// 3 of the taller chips no longer fit a day cell without overflowing.
-const CALENDAR_MAX_CHIPS_PER_DAY = 2;
+function getCalendarEventsByDate(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
+  const result = new Map<string, CalendarEvent[]>();
+  for (const event of events) {
+    const items = result.get(isoDate(event.date)) ?? [];
+    items.push(event);
+    result.set(isoDate(event.date), items);
+  }
+  result.forEach((items) => items.sort((a, b) => a.title.localeCompare(b.title)));
+  return result;
+}
 
-function renderCalendarGrid(deadlines: DashboardDeadline[]): void {
+function renderCalendarViews(events: CalendarEvent[]): void {
+  const byDate = getCalendarEventsByDate(events);
+  const views: Record<CalendarView, HTMLElement> = {
+    month: document.getElementById('calendar-month-view')!,
+    week: document.getElementById('calendar-week-view')!,
+    day: document.getElementById('calendar-day-view')!,
+  };
+  for (const [view, element] of Object.entries(views) as [CalendarView, HTMLElement][]) element.hidden = view !== calendarView;
+  for (const view of ['month', 'week', 'day'] as CalendarView[]) {
+    const button = document.getElementById(`calendar-view-${view}`)!;
+    button.classList.toggle('active', view === calendarView);
+    button.setAttribute('aria-pressed', String(view === calendarView));
+  }
+  renderCalendarGrid(byDate);
+  renderCalendarWeek(byDate);
+  renderCalendarDay(byDate);
+}
+
+function renderCalendarGrid(byDate: Map<string, CalendarEvent[]>): void {
   const grid = document.getElementById('calendar-grid')!;
   grid.innerHTML = '';
-  const byDate = groupDeadlinesByDate(deadlines);
-
-  const year = calendarViewDate.getFullYear();
-  const month = calendarViewDate.getMonth();
-  const firstOfMonth = new Date(year, month, 1);
-  const startOffset = firstOfMonth.getDay(); // 0 = Sunday, matches the weekday row
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
-  for (let i = 0; i < totalCells; i++) {
-    const dayNum = i - startOffset + 1;
-    const cell = document.createElement('div');
-    cell.className = 'calendar-day-cell';
-
-    if (dayNum < 1 || dayNum > daysInMonth) {
-      cell.classList.add('outside-month');
-      grid.appendChild(cell);
-      continue;
+  const monthStart = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+  const todayKey = isoDate(startOfDay(new Date()));
+  for (let offset = 0; offset < 42; offset++) {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + offset);
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'cal-cell';
+    cell.setAttribute('aria-label', date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }));
+    if (date.getMonth() !== calendarViewDate.getMonth()) cell.classList.add('is-outside');
+    if (isoDate(date) === todayKey) cell.classList.add('is-today');
+    const number = document.createElement('span');
+    number.className = 'cal-daynum';
+    number.textContent = String(date.getDate());
+    cell.appendChild(number);
+    const events = byDate.get(isoDate(date)) ?? [];
+    if (events.length) {
+      const list = document.createElement('div');
+      list.className = 'cal-events';
+      for (const event of events.slice(0, 3)) list.appendChild(makeCalendarEventLine(event));
+      if (events.length > 3) {
+        const more = document.createElement('span');
+        more.className = 'cal-more';
+        more.textContent = `+${events.length - 3} more`;
+        list.appendChild(more);
+      }
+      cell.appendChild(list);
     }
-
-    const cellDate = new Date(year, month, dayNum);
-    if (cellDate.getTime() === today.getTime()) cell.classList.add('today');
-
-    const dayLabel = document.createElement('span');
-    dayLabel.className = 'calendar-day-number';
-    dayLabel.textContent = String(dayNum);
-    cell.appendChild(dayLabel);
-
-    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-    const dayDeadlines = byDate.get(key) ?? [];
-    for (const deadline of dayDeadlines.slice(0, CALENDAR_MAX_CHIPS_PER_DAY)) {
-      const color = courseAvatarColor(deadline.course_id);
-      const chip = document.createElement('div');
-      chip.className = 'calendar-deadline-chip';
-      chip.style.borderLeftColor = color;
-      chip.style.backgroundColor = `${color}26`; // ~15% opacity tint, so the block itself reads as "this course's color", not just a thin accent line
-      // Compact "✎" prefix rather than a full text badge — a month-grid chip
-      // is small and already two lines; a full "Edited" badge (used in the
-      // roomier list/icon/dashboard views) would overflow it.
-      const editedPrefix = deadline.local_overrides ? '✎ ' : '';
-      chip.title = `${editedPrefix}${deadline.course_name}: ${deadline.title}${
-        deadline.local_overrides ? " (you've edited this)" : ''
-      }`;
-      chip.innerHTML = `
-        <span class="calendar-deadline-chip-title">${editedPrefix}${escapeHtml(deadline.title)}</span>
-        <span class="calendar-deadline-chip-course">${escapeHtml(deadline.course_name)}</span>
-      `;
-      chip.addEventListener('click', () => void openDashboardDeadline(deadline));
-      cell.appendChild(chip);
-    }
-    if (dayDeadlines.length > CALENDAR_MAX_CHIPS_PER_DAY) {
-      const more = document.createElement('div');
-      more.className = 'calendar-more-chip';
-      more.textContent = `+${dayDeadlines.length - CALENDAR_MAX_CHIPS_PER_DAY} more`;
-      cell.appendChild(more);
-    }
-
+    cell.addEventListener('click', () => {
+      calendarViewDate = startOfDay(date);
+      calendarMiniDate = new Date(date.getFullYear(), date.getMonth(), 1);
+      setCalendarView('day');
+    });
     grid.appendChild(cell);
   }
 }
 
-function renderCalendarUpcomingList(deadlines: DashboardDeadline[]): void {
-  const container = document.getElementById('calendar-upcoming-list')!;
-  container.innerHTML = '';
+function makeCalendarEventLine(event: CalendarEvent): HTMLElement {
+  const line = document.createElement('button');
+  line.type = 'button';
+  line.className = `cal-event${isCalendarUrgent(event) ? ' is-urgent' : ''}`;
+  line.innerHTML = `<span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.title)}</span>`;
+  line.addEventListener('click', (click) => {
+    click.stopPropagation();
+    void openCalendarEvent(event);
+  });
+  return line;
+}
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const upcoming = deadlines
-    .filter((d) => {
-      if (!d.due_at) return false;
-      const { year, month, day } = splitDueAt(d.due_at);
-      return new Date(year, month - 1, day).getTime() >= today.getTime();
-    })
-    .sort((a, b) => (a.due_at! < b.due_at! ? -1 : a.due_at! > b.due_at! ? 1 : 0));
+function isCalendarUrgent(event: CalendarEvent): boolean {
+  return event.kind !== 'announcement' && event.date.getTime() < startOfDay(new Date()).getTime();
+}
 
-  const byDate = groupDeadlinesByDate(upcoming);
-  if (byDate.size === 0) {
-    const p = document.createElement('p');
-    p.className = 'muted';
-    p.textContent = 'Nothing upcoming.';
-    container.appendChild(p);
+function renderCalendarWeek(byDate: Map<string, CalendarEvent[]>): void {
+  const view = document.getElementById('calendar-week-view')!;
+  view.innerHTML = '';
+  const start = new Date(calendarViewDate);
+  start.setDate(start.getDate() - start.getDay());
+  const grid = document.createElement('div');
+  grid.className = 'week-grid';
+  const todayKey = isoDate(startOfDay(new Date()));
+  for (let offset = 0; offset < 7; offset++) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    const column = document.createElement('div');
+    column.className = 'week-col';
+    if (isoDate(date) === todayKey) column.classList.add('is-today');
+    column.innerHTML = `<div class="wk-head">${escapeHtml(date.toLocaleDateString(undefined, { weekday: 'short' }))} <span class="wk-daynum">${date.getDate()}</span></div>`;
+    for (const event of byDate.get(isoDate(date)) ?? []) column.appendChild(makeCalendarWeekItem(event));
+    grid.appendChild(column);
+  }
+  view.appendChild(grid);
+}
+
+function makeCalendarWeekItem(event: CalendarEvent): HTMLElement {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = 'week-item';
+  const time = event.kind === 'announcement' ? 'Posted' : event.deadline?.due_at ? formatDueTime(event.deadline.due_at) : '—';
+  item.innerHTML = `<span class="wi-time">${escapeHtml(time)}</span><span class="wi-title">${escapeHtml(event.title)}</span><span class="wi-course"><span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.courseName)}</span></span>`;
+  item.addEventListener('click', () => void openCalendarEvent(event));
+  return item;
+}
+
+function renderCalendarDay(byDate: Map<string, CalendarEvent[]>): void {
+  const view = document.getElementById('calendar-day-view')!;
+  view.innerHTML = '';
+  const events = byDate.get(isoDate(calendarViewDate)) ?? [];
+  const header = document.createElement('div');
+  header.className = 'day-header';
+  header.innerHTML = `<div class="day-big">${escapeHtml(calendarViewDate.toLocaleDateString(undefined, { weekday: 'long' }))}</div><div class="day-sub">${escapeHtml(calendarViewDate.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }))} · ${events.length} ${events.length === 1 ? 'item' : 'items'}</div>`;
+  view.appendChild(header);
+  if (!events.length) {
+    const empty = document.createElement('p');
+    empty.className = 'calendar-empty';
+    empty.textContent = 'Nothing scheduled.';
+    view.appendChild(empty);
     return;
   }
+  events.forEach((event) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'calendar-day-row';
+    const time = event.kind === 'announcement' ? 'Posted' : event.deadline?.due_at ? formatDueTime(event.deadline.due_at) : '—';
+    row.innerHTML = `<span class="time">${escapeHtml(time)}</span><span class="title">${escapeHtml(event.title)}</span><span class="course"><span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.courseName)}</span></span>`;
+    row.addEventListener('click', () => void openCalendarEvent(event));
+    view.appendChild(row);
+  });
+}
 
-  for (const [dateKey, items] of byDate) {
-    const heading = document.createElement('div');
-    heading.className = 'calendar-upcoming-date';
-    const [y, m, d] = dateKey.split('-').map(Number);
-    heading.textContent = new Date(y, m - 1, d).toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
+function renderCalendarMiniDatePicker(events: CalendarEvent[]): void {
+  const grid = document.getElementById('calendar-mini-grid')!;
+  grid.innerHTML = '<span class="mc-wd">S</span><span class="mc-wd">M</span><span class="mc-wd">T</span><span class="mc-wd">W</span><span class="mc-wd">T</span><span class="mc-wd">F</span><span class="mc-wd">S</span>';
+  const monthStart = new Date(calendarMiniDate.getFullYear(), calendarMiniDate.getMonth(), 1);
+  const start = new Date(monthStart);
+  start.setDate(start.getDate() - start.getDay());
+  const eventDates = new Set(events.map((event) => isoDate(event.date)));
+  const todayKey = isoDate(startOfDay(new Date()));
+  for (let offset = 0; offset < 42; offset++) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    const day = document.createElement('button');
+    day.type = 'button';
+    day.className = 'mc-day';
+    day.textContent = String(date.getDate());
+    if (date.getMonth() !== calendarMiniDate.getMonth()) day.classList.add('is-outside');
+    if (isoDate(date) === todayKey) day.classList.add('is-today');
+    if (eventDates.has(isoDate(date))) day.classList.add('has-event');
+    day.addEventListener('click', () => {
+      calendarViewDate = startOfDay(date);
+      calendarMiniDate = new Date(date.getFullYear(), date.getMonth(), 1);
+      void renderCalendarPage();
     });
-    container.appendChild(heading);
-
-    for (const deadline of items) {
-      const row = document.createElement('div');
-      row.className = 'calendar-upcoming-row';
-      row.style.borderLeftColor = courseAvatarColor(deadline.course_id);
-      row.innerHTML = `
-        <span class="calendar-upcoming-title">${escapeHtml(deadline.title)}</span>
-        <span class="calendar-upcoming-course">${escapeHtml(deadline.course_name)}</span>
-      `;
-      const editedBadge = makeDeadlineEditedBadge(deadline);
-      if (editedBadge) row.appendChild(editedBadge);
-      row.addEventListener('click', () => void openDashboardDeadline(deadline));
-      container.appendChild(row);
-    }
+    grid.appendChild(day);
   }
 }
 
-function renderCalendarLegend(deadlines: DashboardDeadline[]): void {
-  const legend = document.getElementById('calendar-legend')!;
-  legend.innerHTML = '';
-  const seen = new Map<number, string>();
-  for (const deadline of deadlines) {
-    if (!seen.has(deadline.course_id)) seen.set(deadline.course_id, deadline.course_name);
-  }
-  for (const [courseId, courseName] of seen) {
-    const item = document.createElement('span');
-    item.className = 'calendar-legend-item';
+function renderCalendarFilters(events: CalendarEvent[]): void {
+  const availableCourses = new Map<number, string>();
+  events.forEach((event) => availableCourses.set(event.courseId, event.courseName));
+  for (const courseId of [...calendarEnabledCourses]) if (!availableCourses.has(courseId)) calendarEnabledCourses.delete(courseId);
+  const typeContainer = document.getElementById('calendar-type-filters')!;
+  typeContainer.innerHTML = '';
+  const types: [CalendarEventKind, string][] = [['deadline', 'Deadlines'], ['assignment', 'Assignments'], ['announcement', 'Announcements']];
+  types.forEach(([kind, label]) => typeContainer.appendChild(makeCalendarFilter(label, calendarEnabledKinds.has(kind), () => {
+    calendarEnabledKinds.has(kind) ? calendarEnabledKinds.delete(kind) : calendarEnabledKinds.add(kind);
+    void renderCalendarPage();
+  })));
+  const courseContainer = document.getElementById('calendar-course-filters')!;
+  courseContainer.innerHTML = '';
+  [...availableCourses.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([courseId, name]) => {
+    const filter = makeCalendarFilter(name, calendarEnabledCourses.has(courseId), () => {
+      calendarEnabledCourses.has(courseId) ? calendarEnabledCourses.delete(courseId) : calendarEnabledCourses.add(courseId);
+      void renderCalendarPage();
+    });
     const swatch = document.createElement('span');
-    swatch.className = 'calendar-legend-swatch';
+    swatch.className = 'swatch';
     swatch.style.background = courseAvatarColor(courseId);
-    item.append(swatch, document.createTextNode(courseName));
-    legend.appendChild(item);
+    filter.insertBefore(swatch, filter.lastElementChild);
+    courseContainer.appendChild(filter);
+  });
+}
+
+function makeCalendarFilter(label: string, checked: boolean, onChange: () => void): HTMLLabelElement {
+  const row = document.createElement('label');
+  row.className = 'filter-row';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = checked;
+  input.addEventListener('change', onChange);
+  const text = document.createElement('span');
+  text.textContent = label;
+  row.append(input, text);
+  return row;
+}
+
+function renderCalendarUpcomingList(events: CalendarEvent[]): void {
+  const container = document.getElementById('calendar-upcoming-list')!;
+  container.innerHTML = '';
+  const today = startOfDay(new Date());
+  const upcoming = events.filter((event) => event.date.getTime() >= today.getTime()).sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, 8);
+  if (!upcoming.length) {
+    container.innerHTML = '<p class="calendar-empty">Nothing upcoming.</p>';
+    return;
+  }
+  upcoming.forEach((event) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'upcoming-row';
+    const day = Math.round((event.date.getTime() - today.getTime()) / 86400000);
+    const label = day === 0 ? 'Today' : day === 1 ? 'Tomorrow' : event.date.toLocaleDateString(undefined, { weekday: 'short' });
+    const time = event.kind === 'announcement' ? 'Posted' : event.deadline?.due_at ? ` · ${formatDueTime(event.deadline.due_at)}` : '';
+    row.innerHTML = `<span class="up-day">${escapeHtml(label)}</span><span><span class="up-title">${escapeHtml(event.title)}</span><span class="up-course"><span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.courseName)}${escapeHtml(time)}</span></span></span>`;
+    row.addEventListener('click', () => void openCalendarEvent(event));
+    container.appendChild(row);
+  });
+}
+
+async function openCalendarEvent(event: CalendarEvent): Promise<void> {
+  if (event.deadline) {
+    await openDashboardDeadline(event.deadline);
+    return;
+  }
+  const course = (await atlasApi.listCourses()).find((item) => item.id === event.courseId);
+  if (course) {
+    await selectCourse(course);
+    setCourseDetailTab('announcements');
   }
 }
 
@@ -5256,6 +5415,17 @@ async function init(): Promise<void> {
   document.getElementById('calendar-prev-month')!.addEventListener('click', () => changeCalendarMonth(-1));
   document.getElementById('calendar-next-month')!.addEventListener('click', () => changeCalendarMonth(1));
   document.getElementById('calendar-today')!.addEventListener('click', goToCalendarToday);
+  document.getElementById('calendar-mini-prev')!.addEventListener('click', () => {
+    calendarMiniDate = new Date(calendarMiniDate.getFullYear(), calendarMiniDate.getMonth() - 1, 1);
+    void renderCalendarPage();
+  });
+  document.getElementById('calendar-mini-next')!.addEventListener('click', () => {
+    calendarMiniDate = new Date(calendarMiniDate.getFullYear(), calendarMiniDate.getMonth() + 1, 1);
+    void renderCalendarPage();
+  });
+  (['month', 'week', 'day'] as CalendarView[]).forEach((view) => {
+    document.getElementById(`calendar-view-${view}`)!.addEventListener('click', () => setCalendarView(view));
+  });
 
   document.getElementById('settings-theme-dark')!.addEventListener('click', () => setTheme('dark'));
   document.getElementById('settings-theme-light')!.addEventListener('click', () => setTheme('light'));

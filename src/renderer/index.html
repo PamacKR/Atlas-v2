@@ -33,6 +33,7 @@
           <h1 id="courses-topbar-title" hidden>Courses <span id="courses-page-count" class="dim">0</span></h1>
           <h1 id="resources-topbar-title" hidden>Resources <span id="resources-page-count" class="dim">0</span></h1>
           <h1 id="notes-topbar-title" hidden>Notes <span id="notes-page-count" class="dim">0</span></h1>
+          <h1 id="calendar-topbar-title" hidden>Calendar</h1>
         </div>
         <div id="topbar-right">
           <div id="courses-topbar-actions" class="topbar-page-actions" hidden>
@@ -326,34 +327,55 @@
       </section>
 
       <section id="page-calendar" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Calendar</h2>
-            <p class="muted">Every deadline and assignment in one view.</p>
-          </div>
-          <div id="calendar-month-nav">
-            <button id="calendar-prev-month" type="button" title="Previous month" aria-label="Previous month">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <span id="calendar-month-label"></span>
-            <button id="calendar-next-month" type="button" title="Next month" aria-label="Next month">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-            <button id="calendar-today" type="button" class="link-button">Today</button>
+        <div class="cal-toolbar" aria-label="Calendar controls">
+          <button id="calendar-prev-month" class="cal-nav-btn" type="button" title="Previous" aria-label="Previous period">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span id="calendar-month-label" class="cal-month-label"></span>
+          <button id="calendar-next-month" class="cal-nav-btn" type="button" title="Next" aria-label="Next period">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button id="calendar-today" type="button" class="cal-today-btn">Today</button>
+          <div class="toolbar-spacer"></div>
+          <div class="viewmode" aria-label="Calendar view">
+            <button id="calendar-view-month" class="active" type="button" aria-pressed="true">Month</button>
+            <button id="calendar-view-week" type="button" aria-pressed="false">Week</button>
+            <button id="calendar-view-day" type="button" aria-pressed="false">Day</button>
           </div>
         </div>
 
         <div id="calendar-layout">
-          <div id="calendar-grid-wrap">
-            <div id="calendar-weekday-row">
+          <div id="calendar-content">
+            <div id="calendar-month-view">
+              <div id="calendar-weekday-row" class="cal-weekdays">
               <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+              </div>
+              <div id="calendar-grid" class="cal-grid"></div>
             </div>
-            <div id="calendar-grid"></div>
+            <div id="calendar-week-view" hidden></div>
+            <div id="calendar-day-view" hidden></div>
           </div>
           <aside id="calendar-sidebar">
-            <div id="calendar-legend"></div>
-            <h4>Upcoming</h4>
-            <div id="calendar-upcoming-list"></div>
+            <section class="cal-side-section">
+              <div class="mini-cal-head">
+                <span id="calendar-mini-label" class="mc-label"></span>
+                <div class="mc-nav">
+                  <button id="calendar-mini-prev" class="cal-nav-btn mini-nav-btn" type="button" title="Previous month" aria-label="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                  <button id="calendar-mini-next" class="cal-nav-btn mini-nav-btn" type="button" title="Next month" aria-label="Next month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                </div>
+              </div>
+              <div id="calendar-mini-grid" class="mini-cal-grid"></div>
+            </section>
+            <section class="cal-side-section">
+              <h2>Filters</h2>
+              <div id="calendar-type-filters"></div>
+              <div class="calendar-filter-gap" aria-hidden="true"></div>
+              <div id="calendar-course-filters"></div>
+            </section>
+            <section class="cal-side-section">
+              <h2>Upcoming</h2>
+              <div id="calendar-upcoming-list"></div>
+            </section>
           </aside>
         </div>
       </section>
