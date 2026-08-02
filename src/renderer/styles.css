@@ -3933,6 +3933,7 @@ button#classroom-connect-confirm {
 #course-picker-panel .overlay-header-titles h3 { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; }
 #course-picker-panel .overlay-header-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
 #course-picker-panel .overlay-header-actions button:hover, #course-picker-panel .overlay-header-actions button:focus-visible { color: var(--urgent); background: rgba(224, 87, 74, .12); outline: none; }
+#course-picker-panel #course-picker-close svg { width: 14px; height: 14px; }
 #course-picker-panel .course-picker-body { min-height: 0; padding: var(--space-4) var(--space-5); overflow-y: auto; }
 #course-picker-panel #course-picker-search { width: 100%; margin: 0 0 var(--space-3); padding: 9px var(--space-3); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-sm); }
 #course-picker-panel #course-picker-search:focus { outline: none; border-color: var(--text-faint); }
@@ -3950,6 +3951,7 @@ button#classroom-connect-confirm {
 #course-picker-panel #course-picker-list li.selected { background: var(--bg-hover); color: var(--text); font-weight: 500; }
 #course-picker-panel #course-picker-list .swatch { width: 6px; height: 6px; margin-right: var(--space-2); }
 #course-picker-panel .course-picker-check { margin-left: auto; color: var(--accent); font-size: var(--text-md); }
+#course-picker-panel.upload-picker:not(.has-upload-file) #course-picker-list { opacity: .48; pointer-events: none; }
 #course-picker-panel #course-picker-progress { margin: var(--space-3) 0 0; }
 
 /* Keep preview controls inside the canvas. The old sibling flow made their

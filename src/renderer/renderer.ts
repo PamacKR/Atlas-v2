@@ -1095,6 +1095,15 @@ function closeCoursePicker(): void {
   document.getElementById('course-picker-progress')!.hidden = true;
   coursePickerSelectedId = null;
   coursePickerPendingFile = null;
+  (document.getElementById('course-picker-file-input') as HTMLInputElement).value = '';
+}
+
+function setUploadPickerFile(file: File): void {
+  coursePickerPendingFile = file;
+  document.getElementById('course-picker-panel')!.classList.add('has-upload-file');
+  document.getElementById('course-picker-dropzone-hint')!.textContent = `Selected: ${file.name}. Choose a course below.`;
+  document.getElementById('course-picker-browse')!.textContent = 'Choose a different file';
+  renderCoursePickerList('');
 }
 
 function renderCoursePickerList(filterText: string): void {
@@ -1194,6 +1203,7 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
   searchInput.value = '';
 
   panel.classList.toggle('upload-picker', mode === 'upload');
+  panel.classList.toggle('has-upload-file', Boolean(file));
   searchInput.hidden = mode === 'upload';
   listLabel.hidden = mode !== 'upload';
 
@@ -1206,8 +1216,11 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
     title.textContent = 'Move note to course';
     dropzone.hidden = true;
   } else if (file) {
-    title.textContent = `Upload "${file.name}" to…`;
-    dropzone.hidden = true;
+    title.textContent = 'Upload file';
+    dropzone.hidden = false;
+    dropzone.classList.remove('disabled');
+    document.getElementById('course-picker-dropzone-hint')!.textContent = `Selected: ${file.name}. Choose a course below.`;
+    document.getElementById('course-picker-browse')!.textContent = 'Choose a different file';
   } else if (mode === 'scan') {
     title.textContent = 'Import scan';
     dropzone.hidden = false;
@@ -1219,7 +1232,8 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
     dropzone.hidden = false;
     dropzone.classList.add('disabled');
     document.getElementById('course-picker-dropzone-hint')!.textContent =
-      'Select a course above, then drop a file here';
+      'Drop a file here, or click to browse';
+    document.getElementById('course-picker-browse')!.textContent = 'Browse files…';
   }
 
   renderCoursePickerList('');
@@ -5629,7 +5643,12 @@ async function init(): Promise<void> {
     if (e.key === 'Escape') closeCoursePicker();
   });
   document.getElementById('course-picker-browse')!.addEventListener('click', async () => {
-    if (coursePickerSelectedId === null || coursePickerBusy) return;
+    if (coursePickerBusy) return;
+    if (coursePickerMode === 'upload') {
+      (document.getElementById('course-picker-file-input') as HTMLInputElement).click();
+      return;
+    }
+    if (coursePickerSelectedId === null) return;
     const courseId = coursePickerSelectedId;
 
     if (coursePickerMode === 'scan') {
@@ -5656,18 +5675,29 @@ async function init(): Promise<void> {
     if (resource) await renderResourcesPage();
   });
 
+  document.getElementById('course-picker-file-input')!.addEventListener('change', (event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (file && coursePickerMode === 'upload') setUploadPickerFile(file);
+  });
+
   const coursePickerDropzone = document.getElementById('course-picker-dropzone')!;
   coursePickerDropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    if (coursePickerSelectedId === null || coursePickerBusy) return;
+    if (coursePickerBusy || (coursePickerMode !== 'upload' && coursePickerSelectedId === null)) return;
     coursePickerDropzone.classList.add('drag-active');
   });
   coursePickerDropzone.addEventListener('dragleave', () => coursePickerDropzone.classList.remove('drag-active'));
   coursePickerDropzone.addEventListener('drop', async (e) => {
     e.preventDefault();
     coursePickerDropzone.classList.remove('drag-active');
-    if (coursePickerSelectedId === null || coursePickerBusy) return;
+    if (coursePickerBusy || (coursePickerMode !== 'upload' && coursePickerSelectedId === null)) return;
+    const file = e.dataTransfer?.files[0];
+    if (coursePickerMode === 'upload') {
+      if (file) setUploadPickerFile(file);
+      return;
+    }
     const courseId = coursePickerSelectedId;
+    if (courseId === null) return;
 
     if (coursePickerMode === 'scan') {
       const files = Array.from(e.dataTransfer?.files ?? []);
@@ -5676,7 +5706,6 @@ async function init(): Promise<void> {
       return;
     }
 
-    const file = e.dataTransfer?.files[0];
     if (!file) return;
     closeCoursePicker();
     await uploadDroppedFile(courseId, file);
