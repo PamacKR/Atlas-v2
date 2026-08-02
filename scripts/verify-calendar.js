@@ -36,9 +36,11 @@ const fs = require('fs');
     await window.click('#calendar-view-week');
     await window.waitForTimeout(100);
     if (await window.isHidden('#calendar-week-view')) throw new Error('Week view did not open');
+    if (!await window.isHidden('#calendar-month-view')) throw new Error('Month view remained visible in Week view');
     await window.click('#calendar-view-day');
     await window.waitForTimeout(100);
     if (await window.isHidden('#calendar-day-view')) throw new Error('Day view did not open');
+    if (!await window.isHidden('#calendar-month-view')) throw new Error('Month view remained visible in Day view');
     await window.click('#calendar-view-month');
     await window.waitForTimeout(100);
     const before = await window.isChecked('#calendar-type-filters input');
@@ -50,6 +52,12 @@ const fs = require('fs');
     await window.waitForTimeout(100);
     if (await window.isChecked(courseFilter)) throw new Error('Calendar course filter did not stay unchecked');
     await window.click(courseFilter); // restore default for the screenshot
+
+    await window.click('.sidebar-nav-item[data-page="resources"]');
+    await window.waitForTimeout(100);
+    if (!await window.isHidden('#page-calendar')) throw new Error('Calendar page remained visible after navigation');
+    await window.click('.sidebar-nav-item[data-page="calendar"]');
+    await window.waitForTimeout(100);
 
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-calendar.png') });
     console.log(`calendar verify: PASS ${JSON.stringify(structure)}`);
