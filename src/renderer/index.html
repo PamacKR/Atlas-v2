@@ -432,7 +432,7 @@
                 </div>
                 <div class="sync-row-controls">
                   <div id="sync-config-drive" class="dselect sync-config-select"></div>
-                  <button id="sync-now-drive" type="button" class="link-button">Sync now</button>
+                  <button id="sync-now-drive" type="button" class="settings-button">Sync now</button>
                 </div>
               </div>
               <div class="settings-row">
@@ -442,11 +442,11 @@
                 </div>
                 <div class="sync-row-controls">
                   <div id="sync-config-classroom" class="dselect sync-config-select"></div>
-                  <button id="sync-now-classroom" type="button" class="link-button">Sync now</button>
+                  <button id="sync-now-classroom" type="button" class="settings-button">Sync now</button>
                 </div>
               </div>
 
-              <button id="sync-now-all" type="button" class="settings-button">Sync everything now</button>
+              <div class="settings-row settings-sync-all-row"><div></div><div class="settings-row-controls"><button id="sync-now-all" type="button" class="settings-button">Sync everything now</button></div></div>
             </section>
 
             <section class="settings-section">
@@ -491,12 +491,12 @@
                  settings-section pattern rather than introducing anything
                  new; real visual design is Phase 6. -->
             <section class="settings-section">
-              <div class="settings-row">
+              <div class="settings-shortcuts-heading">
                 <div>
                   <h2>Keyboard shortcuts</h2>
                   <div class="settings-row-hint">Click a binding to change it. Esc cancels; typing a combo already in use asks before stealing it.</div>
                 </div>
-                <button id="settings-shortcuts-reset-all" type="button">Reset all to defaults</button>
+                <button id="settings-shortcuts-reset-all" type="button" class="settings-button">Reset all to defaults</button>
               </div>
               <div id="settings-shortcuts-list"></div>
             </section>
@@ -504,19 +504,26 @@
 
           <div class="settings-panel" data-settings-panel="ai" hidden>
             <section class="settings-section"><h2>Agent access</h2><div class="settings-row"><div><div class="settings-row-label">Allow agent access</div><div class="settings-row-hint">The MCP server checks this before every tool call. Turning it off immediately blocks a connected agent.</div></div><button id="settings-agent-access" class="settings-toggle" type="button" role="switch" aria-checked="true"><span></span></button></div></section>
-            <section class="settings-section"><h2>Connect an agent</h2><p class="settings-muted-block">Atlas includes a working <code>.mcp.json</code> at the project root. For another MCP-compatible tool, use this configuration.</p><div class="mcp-config"><code id="settings-mcp-config">{ "mcpServers": { "atlas": { "command": "node", "args": ["scripts/run-mcp-server.js"] } } }</code><button id="settings-copy-mcp" class="settings-button" type="button">Copy</button></div></section>
+            <section class="settings-section"><h2>Connect an agent</h2><p class="settings-muted-block">Atlas includes a working <code>.mcp.json</code> at the project root. For another MCP-compatible tool, use this configuration.</p><div class="mcp-config"><code id="settings-mcp-config">{
+  "mcpServers": {
+    "atlas": {
+      "command": "node",
+      "args": ["scripts/run-mcp-server.js"]
+    }
+  }
+}</code><button id="settings-copy-mcp" class="settings-button" type="button">Copy</button></div></section>
           </div>
 
           <div class="settings-panel" data-settings-panel="storage" hidden>
             <section class="settings-section"><h2>Usage</h2><div class="settings-row settings-row-no-rule"><div><div id="storage-total" class="settings-row-label"></div><div id="storage-legend" class="storage-legend"></div></div></div></section>
             <section class="settings-section"><h2>By course</h2><div id="storage-courses"></div></section>
-            <section class="settings-section"><h2>Text extraction</h2><div class="settings-row"><div><div id="storage-extraction-title" class="settings-row-label"></div><div id="storage-extraction-hint" class="settings-row-hint"></div></div></div></section>
+            <section class="settings-section"><h2>Text extraction</h2><div class="settings-row"><div><div id="storage-extraction-title" class="settings-row-label"></div><div id="storage-extraction-hint" class="settings-row-hint"></div></div><button id="settings-review-extraction" class="settings-button" type="button" hidden>Review</button></div></section>
             <section class="settings-section"><h2>Backup</h2><div class="settings-row"><div><div class="settings-row-label">Local backup</div><div id="storage-backup-hint" class="settings-row-hint"></div></div><div class="settings-row-controls"><div id="settings-backup-frequency" class="dselect sync-config-select"></div><button id="settings-backup-now" type="button" class="settings-button">Back up now</button></div></div><div id="storage-backups"></div></section>
           </div>
 
           <div class="settings-panel" data-settings-panel="about" hidden>
             <section class="settings-section">
-              <h3>About Atlas</h3>
+              <h2>About Atlas</h2>
               <p id="settings-about-description">Atlas is your single academic knowledge base — courses, resources, notes, and deadlines pulled automatically from Google Classroom and Drive, local folders, and manual uploads, all kept in one searchable place. Atlas doesn't reason or generate anything itself: it's the source of truth an AI agent (like Claude Code, connected via MCP) reads from and writes back to, for studying, planning, and assignment help.</p>
               <p id="settings-about-version" class="muted"></p>
             </section>

@@ -20,9 +20,18 @@ const fs = require('fs');
         if (other !== tab && !await window.isHidden(`[data-settings-panel="${other}"]`)) throw new Error(`${other} panel remained visible after switching to ${tab}`);
       }
     }
+    await window.click('[data-settings-tab="appearance"]');
+    await window.click('.settings-accent-swatch[data-accent-color="#8b5cf6"]');
+    const accent = await window.evaluate(() => ({
+      modern: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      legacy: getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim(),
+    }));
+    if (accent.modern !== '#8b5cf6' || accent.legacy !== '#8b5cf6') throw new Error(`Accent did not apply across the UI: ${JSON.stringify(accent)}`);
+    await window.click('.settings-accent-swatch[data-accent-color="#d9a441"]');
     await window.click('[data-settings-tab="ai"]');
     const before = await window.getAttribute('#settings-agent-access', 'aria-checked');
     await window.click('#settings-agent-access');
+    await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings-ai.png') });
     await window.click('[data-settings-tab="sources"]');
     await window.waitForSelector('#sync-config-drive .dselect-trigger');
     await window.click('#sync-config-drive .dselect-trigger');
@@ -31,6 +40,14 @@ const fs = require('fs');
     await window.waitForTimeout(100);
     if ((await window.textContent('#sync-config-drive .dselect-trigger'))?.includes('On launch only') !== true) throw new Error('Drive sync selector did not apply selection');
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings-sources.png') });
+    await window.click('[data-settings-tab="shortcuts"]');
+    await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings-shortcuts.png') });
+    const railBeforeScroll = await window.locator('#settings-nav').boundingBox();
+    await window.evaluate(() => document.getElementById('main-area').scrollTo({ top: 500 }));
+    await window.waitForTimeout(100);
+    const railAfterScroll = await window.locator('#settings-nav').boundingBox();
+    if (!railBeforeScroll || !railAfterScroll || railAfterScroll.y < 0) throw new Error('Settings section rail did not remain visible while scrolling');
+    await window.evaluate(() => document.getElementById('main-area').scrollTo({ top: 0 }));
     await window.click('[data-settings-tab="ai"]');
     const after = await window.getAttribute('#settings-agent-access', 'aria-checked');
     if (before === after) throw new Error('Agent access setting did not toggle');
@@ -42,6 +59,7 @@ const fs = require('fs');
     await window.click('#settings-backup-frequency .dselect-option[data-value="weekly"]');
     await window.waitForTimeout(100);
     if ((await window.textContent('#settings-backup-frequency .dselect-trigger'))?.includes('Weekly') !== true) throw new Error('Backup frequency did not apply selection');
+    if (!await window.isHidden('#settings-review-extraction')) throw new Error('Extraction review should be hidden when no resources need OCR');
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings.png') });
     console.log('settings verify: PASS');
   } finally { await app.close(); }

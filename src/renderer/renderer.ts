@@ -591,6 +591,7 @@ async function renderSettingsStorage(): Promise<void> {
   const empty = counts.get('empty') ?? 0;
   document.getElementById('storage-extraction-title')!.textContent = `${done} of ${total} files extracted`;
   document.getElementById('storage-extraction-hint')!.textContent = empty ? `${empty} files have no readable text and may need OCR.` : 'Atlas can search inside extracted documents.';
+  (document.getElementById('settings-review-extraction') as HTMLButtonElement).hidden = empty === 0;
   const latest = status.backups[0];
   document.getElementById('storage-backup-hint')!.textContent = status.backupFrequency === 'off'
     ? 'Scheduled backups are off. Existing backups are kept until Atlas makes a newer one.'
@@ -949,6 +950,7 @@ function setShowArchivedCourses(value: boolean): void {
 
 let resourcesKindFilter = ''; // '' = all; otherwise a comma-separated list of kinds
 let resourcesCourseFilterId: number | null = null; // null = all courses
+let resourcesExtractionReview = false; // true only when entered from Settings → Storage → Review
 let notesCourseFilterId: number | null = null; // null = all courses
 let notesViewMode: 'list' | 'grid' = 'list';
 let notesSort: 'recent' | 'name' | 'course' = 'recent';
@@ -1319,6 +1321,7 @@ async function renderResourcesPage(): Promise<void> {
     const kinds = resourcesKindFilter.split(',');
     filtered = filtered.filter((r) => kinds.includes(r.kind));
   }
+  if (resourcesExtractionReview) filtered = filtered.filter((resource) => resource.extraction_status === 'empty');
   renderAllResourcesList(sortResources(filtered, resourcesSort));
 }
 
@@ -1361,7 +1364,7 @@ function renderResourcesRail(courses: Course[], resources: ResourceWithCourse[])
     count.className = 'resource-rail-count';
     count.textContent = String(entry.count);
     item.append(name, count);
-    const choose = () => { resourcesCourseFilterId = entry.id; void renderResourcesPage(); };
+    const choose = () => { resourcesExtractionReview = false; resourcesCourseFilterId = entry.id; void renderResourcesPage(); };
     item.addEventListener('click', choose);
     item.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(); } });
     rail.appendChild(item);
@@ -4833,6 +4836,7 @@ const ACCENT_COLORS = ['#d9a441', '#8b5cf6', '#3ba55d', '#e0574a', '#ec4899'];
 const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
 
 function applyAccentColor(color: string): void {
+  document.documentElement.style.setProperty('--accent', color);
   document.documentElement.style.setProperty('--color-accent', color);
   document.querySelectorAll<HTMLElement>('.settings-accent-swatch').forEach((swatch) => {
     swatch.classList.toggle('active', swatch.dataset.accentColor === color);
@@ -5452,6 +5456,7 @@ async function init(): Promise<void> {
     chip.addEventListener('click', () => {
       document.querySelectorAll('#resources-kind-filter .resource-kind-control').forEach((el) => el.classList.remove('active'));
       chip.classList.add('active');
+      resourcesExtractionReview = false;
       resourcesKindFilter = chip.dataset.kindFilter ?? '';
       void renderResourcesPage();
     });
@@ -5533,6 +5538,12 @@ async function init(): Promise<void> {
     button.disabled = false;
     button.textContent = 'Back up now';
     await renderSettingsStorage();
+  });
+  document.getElementById('settings-review-extraction')!.addEventListener('click', () => {
+    resourcesExtractionReview = true;
+    resourcesCourseFilterId = null;
+    resourcesKindFilter = '';
+    showPage('resources');
   });
 
   document.getElementById('settings-shortcuts-reset-all')!.addEventListener('click', async () => {
