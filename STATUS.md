@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-07-31 (Atlas-v2 — the first UI overhaul implementation attempt was built, then abandoned as not faithful enough to the mockups, and restarted clean on a new branch. **Zero implementation exists right now** — no file under `src/` differs from before the overhaul started. See "Next session" immediately below before touching anything.)
+**Last updated:** 2026-08-02 (UI overhaul in progress on `ui-overhaul-v2`; the current-session section below supersedes historical notes.)
 
 ## Next session — start here
 
@@ -34,6 +34,7 @@ UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that
 - Shared icon pass started: resource grid tiles, deadline list/grid glyphs, and Classroom attachment controls/detail attachments now use minimal monochrome inline SVGs rather than emoji. Course swatches and urgency colours are intentionally retained because they carry course/status meaning. `npm run build` passed. Continue this audit while rebuilding remaining pages rather than reintroducing emoji utility icons.
 - Deadline view correction: deadline grid uses the same continuous border-grid language as Courses (not rounded floating cards), checkbox pinned top-right, and icon/title anchored at top-left. Deadline list reserves a 178px non-wrapping due-date column and reduces kind width so dates do not split onto two lines.
 - Dashboard heading correction: weekday and date are rendered as separate spans; the date is muted and normal-weight while the weekday remains the heading weight, matching `dashboard-a.html`. `npm run build` passed.
+- Resources main surface is rebuilt directly from `mockups/resources-a.html`: a live-count course filter rail, kind and sort text controls, grid-first/list-second neutral view toggles, real This week/Earlier grouping, aligned continuous file rows, and hairline grid tiles. The existing upload, drag/drop, course filtering, sort, preview, and context-menu behaviours remain wired. `npm run build` passes. `scripts/verify-app.js` has been updated away from removed native controls and old list markup, but its full end-to-end run still needs to be completed and screenshot-inspected before this page is declared fully verified.
 
 **Historical state follows.**
 

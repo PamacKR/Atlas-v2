@@ -986,7 +986,7 @@ function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTML
   return li;
 }
 
-function renderAllResourcesList(resources: ResourceWithCourse[]): void {
+function renderLegacyAllResourcesList(resources: ResourceWithCourse[]): void {
   const list = document.getElementById('all-resources-list')!;
   list.className = viewMode === 'list' ? 'view-list' : 'view-grid';
   list.innerHTML = '';
@@ -1232,13 +1232,9 @@ function sortResources(resources: ResourceWithCourse[], sort: ResourcesSort): Re
 async function renderResourcesPage(): Promise<void> {
   void renderDashboard();
   const courses = await atlasApi.listCourses();
-
-  renderCourseRail('resources-course-rail', courses, 'All Resources', resourcesCourseFilterId, (id) => {
-    resourcesCourseFilterId = id;
-    void renderResourcesPage();
-  });
-
   const allResources = await atlasApi.listAllResources();
+  renderResourcesRail(courses, allResources);
+  document.getElementById('resources-page-count')!.textContent = String(allResources.length);
   let filtered = allResources;
   if (resourcesCourseFilterId !== null) {
     filtered = filtered.filter((r) => r.course_id === resourcesCourseFilterId);
@@ -1248,6 +1244,108 @@ async function renderResourcesPage(): Promise<void> {
     filtered = filtered.filter((r) => kinds.includes(r.kind));
   }
   renderAllResourcesList(sortResources(filtered, resourcesSort));
+}
+
+function resourceGroupLabel(resource: ResourceWithCourse): 'This week' | 'Earlier' {
+  const added = new Date(resource.added_at.replace(' ', 'T') + 'Z').getTime();
+  return Date.now() - added < 7 * 24 * 60 * 60 * 1000 ? 'This week' : 'Earlier';
+}
+
+function resourceSourceLabel(resource: ResourceWithCourse): string {
+  if (resource.source === 'classroom') return 'Classroom';
+  if (resource.source === 'drive') return 'Drive';
+  if (resource.source === 'local_folder') return 'Folder';
+  return 'Local';
+}
+
+function renderResourcesRail(courses: Course[], resources: ResourceWithCourse[]): void {
+  const rail = document.getElementById('resources-course-rail')!;
+  rail.innerHTML = '';
+  const entries: { id: number | null; name: string; count: number }[] = [
+    { id: null, name: 'All courses', count: resources.length },
+    ...courses.map((course) => ({ id: course.id, name: course.name, count: resources.filter((resource) => resource.course_id === course.id).length })),
+  ];
+  for (const entry of entries) {
+    const item = document.createElement('li');
+    item.className = 'resource-rail-item';
+    const active = resourcesCourseFilterId === entry.id;
+    item.classList.toggle('active', active);
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    const name = document.createElement('span');
+    name.className = 'resource-rail-name';
+    if (entry.id !== null) {
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(entry.id);
+      name.appendChild(swatch);
+    }
+    name.appendChild(document.createTextNode(entry.name));
+    const count = document.createElement('span');
+    count.className = 'resource-rail-count';
+    count.textContent = String(entry.count);
+    item.append(name, count);
+    const choose = () => { resourcesCourseFilterId = entry.id; void renderResourcesPage(); };
+    item.addEventListener('click', choose);
+    item.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(); } });
+    rail.appendChild(item);
+  }
+}
+
+function renderAllResourcesList(resources: ResourceWithCourse[]): void {
+  const list = document.getElementById('all-resources-list')!;
+  list.className = viewMode === 'grid' ? 'view-grid' : 'view-list';
+  list.innerHTML = '';
+  if (resources.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = 'No resources match this filter.';
+    list.appendChild(empty);
+    return;
+  }
+  const groups: Record<'This week' | 'Earlier', ResourceWithCourse[]> = { 'This week': [], Earlier: [] };
+  for (const resource of resources) groups[resourceGroupLabel(resource)].push(resource);
+  for (const groupName of ['This week', 'Earlier'] as const) {
+    const items = groups[groupName];
+    if (items.length === 0) continue;
+    const heading = document.createElement('div');
+    heading.className = 'resource-groupmeta';
+    heading.textContent = groupName;
+    list.appendChild(heading);
+    const container = document.createElement('div');
+    container.className = viewMode === 'grid' ? 'resource-file-grid' : 'resource-file-list';
+    for (const resource of items) {
+      const item = document.createElement('div');
+      item.className = viewMode === 'grid' ? 'resource-file-tile' : 'resource-file-row';
+      item.dataset.resourceId = String(resource.id);
+      const icon = makeMonoIcon(resourceIconKind(resource), 'resource-file-icon');
+      const title = document.createElement('span');
+      title.className = 'resource-file-name resource-name';
+      title.textContent = resource.title;
+      const course = document.createElement('span');
+      course.className = 'resource-file-course';
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(resource.course_id);
+      course.append(swatch, document.createTextNode(resource.course_name));
+      const source = document.createElement('span');
+      source.className = 'resource-file-source';
+      source.textContent = resourceSourceLabel(resource);
+      const added = document.createElement('span');
+      added.className = 'resource-file-added';
+      added.textContent = formatRelativeTime(resource.added_at.replace(' ', 'T') + 'Z');
+      if (viewMode === 'grid') {
+        const foot = document.createElement('div');
+        foot.className = 'resource-file-foot';
+        foot.append(course, added);
+        item.append(icon, title, foot);
+      } else item.append(icon, title, course, source, added);
+      item.addEventListener('click', () => void openPreview(resource));
+      item.addEventListener('contextmenu', (event) => { event.preventDefault(); atlasApi.showResourceContextMenu(resource.id); });
+      container.appendChild(item);
+    }
+    list.appendChild(container);
+  }
 }
 
 async function renderWatchedFolders(): Promise<void> {
@@ -5037,17 +5135,22 @@ async function init(): Promise<void> {
   document.getElementById('deadline-view-list-toggle')!.addEventListener('click', () => setViewMode('list'));
   document.getElementById('deadline-view-grid-toggle')!.addEventListener('click', () => setViewMode('grid'));
 
-  document.querySelectorAll<HTMLButtonElement>('#resources-kind-filter .chip').forEach((chip) => {
+  document.querySelectorAll<HTMLButtonElement>('#resources-kind-filter .resource-kind-control').forEach((chip) => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('#resources-kind-filter .chip').forEach((el) => el.classList.remove('active'));
+      document.querySelectorAll('#resources-kind-filter .resource-kind-control').forEach((el) => el.classList.remove('active'));
       chip.classList.add('active');
       resourcesKindFilter = chip.dataset.kindFilter ?? '';
       void renderResourcesPage();
     });
   });
 
-  document.getElementById('resources-sort')!.addEventListener('change', (e) => {
-    resourcesSort = (e.target as HTMLSelectElement).value as ResourcesSort;
+  document.getElementById('resources-sort-controls')!.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-resource-sort]');
+    if (!button?.dataset.resourceSort) return;
+    resourcesSort = button.dataset.resourceSort as ResourcesSort;
+    document.querySelectorAll<HTMLButtonElement>('[data-resource-sort]').forEach((control) => {
+      control.classList.toggle('active', control === button);
+    });
     void renderResourcesPage();
   });
 
@@ -5564,17 +5667,17 @@ async function init(): Promise<void> {
   // Dropping a file directly onto the Resources page list uploads it — to
   // whichever course the rail is currently filtered to, or via the course
   // picker (with the file already attached) if "All Resources" is showing.
-  const resourcesSplit = document.getElementById('resources-split')!;
-  resourcesSplit.addEventListener('dragover', (e) => {
+  const resourcesLayout = document.getElementById('resources-layout')!;
+  resourcesLayout.addEventListener('dragover', (e) => {
     e.preventDefault();
-    resourcesSplit.classList.add('drag-active');
+    resourcesLayout.classList.add('drag-active');
   });
-  resourcesSplit.addEventListener('dragleave', (e) => {
-    if (e.target === resourcesSplit) resourcesSplit.classList.remove('drag-active');
+  resourcesLayout.addEventListener('dragleave', (e) => {
+    if (e.target === resourcesLayout) resourcesLayout.classList.remove('drag-active');
   });
-  resourcesSplit.addEventListener('drop', async (e) => {
+  resourcesLayout.addEventListener('drop', async (e) => {
     e.preventDefault();
-    resourcesSplit.classList.remove('drag-active');
+    resourcesLayout.classList.remove('drag-active');
     const file = e.dataTransfer?.files[0];
     if (!file) return;
     if (resourcesCourseFilterId !== null) {

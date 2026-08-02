@@ -84,7 +84,7 @@ const fs = require('fs');
   );
   if (!coursesNavActive) throw new Error('FAIL: Courses sidebar nav item did not become active');
 
-  const beforeCount = (await window.$$('#course-list li')).length;
+  const beforeCount = (await window.$$('#course-list [data-course-id]')).length;
   console.log('courses before:', beforeCount);
 
   // "+ Add course" is a rare action (a handful of courses per semester) —
@@ -93,28 +93,28 @@ const fs = require('fs');
   await window.waitForTimeout(150);
   await window.fill('#course-name', 'Verify Script Test Course');
   await window.fill('#course-code', 'VERIFY101');
-  await window.selectOption('#course-term', 'Monsoon 26');
+  await window.fill('#course-term', 'Monsoon 26');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
   const formHiddenAfterSubmit = await window.getAttribute('#course-form', 'hidden');
   if (formHiddenAfterSubmit === null) throw new Error('FAIL: course-form did not hide itself after submit');
 
-  const items = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  const items = await window.$$eval('#course-list [data-course-id]', (els) => els.map((e) => e.textContent));
   console.log('courses after:', items);
   if (!items.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: added course did not appear in the list');
   }
-  if (!items.some((t) => t && t.includes('0') && t.includes('Resources'))) {
+  if (!items.some((t) => t && t.includes('0files'))) {
     throw new Error('FAIL: new course card did not show a resource count');
   }
 
   // Semester filter: the course was created with term "Monsoon 26" above.
   // Filtering to a different term should hide it; filtering back (or to
   // "All semesters") should show it again. Reset to "All" before continuing
-  // so the rest of the script can keep finding it via '#course-list li'.
-  await window.selectOption('#semester-filter', 'Spring 27');
+  // so the rest of the script can keep finding it in the course collection.
+  await window.click('#courses-term-controls [data-term="Spring 27"]');
   await window.waitForTimeout(200);
-  const itemsFilteredOut = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  const itemsFilteredOut = await window.$$eval('#course-list [data-course-id]', (els) => els.map((e) => e.textContent));
   console.log('courses with Spring 27 filter (should exclude the Monsoon 26 course):', itemsFilteredOut);
   if (itemsFilteredOut.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: semester filter did not hide a course from a different term');
@@ -124,9 +124,9 @@ const fs = require('fs');
     throw new Error(`FAIL: semester filter selection was not persisted, got ${persistedFilter}`);
   }
 
-  await window.selectOption('#semester-filter', '');
+  await window.click('#courses-term-controls [data-term=""]');
   await window.waitForTimeout(200);
-  const itemsAllSemesters = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  const itemsAllSemesters = await window.$$eval('#course-list [data-course-id]', (els) => els.map((e) => e.textContent));
   if (!itemsAllSemesters.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: course did not reappear after resetting semester filter to "All semesters"');
   }
@@ -188,10 +188,9 @@ const fs = require('fs');
   // Select the course: shows its drill-down (Deadlines + Watched folders)
   // inline on the Courses page — Resources/Notes are separate global pages
   // now, not shown here.
-  await window.click('#course-list li.course-card');
+  const courseId = await window.$eval('#course-list [data-course-id]', (el) => Number(el.dataset.courseId));
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
-
-  const courseId = await window.$eval('#course-list li.course-card.selected', (el) => Number(el.dataset.courseId));
 
   const courseDetailHidden = await window.getAttribute('#courses-detail-view', 'hidden');
   console.log('course detail view hidden after selecting a course:', courseDetailHidden !== null);
@@ -214,14 +213,14 @@ const fs = require('fs');
   if ((await window.getAttribute('#courses-detail-view', 'hidden')) === null) {
     throw new Error('FAIL: "Back to Courses" did not hide the course detail view');
   }
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
 
   // --- Resources page (global — every resource across every course) ---
   await goToPage('resources');
   await uploadViaModal('Verify Script Test Course');
 
-  const resourceItems = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  const resourceItems = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources after upload:', resourceItems);
   if (!resourceItems.some((t) => t && t.includes('sample-lecture-notes.md'))) {
     throw new Error('FAIL: uploaded resource did not appear in the resource list');
@@ -230,7 +229,7 @@ const fs = require('fs');
   // Captured now (list is markdown-only at this point) rather than later,
   // since a later upload (the test image) sorts before it by added_at and
   // would otherwise make "the first .resource-name" ambiguous.
-  const markdownResourceId = await window.$eval('#all-resources-list li', (el) =>
+  const markdownResourceId = await window.$eval('#all-resources-list [data-resource-id]', (el) =>
     Number(el.dataset.resourceId)
   );
 
@@ -357,7 +356,7 @@ const fs = require('fs');
   if (!imageResource) throw new Error('FAIL: image upload did not return a resource');
   const imageResourceId = imageResource.id;
   await goToPage('resources');
-  await window.click(`li[data-resource-id="${imageResourceId}"] .resource-name`);
+  await window.click(`[data-resource-id="${imageResourceId}"] .resource-name`);
   await window.waitForTimeout(300);
 
   const zoomControlsVisible = !(await window.isHidden('#zoom-controls'));
@@ -394,7 +393,7 @@ const fs = require('fs');
   // confirm it comes back at 150%, not reset to 100%.
   await window.click('#preview-close');
   await window.waitForTimeout(200);
-  await window.click(`li[data-resource-id="${imageResourceId}"] .resource-name`);
+  await window.click(`[data-resource-id="${imageResourceId}"] .resource-name`);
   await window.waitForTimeout(300);
   const reopenedLevel = await window.textContent('#zoom-level');
   console.log('zoom level on reopen (should still be 150%):', reopenedLevel);
@@ -421,7 +420,7 @@ const fs = require('fs');
   const txtResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
   if (!txtResource) throw new Error('FAIL: .txt upload did not return a resource');
   await goToPage('resources');
-  await window.click(`li[data-resource-id="${txtResource.id}"] .resource-name`);
+  await window.click(`[data-resource-id="${txtResource.id}"] .resource-name`);
   await window.waitForTimeout(300);
   const zoomHiddenForTxt = await window.isHidden('#zoom-controls');
   console.log('zoom controls hidden for .txt preview:', zoomHiddenForTxt);
@@ -440,7 +439,7 @@ const fs = require('fs');
     const dt = new DataTransfer();
     dt.items.add(new File(['dropped content'], 'dropped-all-resources.txt', { type: 'text/plain' }));
     document
-      .getElementById('resources-split')
+      .getElementById('resources-layout')
       .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
   });
   await window.waitForTimeout(300);
@@ -449,7 +448,7 @@ const fs = require('fs');
   if (!dropModalVisible) throw new Error('FAIL: dropping a file with "All Resources" showing did not open the course picker');
   await window.click(`#course-picker-list li:has-text("Verify Script Test Course")`);
   await window.waitForTimeout(300);
-  let resourcesAfterDrop = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  let resourcesAfterDrop = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources after drop-then-pick-course upload:', resourcesAfterDrop);
   if (!resourcesAfterDrop.some((t) => t && t.includes('dropped-all-resources.txt'))) {
     throw new Error('FAIL: file dropped with no course filter did not upload after picking a course');
@@ -463,14 +462,14 @@ const fs = require('fs');
     const dt = new DataTransfer();
     dt.items.add(new File(['dropped content 2'], 'dropped-filtered.txt', { type: 'text/plain' }));
     document
-      .getElementById('resources-split')
+      .getElementById('resources-layout')
       .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
   });
   await window.waitForTimeout(300);
   if (!(await window.isHidden('#course-picker-overlay'))) {
     throw new Error('FAIL: dropping a file with a course filter active should not open the course picker');
   }
-  resourcesAfterDrop = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  resourcesAfterDrop = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources after direct (filtered) drop:', resourcesAfterDrop);
   if (!resourcesAfterDrop.some((t) => t && t.includes('dropped-filtered.txt'))) {
     throw new Error('FAIL: file dropped with a course filter active did not upload directly');
@@ -478,7 +477,7 @@ const fs = require('fs');
 
   // Resources sort dropdown (name/recent/kind/course) — positioned next to
   // the view toggle, same grouping/placement as Courses' own sort+toggle.
-  await window.selectOption('#resources-sort', 'name');
+  await window.click('#resources-sort-controls [data-resource-sort="name"]');
   await window.waitForTimeout(200);
   const namesSorted = await window.$$eval('#all-resources-list .resource-name', (els) =>
     els.map((e) => e.textContent)
@@ -490,20 +489,20 @@ const fs = require('fs');
   }
 
   // Kind-filter chips (All/PDF/Document/Image/.../Other).
-  await window.click('#resources-kind-filter .chip[data-kind-filter="image"]');
+  await window.click('#resources-kind-filter .resource-kind-control[data-kind-filter="image"]');
   await window.waitForTimeout(200);
-  const imageFilteredTexts = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  const imageFilteredTexts = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources with "Image" chip filter:', imageFilteredTexts);
   if (!imageFilteredTexts.some((t) => t.includes('test-image.png')) || imageFilteredTexts.some((t) => t.includes('grades.xlsx'))) {
     throw new Error(`FAIL: Image chip filter did not correctly scope the list: ${JSON.stringify(imageFilteredTexts)}`);
   }
-  await window.click('#resources-kind-filter .chip[data-kind-filter=""]');
+  await window.click('#resources-kind-filter .resource-kind-control[data-kind-filter=""]');
   await window.waitForTimeout(200);
 
   // Course rail filter.
   await window.click(`#resources-course-rail li:has-text("Verify Script Test Course")`);
   await window.waitForTimeout(200);
-  const courseFilteredTexts = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  const courseFilteredTexts = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources filtered to one course:', courseFilteredTexts.length, 'items');
   if (courseFilteredTexts.length === 0) {
     throw new Error('FAIL: course rail filter produced no results for a course with resources');
@@ -919,7 +918,7 @@ const fs = require('fs');
   const scanPdfResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
   if (!scanPdfResource) throw new Error('FAIL: uploading the PDF fixture as a resource did not return a resource');
   await goToPage('resources');
-  await window.click(`li[data-resource-id="${scanPdfResource.id}"] .resource-name`);
+  await window.click(`[data-resource-id="${scanPdfResource.id}"] .resource-name`);
   await window.waitForTimeout(300);
 
   const ocrResourceButtonVisible = !(await window.isHidden('#preview-run-ocr'));
@@ -1061,7 +1060,7 @@ const fs = require('fs');
   // Navigating to Courses fresh always lands on the grid now (not whichever
   // course's detail view happened to be open before) — reselect the course
   // to reach its detail view (Deadlines/Watched folders) again.
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
 
   // --- Deadlines: nested in the Courses page's drill-down for the selected
@@ -1236,7 +1235,7 @@ const fs = require('fs');
   await goToPage('courses');
   // Navigating to Courses fresh lands on the grid — reselect the course to
   // reach its detail view (Deadlines) again.
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
 
   // Inline Resources/Notes previews on the course detail page — a short list
@@ -1277,7 +1276,7 @@ const fs = require('fs');
     throw new Error('FAIL: "View all" (Resources) did not navigate to the Resources page');
   }
   await goToPage('courses');
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
   await window.click('.course-detail-tab[data-course-tab="deadlines"]'); // selectCourse() always resets to Overview
   await window.waitForTimeout(150);
@@ -1338,7 +1337,7 @@ const fs = require('fs');
   // click() requires the target to be visible).
   await window.click('#course-detail-back');
   await window.waitForTimeout(150);
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.click('.course-detail-tab[data-course-tab="deadlines"]'); // selectCourse() always resets to Overview
   await window.waitForTimeout(300);
   const deadlineTitlesAfterDelete = await window.$$eval(
@@ -1391,7 +1390,7 @@ const fs = require('fs');
     throw new Error('FAIL: clicking a dashboard "My courses" entry did not navigate to the Courses page');
   }
   const courseSelectedAfterCardClick = await window.evaluate(
-    () => document.querySelector('#course-list li.selected') !== null
+    () => !document.getElementById('courses-detail-view')?.hidden
   );
   if (!courseSelectedAfterCardClick) {
     throw new Error('FAIL: clicking a dashboard "My courses" entry did not select that course');
@@ -1531,7 +1530,7 @@ const fs = require('fs');
   // right-click -> menu -> click path needs a manual check by the user.
   await window.evaluate((id) => window.atlas.deleteResource(id), markdownResourceId);
   await goToPage('resources'); // force a refresh
-  const resourcesAfterDelete = await window.$$eval('#all-resources-list li', (els) =>
+  const resourcesAfterDelete = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('resources after delete:', resourcesAfterDelete);
@@ -1542,7 +1541,7 @@ const fs = require('fs');
   await window.evaluate((id) => window.atlas.deleteCourse(id), courseId);
   await window.reload();
   await window.waitForTimeout(500);
-  const coursesAfterDelete = await window.$$eval('#course-list li', (els) =>
+  const coursesAfterDelete = await window.$$eval('#course-list [data-course-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('courses after delete:', coursesAfterDelete);
@@ -1558,10 +1557,10 @@ const fs = require('fs');
   await window.click('#add-course-toggle');
   await window.waitForTimeout(150);
   await window.fill('#course-name', 'Watch Test Course');
-  await window.selectOption('#course-term', 'Spring 27');
+  await window.fill('#course-term', 'Spring 27');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.click('.course-detail-tab[data-course-tab="files"]'); // Watched folders is its own tab now, not visible on the default Overview tab
   await window.waitForTimeout(200);
 
@@ -1587,7 +1586,7 @@ const fs = require('fs');
   // Chokidar's initial scan is async; poll briefly rather than a fixed sleep.
   let resourcesAfterWatch = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterWatch = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+    resourcesAfterWatch = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
     if (resourcesAfterWatch.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
     await window.waitForTimeout(300);
   }
@@ -1601,7 +1600,7 @@ const fs = require('fs');
   fs.writeFileSync(newFile, 'New notes dropped in while the folder was already being watched.');
   let resourcesAfterNewFile = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterNewFile = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterNewFile = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (resourcesAfterNewFile.some((t) => t && t.includes('week1-notes.txt'))) break;
@@ -1618,7 +1617,7 @@ const fs = require('fs');
   fs.unlinkSync(preExistingFile);
   let resourcesAfterSourceDelete = resourcesAfterNewFile;
   for (let i = 0; i < 10; i++) {
-    resourcesAfterSourceDelete = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterSourceDelete = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (!resourcesAfterSourceDelete.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
@@ -1652,7 +1651,7 @@ const fs = require('fs');
 
   let resourcesAfterManualDrop = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterManualDrop = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterManualDrop = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (resourcesAfterManualDrop.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;
@@ -1666,7 +1665,7 @@ const fs = require('fs');
   fs.unlinkSync(manuallyDroppedFile);
   let resourcesAfterManualStorageDelete = resourcesAfterManualDrop;
   for (let i = 0; i < 10; i++) {
-    resourcesAfterManualStorageDelete = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterManualStorageDelete = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (!resourcesAfterManualStorageDelete.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;

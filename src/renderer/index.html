@@ -257,49 +257,42 @@
       </section>
 
       <section id="page-resources" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Resources</h2>
-            <p class="muted">All your course materials in one place.</p>
-          </div>
-          <button id="upload-button" type="button">+ Upload file</button>
+        <div class="resources-page-topline">
+          <h1>Resources <span id="resources-page-count" class="dim">0</span></h1>
+          <button id="upload-button" type="button" class="section-action">+ Upload file</button>
         </div>
 
-        <div class="chip-row" id="resources-kind-filter">
-          <button class="chip active" type="button" data-kind-filter="">All</button>
-          <button class="chip" type="button" data-kind-filter="pdf">PDF</button>
-          <button class="chip" type="button" data-kind-filter="docx,text,markdown">Document</button>
-          <button class="chip" type="button" data-kind-filter="image">Image</button>
-          <button class="chip" type="button" data-kind-filter="pptx">Presentation</button>
-          <button class="chip" type="button" data-kind-filter="xlsx">Spreadsheet</button>
-          <button class="chip" type="button" data-kind-filter="zip,other">Other</button>
-        </div>
-
-        <div class="split-layout" id="resources-split">
-          <aside class="split-rail">
-            <h4>Courses</h4>
+        <div id="resources-layout">
+          <aside class="resources-course-rail">
             <ul id="resources-course-rail"></ul>
           </aside>
-          <div class="split-list">
-            <div class="resources-toolbar">
-              <div class="courses-toolbar-right">
-                <select id="resources-sort">
-                  <option value="name">Sort by: Name</option>
-                  <option value="recent">Sort by: Recently added</option>
-                  <option value="kind">Sort by: Kind</option>
-                  <option value="course">Sort by: Course</option>
-                </select>
-                <div class="view-toggle">
+          <div class="resources-main">
+            <div class="resources-kindrow">
+              <div id="resources-kind-filter" class="resources-text-controls" aria-label="Filter resources by kind">
+                <button class="resource-kind-control active" type="button" data-kind-filter="">All kinds</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="pdf">PDF</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="docx,text,markdown">Document</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="image">Image</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="pptx">Presentation</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="xlsx">Spreadsheet</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="zip,other">Other</button>
+              </div>
+              <div class="resources-toolbar-spacer"></div>
+              <div id="resources-sort-controls" class="resources-text-controls" aria-label="Sort resources">
+                <button class="resource-sort-control active" type="button" data-resource-sort="recent">Recent</button>
+                <button class="resource-sort-control" type="button" data-resource-sort="name">Name</button>
+                <button class="resource-sort-control" type="button" data-resource-sort="course">Course</button>
+              </div>
+              <div class="view-toggle resources-view-toggle">
                   <button id="view-grid" type="button" title="Grid view" aria-label="Grid view">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                   </button>
                   <button id="view-list" type="button" class="active" title="List view" aria-label="List view">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                   </button>
-                </div>
               </div>
             </div>
-            <ul id="all-resources-list" class="view-list"></ul>
+            <div id="all-resources-list" class="view-list"></div>
           </div>
         </div>
       </section>
