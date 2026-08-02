@@ -908,6 +908,8 @@ function setShowArchivedCourses(value: boolean): void {
 let resourcesKindFilter = ''; // '' = all; otherwise a comma-separated list of kinds
 let resourcesCourseFilterId: number | null = null; // null = all courses
 let notesCourseFilterId: number | null = null; // null = all courses
+let notesViewMode: 'list' | 'grid' = 'list';
+let notesSort: 'recent' | 'name' | 'course' = 'recent';
 let showOnlyAgentNotes = false; // Phase 4 Part B filter — agent-generated notes only
 
 // A plain-language readability label for a Classroom/Drive link resource —
@@ -1435,6 +1437,7 @@ function noteTitlePrefix(note: Note): string {
 
 function renderAllNotesList(notes: NoteWithCourse[]): void {
   const container = document.getElementById('all-notes-list')!;
+  container.className = notesViewMode === 'grid' ? 'view-grid' : 'view-list';
   container.innerHTML = '';
 
   if (notes.length === 0) {
@@ -1456,27 +1459,38 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
     const items = groups[groupName];
     if (items.length === 0) continue;
 
-    const header = document.createElement('h4');
+    const header = document.createElement('div');
     header.className = 'notes-group-header';
-    header.textContent = `${groupName} (${items.length})`;
+    header.textContent = groupName;
     container.appendChild(header);
 
-    const ul = document.createElement('ul');
-    ul.className = 'notes-group-list';
+    const ul = document.createElement('div');
+    ul.className = notesViewMode === 'grid' ? 'note-grid' : 'notes-group-list';
     for (const note of items) {
-      const li = document.createElement('li');
+      const li = document.createElement('div');
       li.dataset.noteId = String(note.id);
+      li.className = notesViewMode === 'grid' ? 'note-tile' : 'note-row';
       if (currentNoteId === note.id) li.classList.add('selected');
 
-      const title = document.createElement('div');
+      const title = document.createElement('span');
       title.className = 'note-item-title';
       title.textContent = `${noteTitlePrefix(note)}${note.title}`;
       li.appendChild(title);
 
-      const meta = document.createElement('div');
+      const meta = document.createElement('span');
       meta.className = 'note-item-meta';
-      meta.textContent = `${note.course_name} · ${formatNoteTimestamp(note.updated_at)}`;
-      li.appendChild(meta);
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(note.course_id ?? 0);
+      const course = document.createElement('span');
+      course.textContent = note.course_name;
+      meta.append(swatch, course, document.createTextNode(` · ${formatRelativeTime(note.updated_at.replace(' ', 'T') + 'Z')}`));
+      if (notesViewMode === 'grid') {
+        const excerpt = document.createElement('span');
+        excerpt.className = 'note-excerpt';
+        excerpt.textContent = note.content_markdown.replace(/[#*_`>-]/g, ' ').replace(/\s+/g, ' ').trim();
+        li.append(title, excerpt, meta);
+      } else li.append(title, meta);
 
       li.addEventListener('click', () => openNoteEditor(note));
       li.addEventListener('contextmenu', (e) => {
@@ -1493,15 +1507,27 @@ async function renderNotesPage(): Promise<void> {
   void renderDashboard();
   const courses = await atlasApi.listCourses();
 
-  renderCourseRail('notes-course-rail', courses, 'All Notes', notesCourseFilterId, (id) => {
-    notesCourseFilterId = id;
-    void renderNotesPage();
-  });
-
   const allNotes = await atlasApi.listAllNotes();
+  const rail = document.getElementById('notes-course-rail')!;
+  rail.innerHTML = '';
+  const options = [{ id: null, name: 'All notes', count: allNotes.length }, ...courses.map((course) => ({ id: course.id, name: course.name, count: allNotes.filter((note) => note.course_id === course.id).length }))];
+  for (const option of options) {
+    const item = document.createElement('li');
+    item.className = 'note-rail-item';
+    item.classList.toggle('active', notesCourseFilterId === option.id);
+    const name = document.createElement('span'); name.className = 'rail-name';
+    if (option.id !== null) { const swatch = document.createElement('span'); swatch.className = 'swatch'; swatch.style.background = courseAvatarColor(option.id); name.appendChild(swatch); }
+    name.appendChild(document.createTextNode(option.name));
+    const count = document.createElement('span'); count.className = 'rail-count'; count.textContent = String(option.count);
+    item.append(name, count);
+    item.addEventListener('click', () => { notesCourseFilterId = option.id; void renderNotesPage(); });
+    rail.appendChild(item);
+  }
+  document.getElementById('notes-page-count')!.textContent = String(allNotes.length);
   let notes =
     notesCourseFilterId === null ? allNotes : allNotes.filter((n) => n.course_id === notesCourseFilterId);
   if (showOnlyAgentNotes) notes = notes.filter((n) => n.generated_by_agent);
+  notes = [...notes].sort((a, b) => notesSort === 'name' ? a.title.localeCompare(b.title) : notesSort === 'course' ? a.course_name.localeCompare(b.course_name) || b.updated_at.localeCompare(a.updated_at) : b.updated_at.localeCompare(a.updated_at));
   renderAllNotesList(notes);
 }
 
@@ -5305,6 +5331,15 @@ async function init(): Promise<void> {
   document.getElementById('new-note-button')!.addEventListener('click', () => openCoursePicker('note'));
   document.getElementById('import-scan-button')!.addEventListener('click', () => openCoursePicker('scan'));
   document.getElementById('toggle-agent-notes')!.addEventListener('click', () => setShowOnlyAgentNotes(!showOnlyAgentNotes));
+  document.getElementById('notes-view-grid')!.addEventListener('click', () => { notesViewMode = 'grid'; document.getElementById('notes-view-grid')!.classList.add('active'); document.getElementById('notes-view-list')!.classList.remove('active'); void renderNotesPage(); });
+  document.getElementById('notes-view-list')!.addEventListener('click', () => { notesViewMode = 'list'; document.getElementById('notes-view-list')!.classList.add('active'); document.getElementById('notes-view-grid')!.classList.remove('active'); void renderNotesPage(); });
+  document.getElementById('notes-sort-controls')!.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-notes-sort]');
+    if (!button?.dataset.notesSort) return;
+    notesSort = button.dataset.notesSort as typeof notesSort;
+    document.querySelectorAll<HTMLButtonElement>('[data-notes-sort]').forEach((item) => item.classList.toggle('active', item === button));
+    void renderNotesPage();
+  });
 
   document.getElementById('note-run-ocr')!.addEventListener('click', runNoteOcr);
   document.getElementById('note-ocr-discard')!.addEventListener('click', discardNoteOcr);

@@ -46,7 +46,7 @@ npm start
 
 `better-sqlite3` is a native module and needs to be rebuilt against Electron's ABI (not your system Node) after `npm install` — `npm start` alone will fail with a module version mismatch if you skip that step. On first launch, Atlas creates its data folder at `Downloads/Atlas-Storage` (database + synced/uploaded files) — see `ARCHITECTURE.md` §2. This is intentionally a separate folder from this repo, so nothing about running/developing the app can ever touch real data through git operations.
 
-**Everyday use, without a terminal:** double-click [`Launch Atlas.bat`](Launch%20Atlas.bat) — it `cd`s into this folder and runs `npm start` for you. Still rebuilds before launching each time, so it always runs the current code; the console window it opens stays visible so build/runtime errors are easy to see while the app is still under active development.
+**Everyday use, without a terminal:** double-click [`Launch Atlas.bat`](Launch%20Atlas.bat) — it `cd`s into this folder and launches the already-built app immediately. The development workflow builds after every code change, so normal launches no longer spend several seconds compiling first. If you ever edit source files yourself, run `npm run build` once before launching.
 
 **A real packaged install** is also available now (`phase6-spec.md` §4):
 

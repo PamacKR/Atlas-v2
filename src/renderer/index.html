@@ -298,28 +298,34 @@
       </section>
 
       <section id="page-notes" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Notes</h2>
-            <p class="muted">All your notes in one place.</p>
-          </div>
+        <div class="notes-page-topline">
+          <h1>Notes <span id="notes-page-count" class="dim">0</span></h1>
           <div class="notes-header-actions">
-            <button id="import-scan-button" type="button">+ Import scan</button>
-            <button id="new-note-button" type="button">+ New note</button>
+            <button id="import-scan-button" type="button" class="btn">+ Import scan</button>
+            <button id="new-note-button" type="button" class="btn primary">+ New note</button>
           </div>
         </div>
 
-        <div class="split-layout" id="notes-split">
-          <aside class="split-rail">
-            <h4>Courses</h4>
+        <div id="notes-layout">
+          <aside class="notes-course-rail">
             <ul id="notes-course-rail"></ul>
-            <!-- Filters to just the notes an AI agent generated (Phase 4 Part
-                 B) vs. everything the user made themselves (typed, imported,
-                 or scanned — all "user-made" alike). -->
-            <button id="toggle-agent-notes" type="button" class="link-button">Show only agent notes</button>
+            <div class="rail-divider"></div>
+            <button id="toggle-agent-notes" type="button">Show only agent notes</button>
           </aside>
-          <div class="split-list" id="notes-list-pane">
-            <div id="all-notes-list"></div>
+          <div class="notes-main">
+            <div class="notes-toolbar">
+              <div id="notes-sort-controls" class="notes-text-controls">
+                <button type="button" class="active" data-notes-sort="recent">Recent</button>
+                <button type="button" data-notes-sort="name">Name</button>
+                <button type="button" data-notes-sort="course">Course</button>
+              </div>
+              <div class="notes-toolbar-spacer"></div>
+              <div class="view-toggle notes-view-toggle">
+                <button id="notes-view-grid" type="button" title="Grid view" aria-label="Grid view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+                <button id="notes-view-list" type="button" class="active" title="List view" aria-label="List view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+              </div>
+            </div>
+            <div id="all-notes-list" class="view-list"></div>
           </div>
         </div>
       </section>
