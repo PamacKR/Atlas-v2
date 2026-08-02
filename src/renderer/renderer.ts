@@ -511,7 +511,10 @@ let dashboardCourseFilterId: number | null = null;
 
 function showPage(page: AppPage): void {
   currentPage = page;
-  document.getElementById('notes-topbar-context')!.hidden = page !== 'notes';
+  for (const name of ['courses', 'resources', 'notes'] as const) {
+    document.getElementById(`${name}-topbar-title`)!.hidden = page !== name;
+    document.getElementById(`${name}-topbar-actions`)!.hidden = page !== name;
+  }
   document.getElementById('main-area')!.dataset.page = page;
   document.querySelectorAll<HTMLElement>('.app-page').forEach((el) => {
     el.hidden = el.id !== `page-${page}`;

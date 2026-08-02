@@ -29,13 +29,21 @@
 
     <div id="main-area" data-page="dashboard">
       <header id="topbar">
-        <div id="notes-topbar-context" class="topbar-page-context" hidden>
-          <h1>Notes <span id="notes-page-count" class="dim">0</span></h1>
-          <div class="notes-header-actions">
+        <div id="topbar-page-titles">
+          <h1 id="courses-topbar-title" hidden>Courses <span id="courses-page-count" class="dim">0</span></h1>
+          <h1 id="resources-topbar-title" hidden>Resources <span id="resources-page-count" class="dim">0</span></h1>
+          <h1 id="notes-topbar-title" hidden>Notes <span id="notes-page-count" class="dim">0</span></h1>
+        </div>
+        <div id="topbar-right">
+          <div id="courses-topbar-actions" class="topbar-page-actions" hidden>
+            <button id="ashoka-import-button" type="button" class="section-action">Import from Ashoka Planner</button>
+            <button id="add-course-toggle" type="button" class="section-action">+ Add course</button>
+          </div>
+          <div id="resources-topbar-actions" class="topbar-page-actions" hidden><button id="upload-button" type="button" class="section-action">+ Upload file</button></div>
+          <div id="notes-topbar-actions" class="topbar-page-actions" hidden>
             <button id="import-scan-button" type="button" class="btn">+ Import scan</button>
             <button id="new-note-button" type="button" class="btn">+ New note</button>
           </div>
-        </div>
         <div id="dashboard-course-filter" class="dselect dashboard-course-filter">
           <button id="dashboard-course-filter-trigger" class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
             <span id="dashboard-course-filter-label">All courses</span>
@@ -46,6 +54,7 @@
         <div id="search-box">
           <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
           <ul id="search-results" hidden></ul>
+        </div>
         </div>
       </header>
 
@@ -100,14 +109,6 @@
 
       <section id="page-courses" class="app-page" hidden>
         <div id="courses-list-view">
-          <div class="courses-page-topline">
-            <h1>Courses <span id="courses-page-count" class="dim">0</span></h1>
-            <div class="courses-page-actions">
-              <button id="ashoka-import-button" type="button" class="section-action">Import from Ashoka Planner</button>
-              <button id="add-course-toggle" type="button" class="section-action">+ Add course</button>
-            </div>
-          </div>
-
           <form id="course-form" hidden>
             <input id="course-name" type="text" placeholder="Course name" required />
             <input id="course-code" type="text" placeholder="Code (optional)" />
@@ -264,11 +265,6 @@
       </section>
 
       <section id="page-resources" class="app-page" hidden>
-        <div class="resources-page-topline">
-          <h1>Resources <span id="resources-page-count" class="dim">0</span></h1>
-          <button id="upload-button" type="button" class="section-action">+ Upload file</button>
-        </div>
-
         <div id="resources-layout">
           <aside class="resources-course-rail">
             <ul id="resources-course-rail"></ul>
