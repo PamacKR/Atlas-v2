@@ -5713,7 +5713,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 .classroom-review-row-actions .btn { height: 30px; padding: 0 var(--space-3); font-size: var(--text-sm); }
 .classroom-review-row-actions .classroom-review-row-confirm { border-color: var(--rule-strong); color: var(--text); }
 
-#settings-panels .storage-backups-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding-top: var(--space-3); color: var(--text-faint); font-size: var(--text-sm); }
+#settings-panels .storage-backups-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) 0 var(--space-2); color: var(--text-faint); font-size: var(--text-sm); }
 #settings-panels .storage-backup-row { grid-template-columns: minmax(0, 1fr) 90px auto; align-items: center; }
 #settings-panels .storage-backup-row .settings-button, #settings-panels .storage-backups-heading .settings-button { height: 28px; padding: 0 var(--space-3); font-size: var(--text-xs); }
 #settings-panels .settings-button-danger:hover, #settings-panels .settings-button-danger:focus-visible { border-color: rgba(224, 87, 74, .45); background: rgba(224, 87, 74, .08); color: var(--urgent); }
