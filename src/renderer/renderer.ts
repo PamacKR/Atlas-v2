@@ -511,6 +511,7 @@ let dashboardCourseFilterId: number | null = null;
 
 function showPage(page: AppPage): void {
   currentPage = page;
+  document.getElementById('notes-topbar-context')!.hidden = page !== 'notes';
   document.getElementById('main-area')!.dataset.page = page;
   document.querySelectorAll<HTMLElement>('.app-page').forEach((el) => {
     el.hidden = el.id !== `page-${page}`;

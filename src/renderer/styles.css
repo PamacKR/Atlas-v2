@@ -3968,14 +3968,15 @@ button#classroom-connect-confirm {
 
 /* Notes follows Resources' filter-rail and continuous-list language. */
 #page-notes { min-width: 0; }
-#page-notes .notes-page-topline { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); margin-bottom: var(--space-5); }
-#page-notes .notes-page-topline h1 { margin: 0; color: var(--text); font-size: var(--text-xl); font-weight: 600; letter-spacing: -.02em; }
-#page-notes .notes-page-topline .dim { color: var(--text-faint); font-weight: 400; }
+#notes-topbar-context { display: none; align-items: center; gap: var(--space-4); min-width: 0; }
+#main-area[data-page="notes"] #topbar { justify-content: space-between; }
+#main-area[data-page="notes"] #notes-topbar-context:not([hidden]) { display: flex; }
+#notes-topbar-context h1 { margin: 0; color: var(--text); font-size: var(--text-xl); font-weight: 600; letter-spacing: -.02em; white-space: nowrap; }
+#notes-topbar-context .dim { color: var(--text-faint); font-weight: 400; }
 #page-notes .notes-header-actions { display: flex; align-items: center; gap: var(--space-2); }
 #page-notes .notes-header-actions .btn { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; }
 #page-notes .notes-header-actions .btn:hover { border-color: var(--rule-strong); color: var(--text); background: var(--bg-hover); }
-#page-notes .notes-header-actions .btn.primary { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 500; }
-#notes-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--space-7); min-width: 0; }
+#notes-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--space-7); min-width: 0; }
 #page-notes .notes-course-rail { padding-top: var(--space-2); }
 #page-notes .notes-course-rail ul { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
 #page-notes .note-rail-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0 calc(var(--space-3) * -1); padding: 7px var(--space-3); border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; }

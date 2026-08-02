@@ -29,6 +29,13 @@
 
     <div id="main-area" data-page="dashboard">
       <header id="topbar">
+        <div id="notes-topbar-context" class="topbar-page-context" hidden>
+          <h1>Notes <span id="notes-page-count" class="dim">0</span></h1>
+          <div class="notes-header-actions">
+            <button id="import-scan-button" type="button" class="btn">+ Import scan</button>
+            <button id="new-note-button" type="button" class="btn">+ New note</button>
+          </div>
+        </div>
         <div id="dashboard-course-filter" class="dselect dashboard-course-filter">
           <button id="dashboard-course-filter-trigger" class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
             <span id="dashboard-course-filter-label">All courses</span>
@@ -298,14 +305,6 @@
       </section>
 
       <section id="page-notes" class="app-page" hidden>
-        <div class="notes-page-topline">
-          <h1>Notes <span id="notes-page-count" class="dim">0</span></h1>
-          <div class="notes-header-actions">
-            <button id="import-scan-button" type="button" class="btn">+ Import scan</button>
-            <button id="new-note-button" type="button" class="btn primary">+ New note</button>
-          </div>
-        </div>
-
         <div id="notes-layout">
           <aside class="notes-course-rail">
             <ul id="notes-course-rail"></ul>
