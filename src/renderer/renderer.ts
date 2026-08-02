@@ -1521,7 +1521,10 @@ async function renderNotesPage(): Promise<void> {
     item.classList.toggle('active', notesCourseFilterId === option.id);
     const name = document.createElement('span'); name.className = 'rail-name';
     if (option.id !== null) { const swatch = document.createElement('span'); swatch.className = 'swatch'; swatch.style.background = courseAvatarColor(option.id); name.appendChild(swatch); }
-    name.appendChild(document.createTextNode(option.name));
+    const label = document.createElement('span');
+    label.className = 'rail-course-label';
+    label.textContent = option.name;
+    name.appendChild(label);
     const count = document.createElement('span'); count.className = 'rail-count'; count.textContent = String(option.count);
     item.append(name, count);
     item.addEventListener('click', () => { notesCourseFilterId = option.id; void renderNotesPage(); });

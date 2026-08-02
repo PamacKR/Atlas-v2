@@ -3835,7 +3835,9 @@ button#classroom-connect-confirm {
 #topbar-page-titles h1 { margin: 0; color: var(--text); font-size: var(--text-xl); font-weight: 600; letter-spacing: -.02em; }
 #topbar-page-titles .dim { color: var(--text-faint); font-weight: 400; }
 #topbar-right { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
-.topbar-page-actions { display: flex; align-items: center; gap: var(--space-2); }
+.topbar-page-actions:not([hidden]) { display: flex; align-items: center; gap: var(--space-2); }
+.topbar-page-actions button { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition); }
+.topbar-page-actions button:hover, .topbar-page-actions button:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 
 #search-box {
   width: 300px;
@@ -3983,11 +3985,12 @@ button#classroom-connect-confirm {
 #notes-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: var(--space-7); min-width: 0; }
 #page-notes .notes-course-rail { padding-top: var(--space-2); }
 #page-notes .notes-course-rail ul { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
-#page-notes .note-rail-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0 calc(var(--space-3) * -1); padding: 7px var(--space-3); border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; }
+#page-notes .note-rail-item { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); margin: 0 calc(var(--space-3) * -1); padding: 7px var(--space-3); border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; }
 #page-notes .note-rail-item:hover, #page-notes .note-rail-item.active { color: var(--text); background: var(--bg-hover); }
 #page-notes .note-rail-item.active { font-weight: 500; }
-#page-notes .rail-name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow: visible; white-space: normal; }
-#page-notes .rail-count { color: var(--text-faint); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+#page-notes .rail-name { display: flex; align-items: flex-start; gap: var(--space-2); flex: 1 1 auto; min-width: 0; }
+#page-notes .rail-course-label { min-width: 0; overflow-wrap: anywhere; }
+#page-notes .rail-count { flex: 0 0 auto; color: var(--text-faint); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 #page-notes .rail-divider { height: 1px; margin: var(--space-3) 0; background: var(--rule); }
 #page-notes #toggle-agent-notes { padding: 7px var(--space-3); margin: 0 calc(var(--space-3) * -1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
 #page-notes #toggle-agent-notes:hover, #page-notes #toggle-agent-notes.active { color: var(--text); background: var(--bg-hover); }
