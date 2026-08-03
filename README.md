@@ -56,3 +56,5 @@ npm run package:win
 ```
 
 The command is the pending packaging path; a release installer and packaged-app validation still need to be completed. No custom icon is included yet — the logo/icon remains a separate pending roadmap item.
+
+For a focused Electron check of the command palette, run `npm run verify:command-palette`. It uses a throwaway data directory and does not touch the real Atlas storage folder.

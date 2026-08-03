@@ -424,6 +424,14 @@ interface AtlasApi {
 // working correctly in Crepe before switching. Crepe also bundles KaTeX math
 // rendering out of the box, which the user needs for academic notes.
 import { ShortcutRegistry, ShortcutAction, normalizeBinding, RESERVED_BINDINGS } from './shortcuts';
+import {
+  PaletteCommandDefinition,
+  PaletteCommandMatch,
+  matchPaletteCommandPrefix,
+  normalizePaletteText,
+  rankPaletteCommands,
+  scorePaletteText,
+} from './command-palette';
 import { Crepe } from '@milkdown/crepe';
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
@@ -5057,6 +5065,15 @@ async function saveShortcutOverrides(): Promise<void> {
 
 function registerAppShortcuts(): void {
   const actions: ShortcutAction[] = [
+    {
+      id: 'app.commandPalette',
+      label: 'Open command palette',
+      group: 'Navigation',
+      defaultBinding: 'Ctrl+K',
+      when: () => (document.getElementById('command-palette-overlay') as HTMLElement | null)?.hidden !== false,
+      run: openCommandPalette,
+    },
+
     // Navigation
     { id: 'nav.dashboard', label: 'Go to Dashboard', group: 'Navigation', defaultBinding: 'Ctrl+1', run: () => showPage('dashboard') },
     { id: 'nav.courses', label: 'Go to Courses', group: 'Navigation', defaultBinding: 'Ctrl+2', run: () => showPage('courses') },
@@ -5272,6 +5289,443 @@ function registerAppShortcuts(): void {
   ];
 
   for (const action of actions) shortcutRegistry.register(action);
+}
+
+interface PaletteItem {
+  id: string;
+  label: string;
+  detail: string;
+  group: string;
+  shortcut?: string;
+  run: () => void | Promise<void>;
+}
+
+type PaletteStep = 'commands' | 'course-selection';
+
+let commandPaletteItems: PaletteItem[] = [];
+let commandPaletteActiveIndex = 0;
+let commandPaletteStep: PaletteStep = 'commands';
+let commandPalettePendingCommand: 'export.course' | null = null;
+let commandPaletteReturnFocus: HTMLElement | null = null;
+let commandPaletteCourses: Course[] = [];
+let commandPaletteNotes: NoteWithCourse[] = [];
+let commandPaletteResources: ResourceWithCourse[] = [];
+let commandPaletteDataPromise: Promise<void> | null = null;
+let commandPaletteRenderToken = 0;
+
+function commandPaletteIsOpen(): boolean {
+  return (document.getElementById('command-palette-overlay') as HTMLElement | null)?.hidden === false;
+}
+
+function commandPaletteShortcut(id: string): string | undefined {
+  const action = shortcutRegistry.all().find((candidate) => candidate.id === id);
+  if (!action) return undefined;
+  const binding = shortcutRegistry.primaryBindingFor(action);
+  return binding || undefined;
+}
+
+function paletteCommands(): PaletteCommandDefinition[] {
+  const command = (
+    id: string,
+    label: string,
+    group: string,
+    aliases: string[],
+    keywords: string[] = []
+  ): PaletteCommandDefinition => ({
+    id,
+    label,
+    group,
+    aliases,
+    keywords,
+    shortcut: commandPaletteShortcut(id),
+  });
+
+  return [
+    command('nav.dashboard', 'Go to Dashboard', 'Navigation', ['dashboard', 'home']),
+    command('nav.courses', 'Go to Courses', 'Navigation', ['courses', 'course list']),
+    command('nav.resources', 'Go to Resources', 'Navigation', ['resources', 'files']),
+    command('nav.notes', 'Go to Notes', 'Navigation', ['notes']),
+    command('nav.calendar', 'Go to Calendar', 'Navigation', ['calendar', 'deadlines']),
+    command('nav.settings', 'Go to Settings', 'Navigation', ['settings', 'preferences']),
+    command('create.note', 'New note', 'Create', ['new note', 'note', 'create note']),
+    command('create.upload', 'Upload file', 'Create', ['upload', 'upload file', 'add file']),
+    command('create.scan', 'Import scan', 'Create', ['scan', 'import scan']),
+    command('sync.now', 'Sync all sources', 'Sync', ['sync', 'sync all', 'refresh everything']),
+    command('sync.drive', 'Sync Google Drive', 'Sync', ['sync drive', 'refresh drive']),
+    command('sync.classroom', 'Sync Google Classroom', 'Sync', ['sync classroom', 'refresh classroom']),
+    command('export.course', 'Export course for AI', 'Course actions', ['export for ai', 'export ai', 'export context']),
+    command('app.showShortcuts', 'Show keyboard shortcuts', 'Help', ['shortcuts', 'keyboard shortcuts', 'help']),
+    command('nav.toggleSidebar', 'Toggle sidebar', 'View', ['sidebar', 'toggle sidebar']),
+  ];
+}
+
+function palettePageLabel(): string {
+  if (selectedCourse && currentPage === 'courses') return `Course: ${selectedCourse.name}`;
+  return {
+    dashboard: 'Dashboard',
+    courses: 'Courses',
+    resources: 'Resources',
+    notes: 'Notes',
+    calendar: 'Calendar',
+    settings: 'Settings',
+  }[currentPage];
+}
+
+function paletteContextText(): string {
+  if (courseDetailVisible() && selectedCourse) return `${palettePageLabel()} · current course is visible`;
+  if (dashboardCourseFilterId !== null) {
+    const filteredCourse = commandPaletteCourses.find((course) => course.id === dashboardCourseFilterId);
+    if (filteredCourse) return `${palettePageLabel()} · filtered to ${filteredCourse.name}`;
+  }
+  return `${palettePageLabel()} · choose a target when an action needs one`;
+}
+
+function paletteCourseScore(query: string, course: Course): number | null {
+  return scorePaletteText(query, course.name, course.code ? [course.code] : []);
+}
+
+function paletteCourseChoices(query: string): Array<{ course: Course; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteCourses
+    .map((course) => ({ course, score: normalizedQuery ? paletteCourseScore(normalizedQuery, course) : 0 }))
+    .filter((entry): entry is { course: Course; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.course.name.localeCompare(b.course.name));
+}
+
+function paletteCurrentCourse(): Course | null {
+  if (courseDetailVisible() && selectedCourse) return selectedCourse;
+  if (dashboardCourseFilterId !== null) {
+    return commandPaletteCourses.find((course) => course.id === dashboardCourseFilterId) ?? null;
+  }
+  return null;
+}
+
+function commandPaletteCommandItem(command: PaletteCommandDefinition, detail: string, run: () => void | Promise<void>): PaletteItem {
+  return {
+    id: `command:${command.id}`,
+    label: command.label,
+    detail,
+    group: command.group,
+    shortcut: command.shortcut,
+    run,
+  };
+}
+
+function findShortcutAction(id: string): ShortcutAction | null {
+  return shortcutRegistry.all().find((action) => action.id === id) ?? null;
+}
+
+function runPaletteShortcut(id: string): void | Promise<void> {
+  closeCommandPalette();
+  return findShortcutAction(id)?.run();
+}
+
+function executeExportForCourse(course: Course): void {
+  closeCommandPalette();
+  void atlasApi.exportCourseContext(course.id).then((result) => {
+    const statusEl = document.getElementById('course-detail-export-status');
+    if (statusEl && courseDetailVisible() && selectedCourse?.id === course.id) {
+      statusEl.hidden = false;
+      statusEl.textContent = result.ok ? `Saved to ${result.filePath}` : result.error;
+    }
+  });
+}
+
+function beginPaletteCourseSelection(commandId: 'export.course'): void {
+  commandPaletteStep = 'course-selection';
+  commandPalettePendingCommand = commandId;
+  commandPaletteActiveIndex = 0;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  input.value = '';
+  input.placeholder = 'Choose a course…';
+  renderCommandPaletteItems('');
+  input.focus();
+}
+
+function exportCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentCourse();
+  if (current) {
+    return [
+      commandPaletteCommandItem(
+        command,
+        `Current course · ${current.name}`,
+        () => executeExportForCourse(current)
+      ),
+    ];
+  }
+
+  const choices = paletteCourseChoices(argument);
+  if (!argument) {
+    return [
+      commandPaletteCommandItem(command, 'Choose a course to continue', () => beginPaletteCourseSelection('export.course')),
+    ];
+  }
+  if (choices.length === 0) {
+    return [
+      commandPaletteCommandItem(command, `No course matches “${argument}”`, () => beginPaletteCourseSelection('export.course')),
+    ];
+  }
+
+  return choices.slice(0, 8).map(({ course }) => ({
+    id: `export:${course.id}`,
+    label: `${command.label} · ${course.name}`,
+    detail: course.code || course.term || 'Course',
+    group: 'Courses',
+    run: () => executeExportForCourse(course),
+  }));
+}
+
+function openPaletteEntity(entity: Course | NoteWithCourse | ResourceWithCourse): void | Promise<void> {
+  closeCommandPalette();
+  if ('folder_name' in entity) {
+    showPage('courses');
+    return selectCourse(entity);
+  }
+  if ('file_path' in entity) return openPreview(entity);
+  return openNoteEditor(entity);
+}
+
+function entityPaletteItems(query: string): PaletteItem[] {
+  const normalizedQuery = normalizePaletteText(query);
+  if (!normalizedQuery) return [];
+  const courses = commandPaletteCourses
+    .map((course) => ({ course, score: paletteCourseScore(normalizedQuery, course) }))
+    .filter((entry): entry is { course: Course; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.course.name.localeCompare(b.course.name))
+    .slice(0, 5)
+    .map(({ course }) => ({
+      id: `course:${course.id}`,
+      label: course.name,
+      detail: [course.code, course.term, course.archived === 1 ? 'Archived course' : 'Course'].filter(Boolean).join(' · '),
+      group: 'Courses',
+      run: () => openPaletteEntity(course),
+    }));
+  const notes = commandPaletteNotes
+    .map((note) => ({ note, score: scorePaletteText(normalizedQuery, note.title, [note.course_name]) }))
+    .filter((entry): entry is { note: NoteWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.note.title.localeCompare(b.note.title))
+    .slice(0, 4)
+    .map(({ note }) => ({
+      id: `note:${note.id}`,
+      label: note.title,
+      detail: `${note.course_name} · Note`,
+      group: 'Notes',
+      run: () => openPaletteEntity(note),
+    }));
+  const resources = commandPaletteResources
+    .map((resource) => ({ resource, score: scorePaletteText(normalizedQuery, resource.title, [resource.course_name]) }))
+    .filter((entry): entry is { resource: ResourceWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.resource.title.localeCompare(b.resource.title))
+    .slice(0, 4)
+    .map(({ resource }) => ({
+      id: `resource:${resource.id}`,
+      label: resource.title,
+      detail: `${resource.course_name} · Resource`,
+      group: 'Resources',
+      run: () => openPaletteEntity(resource),
+    }));
+  return [...courses, ...notes, ...resources];
+}
+
+function commandPaletteItemsForQuery(query: string): PaletteItem[] {
+  const commands = paletteCommands();
+  const prefixMatch = matchPaletteCommandPrefix(query, commands);
+  if (prefixMatch) {
+    if (prefixMatch.command.id === 'export.course') return exportCommandItems(prefixMatch, prefixMatch.command);
+    const detail = prefixMatch.argument ? `No parameters are needed for ${prefixMatch.command.label}` : 'Run this command';
+    return [commandPaletteCommandItem(prefixMatch.command, detail, () => runPaletteShortcut(prefixMatch.command.id))];
+  }
+
+  const items: PaletteItem[] = rankPaletteCommands(query, commands).slice(0, 12).map(({ command }) => {
+    const detail = command.id === 'export.course' ? 'Choose a course when you run it' : 'Run this command';
+    const run = command.id === 'export.course'
+      ? () => {
+        const current = paletteCurrentCourse();
+        if (current) executeExportForCourse(current);
+        else beginPaletteCourseSelection('export.course');
+      }
+      : () => runPaletteShortcut(command.id);
+    return commandPaletteCommandItem(command, detail, run);
+  });
+  return [...items, ...entityPaletteItems(query)].slice(0, 16);
+}
+
+function renderCommandPaletteItems(query: string): void {
+  const list = document.getElementById('command-palette-results')!;
+  const empty = document.getElementById('command-palette-empty')!;
+  const context = document.getElementById('command-palette-context')!;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  context.textContent = commandPaletteStep === 'course-selection' ? 'Export for AI · choose the course to use' : paletteContextText();
+  input.placeholder = commandPaletteStep === 'course-selection' ? 'Choose a course…' : 'Search commands and Atlas…';
+
+  const items: PaletteItem[] = commandPaletteStep === 'course-selection'
+    ? paletteCourseChoices(query).slice(0, 12).map(({ course }) => ({
+      id: `course-choice:${course.id}`,
+      label: course.name,
+      detail: [course.code, course.term, course.archived === 1 ? 'Archived course' : 'Course'].filter(Boolean).join(' · '),
+      group: 'Courses',
+      run: () => {
+        if (commandPalettePendingCommand === 'export.course') executeExportForCourse(course);
+      },
+    }))
+    : commandPaletteItemsForQuery(query);
+
+  commandPaletteItems = items;
+  commandPaletteActiveIndex = Math.max(0, Math.min(commandPaletteActiveIndex, items.length - 1));
+  list.innerHTML = '';
+  empty.hidden = items.length !== 0;
+  empty.textContent = commandPaletteStep === 'course-selection' ? 'No matching courses.' : 'No commands or Atlas items match that search.';
+
+  let groupName = '';
+  let group: HTMLLIElement | null = null;
+  items.forEach((item, index) => {
+    if (item.group !== groupName) {
+      groupName = item.group;
+      group = document.createElement('li');
+      group.className = 'command-palette-group';
+      const heading = document.createElement('h4');
+      heading.textContent = groupName;
+      group.appendChild(heading);
+      list.appendChild(group);
+    }
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'command-palette-item';
+    row.dataset.index = String(index);
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(index === commandPaletteActiveIndex));
+    row.classList.toggle('active', index === commandPaletteActiveIndex);
+    const text = document.createElement('span');
+    text.className = 'command-palette-item-text';
+    const label = document.createElement('strong');
+    label.textContent = item.label;
+    const detail = document.createElement('small');
+    detail.textContent = item.detail;
+    text.append(label, detail);
+    row.appendChild(text);
+    if (item.shortcut) {
+      const shortcut = document.createElement('span');
+      shortcut.className = 'command-palette-key';
+      shortcut.textContent = item.shortcut;
+      row.appendChild(shortcut);
+    }
+    row.addEventListener('mouseenter', () => {
+      commandPaletteActiveIndex = index;
+      updateCommandPaletteActiveRow();
+    });
+    row.addEventListener('click', () => void executeCommandPaletteItem(index));
+    group!.appendChild(row);
+  });
+}
+
+function updateCommandPaletteActiveRow(): void {
+  document.querySelectorAll<HTMLButtonElement>('.command-palette-item').forEach((row) => {
+    const active = Number(row.dataset.index) === commandPaletteActiveIndex;
+    row.classList.toggle('active', active);
+    row.setAttribute('aria-selected', String(active));
+  });
+  const active = document.querySelector<HTMLButtonElement>(`.command-palette-item[data-index="${commandPaletteActiveIndex}"]`);
+  active?.scrollIntoView({ block: 'nearest' });
+}
+
+async function executeCommandPaletteItem(index: number): Promise<void> {
+  const item = commandPaletteItems[index];
+  if (!item) return;
+  await item.run();
+}
+
+async function loadCommandPaletteData(): Promise<void> {
+  if (!commandPaletteDataPromise) {
+    commandPaletteDataPromise = Promise.all([
+      atlasApi.listCourses(),
+      atlasApi.getCourseSummaries(true),
+      atlasApi.listAllNotes(),
+      atlasApi.listAllResources(),
+    ]).then(([activeCourses, archivedCourses, notes, resources]) => {
+      const courses = new Map<number, Course>();
+      [...activeCourses, ...archivedCourses].forEach((course) => courses.set(course.id, course));
+      commandPaletteCourses = [...courses.values()];
+      commandPaletteNotes = notes;
+      commandPaletteResources = resources;
+    });
+  }
+  await commandPaletteDataPromise;
+}
+
+function openCommandPalette(): void {
+  const overlay = document.getElementById('command-palette-overlay')!;
+  if (!overlay.hidden) return;
+  commandPaletteReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  commandPaletteStep = 'commands';
+  commandPalettePendingCommand = null;
+  commandPaletteActiveIndex = 0;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  input.value = '';
+  overlay.hidden = false;
+  renderCommandPaletteItems('');
+  input.focus();
+  const token = ++commandPaletteRenderToken;
+  void loadCommandPaletteData().then(() => {
+    if (commandPaletteIsOpen() && token === commandPaletteRenderToken) renderCommandPaletteItems(input.value);
+  });
+}
+
+function closeCommandPalette(): void {
+  const overlay = document.getElementById('command-palette-overlay');
+  if (!overlay || overlay.hidden) return;
+  overlay.hidden = true;
+  commandPaletteStep = 'commands';
+  commandPalettePendingCommand = null;
+  commandPaletteItems = [];
+  const focusTarget = commandPaletteReturnFocus;
+  commandPaletteReturnFocus = null;
+  focusTarget?.focus();
+}
+
+function wireCommandPalette(): void {
+  const overlay = document.getElementById('command-palette-overlay')!;
+  const panel = document.getElementById('command-palette-panel')!;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  document.getElementById('command-palette-close')!.addEventListener('click', closeCommandPalette);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeCommandPalette();
+  });
+  input.addEventListener('input', () => {
+    commandPaletteActiveIndex = 0;
+    renderCommandPaletteItems(input.value);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = Math.min(commandPaletteActiveIndex + 1, commandPaletteItems.length - 1);
+      updateCommandPaletteActiveRow();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = Math.max(commandPaletteActiveIndex - 1, 0);
+      updateCommandPaletteActiveRow();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      void executeCommandPaletteItem(commandPaletteActiveIndex);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      if (commandPaletteStep === 'course-selection') {
+        commandPaletteStep = 'commands';
+        commandPalettePendingCommand = null;
+        input.value = '';
+        commandPaletteActiveIndex = 0;
+        renderCommandPaletteItems('');
+      } else {
+        closeCommandPalette();
+      }
+    }
+  });
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      input.focus();
+    }
+  });
 }
 
 function renderShortcutsCheatSheet(): void {
@@ -5881,6 +6335,7 @@ async function init(): Promise<void> {
       el.textContent = `Done — ${progress.total} file${progress.total === 1 ? '' : 's'} read.`;
     }
   });
+  wireCommandPalette();
   void loadShortcutOverrides();
   document.addEventListener('keydown', (e) => {
     const active = document.activeElement;

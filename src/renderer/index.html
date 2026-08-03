@@ -731,6 +731,30 @@
     </div>
   </div>
 
+  <div id="command-palette-overlay" hidden>
+    <div id="command-palette-panel" class="overlay-panel size-md" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
+      <div class="overlay-header command-palette-header">
+        <div class="overlay-header-titles">
+          <h3 id="command-palette-title">Command palette</h3>
+          <div id="command-palette-context" class="sub"></div>
+        </div>
+        <div class="overlay-header-actions">
+          <button id="command-palette-close" type="button" aria-label="Close command palette">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="overlay-body command-palette-body">
+        <input id="command-palette-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search commands and Atlas…" aria-label="Search commands and Atlas" />
+        <ul id="command-palette-results" role="listbox" aria-label="Command palette results"></ul>
+        <p id="command-palette-empty" class="muted" hidden></p>
+      </div>
+      <div class="overlay-footer command-palette-footer">
+        <span>↑↓ Navigate</span><span>Enter Select</span><span>Esc Close</span>
+      </div>
+    </div>
+  </div>
+
   <div id="confirm-overlay" hidden>
     <div id="confirm-panel">
       <div class="confirm-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div>

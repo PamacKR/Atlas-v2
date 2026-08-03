@@ -10,6 +10,7 @@
     "start:fast": "electron .",
     "watch": "tsc -b -w",
     "verify": "npm run build && node scripts/verify-app.js",
+    "verify:command-palette": "npm run build && node scripts/verify-command-palette.js",
     "mcp:server": "node scripts/run-mcp-server.js",
     "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js",
     "verify:extraction": "npm run build && node scripts/run-as-electron-node.js scripts/verify-extraction.js",

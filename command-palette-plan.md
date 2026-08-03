@@ -1,6 +1,6 @@
 # Atlas Command Palette — Implementation Plan
 
-**Status:** Planning only. No command-palette code has been added yet.
+**Status:** First implementation milestone in progress. The deterministic resolver, shared overlay, initial command set, course selection flow, and focused Electron verification are implemented; parameterized actions and final polish remain.
 
 **Scope:** A keyboard-first command and navigation surface opened with `Ctrl+K`, implemented entirely with deterministic local matching. Atlas must not call an AI/LLM API or any paid service to interpret commands.
 
@@ -237,23 +237,25 @@ It should cover:
 
 Focused build/type checks should be used during implementation. The full Electron suite should run after a cohesive milestone, not after every small visual edit.
 
+The first focused verifier now exists as `scripts/verify-command-palette.js` and is available through `npm run verify:command-palette`. It covers opening and focus restoration, missing-course export flow, `dev eco` course matching, export file creation, new-note handoff to the existing course picker, and navigation. Its screenshot is saved as `verify-command-palette.png` and is ignored by Git.
+
 ## 13. Implementation stages
 
 ### Stage 0 — Confirm product behavior
 
 Before writing code, settle the initial command list, context rules, ambiguity behavior, target-preview behavior, and whether the palette should remain usable above existing overlays.
 
-### Stage 1 — Build the resolver foundation
+### Stage 1 — Build the resolver foundation — complete for the first milestone
 
-Implement command metadata, input normalization, command matching, course/entity matching, confidence ranking, ambiguity detection, and parameter-state transitions. Test the resolver independently of the visual layer.
+Implemented in `src/renderer/command-palette.ts` and the renderer: command metadata, input normalization, deterministic prefix matching, token/prefix scoring, course/entity ranking, and the explicit course-selection state. The matcher remains local and has no AI/API dependency.
 
-### Stage 2 — Build the palette shell
+### Stage 2 — Build the palette shell — complete for the first milestone
 
-Add the shared overlay markup, focused input, result groups, target/context display, keyboard navigation, focus restoration, empty states, and hidden-safe styles.
+Added the shared overlay markup and hidden-safe styles to the renderer. The palette has a focused search field, current-page context line, grouped results, visible shortcut bindings, active-row state, empty state, mouse selection, keyboard navigation, Escape back-stepping, and focus restoration.
 
-### Stage 3 — Connect the first commands
+### Stage 3 — Connect the first commands — in progress
 
-Connect navigation, entity opening, new note, syncing, Export for AI, shortcut help, sidebar, and settings/theme actions through existing Atlas behavior.
+Connected navigation, course/note/resource opening, new note, upload, scan import, sync commands, Export for AI, shortcut help, sidebar toggle, and settings navigation through existing Atlas behavior. The remaining work in this stage is to expand result feedback and cover the remaining high-value commands without duplicating existing workflows.
 
 ### Stage 4 — Add guided workflows
 

@@ -5616,6 +5616,107 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 
 /* The remaining shared overlays use the same compact panel anatomy as the
    mockup: one header, one scrollable body, and 30px close actions. */
+#command-palette-overlay { position: fixed; inset: 0; }
+#command-palette-overlay:not([hidden]) {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: min(15vh, 120px) var(--space-4) var(--space-4);
+  background: rgba(0, 0, 0, .62);
+  z-index: 100;
+}
+
+#command-palette-panel.overlay-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 100%);
+  max-width: none;
+  max-height: min(680px, calc(100vh - (var(--space-4) * 2)));
+  padding: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .5);
+  overflow: hidden;
+}
+
+#command-palette-panel .command-palette-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--rule);
+}
+
+#command-palette-panel .overlay-header-titles { min-width: 0; }
+#command-palette-panel .overlay-header h3 { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; }
+#command-palette-context { margin-top: 1px; overflow: hidden; color: var(--text-faint); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+#command-palette-panel .overlay-header-actions { display: flex; flex-shrink: 0; }
+#command-palette-panel .overlay-header-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+#command-palette-panel .overlay-header-actions button:hover,
+#command-palette-panel .overlay-header-actions button:focus-visible { color: var(--urgent); background: rgba(224, 87, 74, .12); outline: none; }
+#command-palette-panel .overlay-header-actions svg { width: 16px; height: 16px; }
+
+#command-palette-panel .command-palette-body { min-height: 0; padding: var(--space-4) var(--space-5) 0; overflow: auto; }
+#command-palette-input {
+  width: 100%;
+  height: 42px;
+  margin: 0 0 var(--space-4);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+#command-palette-input::placeholder { color: var(--text-faint); }
+#command-palette-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(217, 164, 65, .16); }
+#command-palette-results { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0 0 var(--space-3); list-style: none; }
+.command-palette-group { margin: 0; padding: 0; list-style: none; }
+.command-palette-group h4 { margin: var(--space-3) 0 var(--space-2); color: var(--text-faint); font-size: var(--text-xs); font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.command-palette-group:first-child h4 { margin-top: 0; }
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  gap: var(--space-4);
+  padding: 7px var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.command-palette-item:hover,
+.command-palette-item:focus-visible,
+.command-palette-item.active { background: var(--bg-hover); outline: none; }
+.command-palette-item-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.command-palette-item-text strong { overflow: hidden; color: var(--text); font-size: var(--text-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-item-text small { overflow: hidden; color: var(--text-faint); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-key { flex: 0 0 auto; padding: 3px 7px; border: 1px solid var(--rule-strong); border-radius: 6px; background: var(--bg-hover); color: var(--text-muted); font-size: var(--text-xs); white-space: nowrap; }
+#command-palette-empty { margin: 0; padding: var(--space-4) var(--space-3) var(--space-5); color: var(--text-faint); font-size: var(--text-sm); }
+#command-palette-panel .command-palette-footer { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-5); border-top: 1px solid var(--rule); color: var(--text-faint); font-size: var(--text-xs); }
+
 #shortcuts-cheatsheet-overlay:not([hidden]),
 #classroom-item-detail-overlay:not([hidden]) {
   display: flex;
