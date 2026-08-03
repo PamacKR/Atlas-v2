@@ -75,6 +75,8 @@ UI overhaul work is active on `ui-overhaul-v2`; the earlier statement below that
 - **Command palette interaction polish, 2026-08-03:** ambiguous target lists no longer preselect their first course, note, resource, deadline, or OCR result; the user must explicitly move to or click a result before Enter can run it. The input exposes the active result through `aria-activedescendant`, Arrow navigation wraps, and Tab/Shift+Tab cycles through the palette controls and results. The input focus ring now follows the selected accent token. Focused Electron verification covers these keyboard/ambiguity paths plus light and dark theme screenshots, both of which were inspected.
 - **Command palette matching safety, 2026-08-03:** target actions now require a strong local name/code/prefix match; weak fuzzy matches are shown as no-match guidance instead of being executed as if they were certain. This preserves forgiving search while keeping consequential actions deterministic and local-only.
 
+- **Resources source filter, 2026-08-03:** Resources now has a combined Local/Classroom/Drive source filter alongside the existing course, kind, sort, and view controls. Manual uploads and watched-folder files count as Local; Classroom attachments and Drive imports remain distinct. A focused Electron verifier seeds one resource of each source without requiring Google credentials and confirms each filter plus the All sources reset.
+
 **Historical state follows.**
 
 **What actually happened (read this before assuming any earlier plan is still live):**

@@ -1248,6 +1248,23 @@ if (process.env.ATLAS_TEST_DASHBOARD_V2 === '1') {
   });
 }
 
+if (process.env.ATLAS_TEST_RESOURCES_FILTERS === '1') {
+  ipcMain.handle('test:seedResourcesFilterItems', () => {
+    const db = getDb();
+    const courseId = Number(
+      db.prepare("INSERT INTO courses (name, folder_name) VALUES ('Resources filter verification course', 'resources-filter-verify')").run()
+        .lastInsertRowid
+    );
+    const insert = db.prepare(
+      'INSERT INTO resources (course_id, title, kind, source, file_path, drive_file_id, classroom_attachment_id, extraction_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    insert.run(courseId, 'Local filter verification file', 'text', 'manual', '/verify/local.txt', null, null, 'done');
+    insert.run(courseId, 'Classroom filter verification file', 'link', 'classroom', 'https://classroom.google.com/c/verify', null, 'verify-classroom', 'unsupported');
+    insert.run(courseId, 'Drive filter verification file', 'pdf', 'drive', '/verify/drive.pdf', 'verify-drive', null, 'done');
+    return courseId;
+  });
+}
+
 // `archived` param: false (default, and every existing caller that doesn't
 // pass one) returns only active courses, matching the behavior this handler
 // always had. Passing true switches to *only* archived courses instead — the

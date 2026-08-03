@@ -401,6 +401,7 @@ interface AtlasApi {
   pinDashboardAnnouncement: (announcementId: number) => Promise<boolean>;
   unpinDashboardAnnouncement: (announcementId: number) => Promise<boolean>;
   seedDashboardV2TestItems: () => Promise<number>;
+  seedResourcesFilterTestItems: () => Promise<number>;
   getCourseSummaries: (archived?: boolean) => Promise<CourseSummary[]>;
   listAllResources: () => Promise<ResourceWithCourse[]>;
   listAllNotes: () => Promise<NoteWithCourse[]>;
@@ -900,7 +901,10 @@ function setShowArchivedCourses(value: boolean): void {
 // (openPreview() below) — a docked pane was tried first but left too little
 // width for the list next to it for what the content actually needed.
 
+type ResourcesSourceFilter = '' | 'local' | 'classroom' | 'drive';
+
 let resourcesKindFilter = ''; // '' = all; otherwise a comma-separated list of kinds
+let resourcesSourceFilter: ResourcesSourceFilter = '';
 let resourcesCourseFilterId: number | null = null; // null = all courses
 let resourcesExtractionReview = false; // true only when entered from Settings → Storage → Review
 let notesCourseFilterId: number | null = null; // null = all courses
@@ -1152,15 +1156,27 @@ function sortResources(resources: ResourceWithCourse[], sort: ResourcesSort): Re
   return sorted;
 }
 
+function resourceSourceFilterKey(resource: ResourceWithCourse): Exclude<ResourcesSourceFilter, ''> {
+  if (resource.source === 'classroom') return 'classroom';
+  if (resource.source === 'drive') return 'drive';
+  return 'local';
+}
+
 async function renderResourcesPage(): Promise<void> {
   void renderDashboard();
   const courses = await atlasApi.listCourses();
   const allResources = await atlasApi.listAllResources();
   renderResourcesRail(courses, allResources);
+  document.querySelectorAll<HTMLButtonElement>('#resources-source-filter .resource-source-control').forEach((control) => {
+    control.classList.toggle('active', (control.dataset.resourceSource ?? '') === resourcesSourceFilter);
+  });
   document.getElementById('resources-page-count')!.textContent = String(allResources.length);
   let filtered = allResources;
   if (resourcesCourseFilterId !== null) {
     filtered = filtered.filter((r) => r.course_id === resourcesCourseFilterId);
+  }
+  if (resourcesSourceFilter) {
+    filtered = filtered.filter((resource) => resourceSourceFilterKey(resource) === resourcesSourceFilter);
   }
   if (resourcesKindFilter) {
     const kinds = resourcesKindFilter.split(',');
@@ -3218,6 +3234,7 @@ async function goToDashboardDeadline(deadline: DashboardDeadline): Promise<void>
 
 async function goToDashboardResource(resource: DashboardResource): Promise<void> {
   resourcesCourseFilterId = resource.course_id;
+  resourcesSourceFilter = '';
   showPage('resources');
   await openPreview(resource);
 }
@@ -6696,6 +6713,16 @@ async function init(): Promise<void> {
     });
   });
 
+  document.querySelectorAll<HTMLButtonElement>('#resources-source-filter .resource-source-control').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#resources-source-filter .resource-source-control').forEach((el) => el.classList.remove('active'));
+      chip.classList.add('active');
+      resourcesExtractionReview = false;
+      resourcesSourceFilter = (chip.dataset.resourceSource ?? '') as ResourcesSourceFilter;
+      void renderResourcesPage();
+    });
+  });
+
   document.getElementById('resources-sort-controls')!.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-resource-sort]');
     if (!button?.dataset.resourceSort) return;
@@ -6789,6 +6816,7 @@ async function init(): Promise<void> {
   document.getElementById('settings-review-extraction')!.addEventListener('click', () => {
     resourcesExtractionReview = true;
     resourcesCourseFilterId = null;
+    resourcesSourceFilter = '';
     resourcesKindFilter = '';
     showPage('resources');
   });

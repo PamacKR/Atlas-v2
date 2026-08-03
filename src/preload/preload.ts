@@ -452,6 +452,7 @@ contextBridge.exposeInMainWorld('atlas', {
   unpinDashboardAnnouncement: (announcementId: number) =>
     ipcRenderer.invoke('dashboard:unpinAnnouncement', announcementId),
   seedDashboardV2TestItems: (): Promise<number> => ipcRenderer.invoke('test:seedDashboardV2Items'),
+  seedResourcesFilterTestItems: (): Promise<number> => ipcRenderer.invoke('test:seedResourcesFilterItems'),
   getCourseSummaries: (archived = false): Promise<CourseSummary[]> =>
     ipcRenderer.invoke('dashboard:courseSummaries', archived),
   listAllResources: (): Promise<ResourceWithCourse[]> => ipcRenderer.invoke('resources:listAll'),
