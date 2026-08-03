@@ -216,6 +216,7 @@ interface DashboardAnnouncement {
   title: string;
   posted_at: string;
   course_name: string;
+  dashboard_pinned: number;
 }
 
 interface DashboardClassroomUpdate {
@@ -397,7 +398,7 @@ interface AtlasApi {
   getNewClassroomItems: (courseId?: number | null) => Promise<DashboardClassroomUpdate[]>;
   clearNewClassroomItem: (itemType: 'announcement' | 'assignment', itemId: number) => Promise<boolean>;
   clearAllNewClassroomItems: (courseId?: number | null) => Promise<number>;
-  createPinnedDashboardAnnouncement: (courseId: number, title: string, body: string) => Promise<unknown>;
+  pinDashboardAnnouncement: (announcementId: number) => Promise<boolean>;
   unpinDashboardAnnouncement: (announcementId: number) => Promise<boolean>;
   seedDashboardV2TestItems: () => Promise<number>;
   getCourseSummaries: (archived?: boolean) => Promise<CourseSummary[]>;
@@ -1119,7 +1120,7 @@ function renderCourseRail(
 // were more than a couple of courses. Shared between the Upload and New Note
 // flows via `mode`; Upload additionally carries a drag-and-drop zone.
 
-type CoursePickerMode = 'upload' | 'note' | 'scan' | 'assign';
+type CoursePickerMode = 'upload' | 'note' | 'scan' | 'assign' | 'deadline';
 
 let coursePickerMode: CoursePickerMode = 'upload';
 let coursePickerCourses: Course[] = [];
@@ -1251,6 +1252,15 @@ async function selectCoursePickerCourse(courseId: number): Promise<void> {
     return;
   }
 
+  if (coursePickerMode === 'deadline') {
+    const course = coursePickerCourses.find((item) => item.id === courseId);
+    closeCoursePicker();
+    if (!course) return;
+    selectedCourse = course;
+    await openDeadlineEditForm(null);
+    return;
+  }
+
   if (coursePickerPendingFile) {
     const file = coursePickerPendingFile;
     closeCoursePicker();
@@ -1297,6 +1307,9 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
     dropzone.hidden = true;
   } else if (mode === 'assign') {
     title.textContent = 'Move note to course';
+    dropzone.hidden = true;
+  } else if (mode === 'deadline') {
+    title.textContent = 'Add deadline';
     dropzone.hidden = true;
   } else if (file) {
     title.textContent = 'Upload file';
@@ -2569,6 +2582,39 @@ let calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate
 let calendarEnabledKinds = new Set<CalendarEventKind>(['deadline', 'assignment']);
 let calendarEnabledCourses = new Set<number>();
 let calendarCourseFiltersInitialized = false;
+let calendarFiltersLoaded = false;
+
+function persistCalendarFilters(): void {
+  void atlasApi.setSetting('calendarFilters', JSON.stringify({
+    kinds: [...calendarEnabledKinds],
+    courseIds: [...calendarEnabledCourses],
+  }));
+}
+
+async function initializeCalendarFilters(events: CalendarEvent[]): Promise<void> {
+  if (calendarFiltersLoaded) return;
+  calendarFiltersLoaded = true;
+  const saved = await atlasApi.getSetting('calendarFilters');
+  if (saved) {
+    try {
+      const state = JSON.parse(saved) as { kinds?: unknown; courseIds?: unknown };
+      if (Array.isArray(state.kinds) && Array.isArray(state.courseIds)) {
+        const validKinds = state.kinds.filter((kind): kind is CalendarEventKind =>
+          kind === 'deadline' || kind === 'assignment' || kind === 'announcement'
+        );
+        const validCourseIds = state.courseIds.filter((id): id is number => Number.isInteger(id));
+        calendarEnabledKinds = new Set(validKinds);
+        calendarEnabledCourses = new Set(validCourseIds);
+        calendarCourseFiltersInitialized = true;
+        return;
+      }
+    } catch {
+      // A malformed old preference is safely replaced by the default below.
+    }
+  }
+  events.forEach((event) => calendarEnabledCourses.add(event.courseId));
+  calendarCourseFiltersInitialized = true;
+}
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -2614,10 +2660,7 @@ async function renderCalendarPage(): Promise<void> {
   // Populate the initial all-courses state once. An empty set after that is
   // a meaningful user choice (all course filters unchecked), not a signal to
   // silently turn every course back on during the next render.
-  if (!calendarCourseFiltersInitialized) {
-    events.forEach((event) => calendarEnabledCourses.add(event.courseId));
-    calendarCourseFiltersInitialized = true;
-  }
+  if (!calendarCourseFiltersInitialized) await initializeCalendarFilters(events);
   const visibleEvents = events.filter((event) => calendarEnabledKinds.has(event.kind) && calendarEnabledCourses.has(event.courseId));
   renderCalendarMonthLabel();
   renderCalendarViews(visibleEvents);
@@ -2821,6 +2864,7 @@ function renderCalendarDay(byDate: Map<string, CalendarEvent[]>): void {
     view.appendChild(empty);
     return;
   }
+
   events.forEach((event) => {
     const row = document.createElement('button');
     row.type = 'button';
@@ -2862,12 +2906,12 @@ function renderCalendarMiniDatePicker(events: CalendarEvent[]): void {
 function renderCalendarFilters(events: CalendarEvent[]): void {
   const availableCourses = new Map<number, string>();
   events.forEach((event) => availableCourses.set(event.courseId, event.courseName));
-  for (const courseId of [...calendarEnabledCourses]) if (!availableCourses.has(courseId)) calendarEnabledCourses.delete(courseId);
   const typeContainer = document.getElementById('calendar-type-filters')!;
   typeContainer.innerHTML = '';
   const types: [CalendarEventKind, string][] = [['deadline', 'Deadlines'], ['assignment', 'Assignments'], ['announcement', 'Announcements']];
   types.forEach(([kind, label]) => typeContainer.appendChild(makeCalendarFilter(label, calendarEnabledKinds.has(kind), () => {
     calendarEnabledKinds.has(kind) ? calendarEnabledKinds.delete(kind) : calendarEnabledKinds.add(kind);
+    persistCalendarFilters();
     void renderCalendarPage();
   })));
   const courseContainer = document.getElementById('calendar-course-filters')!;
@@ -2875,6 +2919,7 @@ function renderCalendarFilters(events: CalendarEvent[]): void {
   [...availableCourses.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([courseId, name]) => {
     const filter = makeCalendarFilter(name, calendarEnabledCourses.has(courseId), () => {
       calendarEnabledCourses.has(courseId) ? calendarEnabledCourses.delete(courseId) : calendarEnabledCourses.add(courseId);
+      persistCalendarFilters();
       void renderCalendarPage();
     });
     const swatch = document.createElement('span');
@@ -3233,21 +3278,29 @@ async function openDashboardClassroomUpdate(update: DashboardClassroomUpdate): P
 }
 
 async function openDashboardImportantAnnouncementForm(): Promise<void> {
-  const courses = (await atlasApi.listCourses()).filter((course) => !course.archived);
-  if (courses.length === 0) return;
-  const courseSelect = document.getElementById('dashboard-important-course')!;
-  const selectedCourseId = courses.some((course) => course.id === dashboardCourseFilterId)
-    ? dashboardCourseFilterId!
-    : courses[0].id;
-  renderDriveReviewSelect(
-    courseSelect,
-    courses.map((course) => ({ value: String(course.id), label: course.name })),
-    String(selectedCourseId)
-  );
-  (document.getElementById('dashboard-important-title-input') as HTMLInputElement).value = '';
-  (document.getElementById('dashboard-important-body') as HTMLTextAreaElement).value = '';
+  const announcements = await atlasApi.listAllAnnouncementsWithCourse();
+  const available = announcements.filter((announcement) => !announcement.dashboard_pinned);
+  const list = document.getElementById('dashboard-important-list')!;
+  list.innerHTML = '';
+  if (available.length === 0) {
+    list.innerHTML = '<li class="muted">No unpinned announcements.</li>';
+  } else {
+    for (const announcement of available) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'dashboard-important-item';
+      row.innerHTML = `<span class="dashboard-important-item-title">${escapeHtml(announcement.title)}</span><span class="dashboard-important-item-course"><span class="dashboard-course-swatch" style="background:${courseAvatarColor(announcement.course_id)}"></span>${escapeHtml(announcement.course_name)}</span>`;
+      row.addEventListener('click', async () => {
+        await atlasApi.pinDashboardAnnouncement(announcement.id);
+        closeDashboardImportantAnnouncementForm();
+        await renderDashboardAnnouncements();
+      });
+      list.appendChild(row);
+    }
+  }
+  (document.getElementById('dashboard-important-search') as HTMLInputElement).value = '';
   document.getElementById('dashboard-important-overlay')!.hidden = false;
-  (document.getElementById('dashboard-important-title-input') as HTMLInputElement).focus();
+  (document.getElementById('dashboard-important-search') as HTMLInputElement).focus();
 }
 
 function closeDashboardImportantAnnouncementForm(): void {
@@ -5808,16 +5861,13 @@ async function init(): Promise<void> {
   document.getElementById('dashboard-important-overlay')!.addEventListener('click', (event) => {
     if (event.target === event.currentTarget) closeDashboardImportantAnnouncementForm();
   });
-  document.getElementById('dashboard-important-form')!.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const title = (document.getElementById('dashboard-important-title-input') as HTMLInputElement).value;
-    const body = (document.getElementById('dashboard-important-body') as HTMLTextAreaElement).value;
-    const courseId = Number((document.getElementById('dashboard-important-course') as HTMLElement).dataset.value);
-    if (!Number.isInteger(courseId) || !title.trim()) return;
-    await atlasApi.createPinnedDashboardAnnouncement(courseId, title, body);
-    closeDashboardImportantAnnouncementForm();
-    await renderDashboardAnnouncements();
+  document.getElementById('dashboard-important-search')!.addEventListener('input', (event) => {
+    const query = (event.target as HTMLInputElement).value.trim().toLowerCase();
+    document.querySelectorAll<HTMLElement>('#dashboard-important-list .dashboard-important-item').forEach((row) => {
+      row.hidden = query.length > 0 && !row.textContent!.toLowerCase().includes(query);
+    });
   });
+  document.getElementById('calendar-add-deadline')!.addEventListener('click', () => void openCoursePicker('deadline'));
 
   document.getElementById('calendar-prev-month')!.addEventListener('click', () => changeCalendarMonth(-1));
   document.getElementById('calendar-next-month')!.addEventListener('click', () => changeCalendarMonth(1));

@@ -3963,9 +3963,10 @@ button#classroom-connect-confirm {
 #course-picker-panel.upload-picker:not(.has-upload-file) #course-picker-list { opacity: .48; pointer-events: none; }
 #course-picker-panel #course-picker-progress { margin: var(--space-3) 0 0; }
 
-/* Dashboard's manually curated announcements use the same compact overlay
-   shell and custom select language as every other Atlas form. */
-#dashboard-important-overlay:not([hidden]) { display: flex; align-items: center; justify-content: center; padding: var(--space-6); background: rgba(5, 5, 4, .72); z-index: 60; }
+/* Dashboard's curated-announcement picker uses the shared overlay shell.
+   It is fixed to the viewport, not the Dashboard's scrolling/grid context. */
+#dashboard-important-overlay { position: fixed; inset: 0; }
+#dashboard-important-overlay:not([hidden]) { display: flex; align-items: center; justify-content: center; padding: var(--space-6); background: rgba(5, 5, 4, .72); z-index: 80; }
 #dashboard-important-panel.overlay-panel { width: min(420px, 100%); max-width: none; padding: 0; background: var(--bg-panel); border-color: var(--rule-strong); border-radius: var(--radius-lg); box-shadow: 0 24px 64px rgba(0, 0, 0, .5); overflow: hidden; }
 #dashboard-important-panel .overlay-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--rule); }
 #dashboard-important-panel .overlay-header h3 { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; }
@@ -3974,16 +3975,19 @@ button#classroom-connect-confirm {
 #dashboard-important-panel .overlay-close:hover, #dashboard-important-panel .overlay-close:focus-visible { background: rgba(224, 87, 74, .12); color: var(--urgent); outline: none; }
 #dashboard-important-panel .overlay-close svg { width: 16px; height: 16px; }
 #dashboard-important-form { display: flex; flex-direction: column; }
-#dashboard-important-form .overlay-body { display: grid; gap: var(--space-4); padding: var(--space-5); overflow: visible; }
-#dashboard-important-form label { display: grid; gap: var(--space-2); color: var(--text-muted); font-size: var(--text-sm); }
-#dashboard-important-form label > span { color: var(--text-faint); }
-#dashboard-important-form input, #dashboard-important-form textarea { width: 100%; border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-sm); }
-#dashboard-important-form input { height: 38px; padding: 0 var(--space-3); }
-#dashboard-important-form textarea { min-height: 92px; padding: var(--space-3); resize: vertical; }
-#dashboard-important-form input:focus, #dashboard-important-form textarea:focus { border-color: var(--text-faint); outline: none; }
-#dashboard-important-form .dselect-trigger { min-height: 38px; border-color: var(--rule); background: var(--bg); color: var(--text); }
-#dashboard-important-form .dselect-menu { z-index: 2; }
+#dashboard-important-form .overlay-body { display: grid; gap: var(--space-3); max-height: min(440px, 60vh); padding: var(--space-5); overflow-y: auto; }
+#dashboard-important-form .overlay-body > p { margin: 0; color: var(--text-faint); font-size: var(--text-sm); }
+#dashboard-important-search { width: 100%; height: 34px; padding: 0 var(--space-3); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-sm); }
+#dashboard-important-search:focus { border-color: var(--text-faint); outline: none; }
+#dashboard-important-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+#dashboard-important-list .muted { padding: var(--space-3) 0; color: var(--text-faint); font-size: var(--text-sm); }
+.dashboard-important-item { display: grid; gap: 2px; width: 100%; padding: var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background var(--transition); }
+.dashboard-important-item:hover, .dashboard-important-item:focus-visible { background: var(--bg-hover); outline: none; }
+.dashboard-important-item-title { overflow: hidden; font-size: var(--text-md); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-important-item-course { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow: hidden; color: var(--text-faint); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
 #dashboard-important-form .overlay-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--rule); }
+#dashboard-important-form .btn { display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition); }
+#dashboard-important-form .btn:hover, #dashboard-important-form .btn:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 
 /* Keep preview controls inside the canvas. The old sibling flow made their
    box span the panel width and pushed the utility actions below the title. */
@@ -4194,7 +4198,8 @@ button#classroom-connect-confirm {
   margin: 0;
 }
 #main-area:not([data-page="dashboard"]) #dashboard-course-filter { display: none; }
-.dashboard-course-filter { width: 120px; }
+.dashboard-course-filter { width: 120px; flex: 0 0 120px; }
+.dashboard-course-filter .dselect-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dselect { position: relative; }
 .dselect-trigger {
   display: flex;
