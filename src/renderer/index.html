@@ -41,7 +41,7 @@
             <button id="ashoka-import-button" type="button" class="section-action">Import from Ashoka Planner</button>
             <button id="add-course-toggle" type="button" class="section-action">+ Add course</button>
           </div>
-          <div id="resources-topbar-actions" class="topbar-page-actions" hidden><button id="upload-button" type="button" class="section-action">+ Upload file</button></div>
+          <div id="resources-topbar-actions" class="topbar-page-actions" hidden><button id="upload-button" type="button" class="section-action">+ Upload file</button><div id="resources-source-filter" class="dselect resources-source-select"></div></div>
           <div id="notes-topbar-actions" class="topbar-page-actions" hidden>
             <button id="import-scan-button" type="button" class="btn">+ Import scan</button>
             <button id="new-note-button" type="button" class="btn">+ New note</button>
@@ -274,12 +274,6 @@
           </aside>
           <div class="resources-main">
             <div class="resources-kindrow">
-              <div id="resources-source-filter" class="resources-text-controls" aria-label="Filter resources by source">
-                <button class="resource-source-control active" type="button" data-resource-source="">All sources</button>
-                <button class="resource-source-control" type="button" data-resource-source="local">Local</button>
-                <button class="resource-source-control" type="button" data-resource-source="classroom">Classroom</button>
-                <button class="resource-source-control" type="button" data-resource-source="drive">Drive</button>
-              </div>
               <div id="resources-kind-filter" class="resources-text-controls" aria-label="Filter resources by kind">
                 <button class="resource-kind-control active" type="button" data-kind-filter="">All kinds</button>
                 <button class="resource-kind-control" type="button" data-kind-filter="pdf">PDF</button>

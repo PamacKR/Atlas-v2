@@ -1162,14 +1162,44 @@ function resourceSourceFilterKey(resource: ResourceWithCourse): Exclude<Resource
   return 'local';
 }
 
+const RESOURCE_SOURCE_OPTIONS: Array<{ value: ResourcesSourceFilter; label: string }> = [
+  { value: '', label: 'All sources' },
+  { value: 'local', label: 'Local' },
+  { value: 'classroom', label: 'Classroom' },
+];
+
+function renderResourcesSourceFilter(): void {
+  const root = document.getElementById('resources-source-filter');
+  if (!root) return;
+  const selected = RESOURCE_SOURCE_OPTIONS.find((option) => option.value === resourcesSourceFilter) ?? RESOURCE_SOURCE_OPTIONS[0];
+  root.dataset.value = selected.value;
+  root.innerHTML = `
+    <button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter resources by source">
+      <span>${selected.label}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="dselect-menu" role="listbox" hidden>${RESOURCE_SOURCE_OPTIONS.map((option) => `<button type="button" class="dselect-option${option.value === selected.value ? ' selected' : ''}" data-value="${option.value}">${option.label}</button>`).join('')}</div>`;
+
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    root.classList.toggle('open', !menu.hidden);
+    trigger.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    resourcesExtractionReview = false;
+    resourcesSourceFilter = (option.dataset.value ?? '') as ResourcesSourceFilter;
+    void renderResourcesPage();
+  }));
+}
+
 async function renderResourcesPage(): Promise<void> {
   void renderDashboard();
   const courses = await atlasApi.listCourses();
   const allResources = await atlasApi.listAllResources();
   renderResourcesRail(courses, allResources);
-  document.querySelectorAll<HTMLButtonElement>('#resources-source-filter .resource-source-control').forEach((control) => {
-    control.classList.toggle('active', (control.dataset.resourceSource ?? '') === resourcesSourceFilter);
-  });
+  renderResourcesSourceFilter();
   document.getElementById('resources-page-count')!.textContent = String(allResources.length);
   let filtered = allResources;
   if (resourcesCourseFilterId !== null) {
@@ -6709,16 +6739,6 @@ async function init(): Promise<void> {
       chip.classList.add('active');
       resourcesExtractionReview = false;
       resourcesKindFilter = chip.dataset.kindFilter ?? '';
-      void renderResourcesPage();
-    });
-  });
-
-  document.querySelectorAll<HTMLButtonElement>('#resources-source-filter .resource-source-control').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('#resources-source-filter .resource-source-control').forEach((el) => el.classList.remove('active'));
-      chip.classList.add('active');
-      resourcesExtractionReview = false;
-      resourcesSourceFilter = (chip.dataset.resourceSource ?? '') as ResourcesSourceFilter;
       void renderResourcesPage();
     });
   });

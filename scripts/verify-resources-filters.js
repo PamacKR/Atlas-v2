@@ -35,15 +35,20 @@ const fs = require('fs');
       'Drive filter verification file',
     ], 'All sources did not show every seeded resource');
 
-    for (const source of ['local', 'classroom', 'drive']) {
-      await window.click(`#resources-source-filter [data-resource-source="${source}"]`);
+    const sourceOptions = await window.$$eval('#resources-source-filter .dselect-option', (els) => els.map((el) => el.textContent));
+    if (sourceOptions.includes('Drive')) throw new Error(`Drive should not be a source-filter option: ${JSON.stringify(sourceOptions)}`);
+
+    for (const source of ['local', 'classroom']) {
+      await window.click('#resources-source-filter .dselect-trigger');
+      await window.click(`#resources-source-filter .dselect-option[data-value="${source}"]`);
       await window.waitForTimeout(150);
       await assertTitles([`${source[0].toUpperCase()}${source.slice(1)} filter verification file`], `${source} source filter returned the wrong resources`);
-      const active = await window.getAttribute(`#resources-source-filter [data-resource-source="${source}"]`, 'class');
-      if (!active.includes('active')) throw new Error(`${source} source filter did not become active`);
+      const label = await window.textContent('#resources-source-filter .dselect-trigger');
+      if (label.trim() !== `${source[0].toUpperCase()}${source.slice(1)}`) throw new Error(`${source} source filter did not become active: ${label}`);
     }
 
-    await window.click('#resources-source-filter [data-resource-source=""]');
+    await window.click('#resources-source-filter .dselect-trigger');
+    await window.click('#resources-source-filter .dselect-option[data-value=""]');
     await window.waitForTimeout(150);
     await assertTitles([
       'Local filter verification file',

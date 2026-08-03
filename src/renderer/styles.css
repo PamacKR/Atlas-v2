@@ -3840,6 +3840,8 @@ button#classroom-connect-confirm {
 .topbar-page-actions:not([hidden]) { display: flex; align-items: center; gap: var(--space-2); }
 #topbar .topbar-page-actions button { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition); }
 #topbar .topbar-page-actions button:hover, #topbar .topbar-page-actions button:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
+#resources-topbar-actions .resources-source-select { width: 132px; flex: 0 0 132px; }
+#resources-topbar-actions .resources-source-select .dselect-menu { min-width: 132px; }
 
 #search-box {
   width: 300px;
@@ -3888,9 +3890,9 @@ button#classroom-connect-confirm {
 #page-resources .resources-kindrow { display: flex; align-items: center; gap: var(--space-4); min-width: 0; padding: 0 0 var(--space-5); margin: 0 0 var(--space-5); border-bottom: 1px solid var(--rule); }
 #page-resources .resources-text-controls { display: flex; align-items: center; gap: var(--space-4); }
 #page-resources .resources-toolbar-spacer { flex: 1; }
-#page-resources .resource-kind-control, #page-resources .resource-source-control, #page-resources .resource-sort-control { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: color var(--transition); }
-#page-resources .resource-kind-control:hover, #page-resources .resource-kind-control:focus-visible, #page-resources .resource-source-control:hover, #page-resources .resource-source-control:focus-visible, #page-resources .resource-sort-control:hover, #page-resources .resource-sort-control:focus-visible { color: var(--text); outline: none; }
-#page-resources .resource-kind-control.active, #page-resources .resource-source-control.active, #page-resources .resource-sort-control.active { color: var(--text); font-weight: 500; }
+#page-resources .resource-kind-control, #page-resources .resource-sort-control { padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: color var(--transition); }
+#page-resources .resource-kind-control:hover, #page-resources .resource-kind-control:focus-visible, #page-resources .resource-sort-control:hover, #page-resources .resource-sort-control:focus-visible { color: var(--text); outline: none; }
+#page-resources .resource-kind-control.active, #page-resources .resource-sort-control.active { color: var(--text); font-weight: 500; }
 #page-resources .resources-view-toggle { flex: 0 0 auto; margin: 0; gap: 2px; }
 #page-resources .resources-view-toggle button { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
 #page-resources .resources-view-toggle button:hover, #page-resources .resources-view-toggle button:focus-visible, #page-resources .resources-view-toggle button.active { color: var(--text); background: var(--bg-hover); outline: none; }
