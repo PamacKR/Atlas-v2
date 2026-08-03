@@ -17,8 +17,8 @@ atlas.db-shm
 atlas.db-wal
 /files/
 
-# Output of scripts/verify-app.js (Playwright self-test)
-verify-screenshot.png
+# Output screenshots from Playwright/Electron verification scripts
+verify-*.png
 
 # Local Git snapshots are not source or release artifacts.
 *.bundle
