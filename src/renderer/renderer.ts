@@ -5319,8 +5319,11 @@ let commandPaletteReturnFocus: HTMLElement | null = null;
 let commandPaletteCourses: Course[] = [];
 let commandPaletteNotes: NoteWithCourse[] = [];
 let commandPaletteResources: ResourceWithCourse[] = [];
+let commandPaletteDeadlines: DashboardDeadline[] = [];
 let commandPaletteDataPromise: Promise<void> | null = null;
 let commandPaletteRenderToken = 0;
+let commandPaletteLoading = false;
+let commandPaletteError: string | null = null;
 
 function commandPaletteIsOpen(): boolean {
   return (document.getElementById('command-palette-overlay') as HTMLElement | null)?.hidden === false;
@@ -5366,9 +5369,25 @@ function paletteCommands(): PaletteCommandDefinition[] {
     command('export.course', 'Export course for AI', 'Course actions', ['export for ai', 'export ai', 'export context']),
     command('course.archive', 'Archive or unarchive course', 'Course actions', ['archive course', 'unarchive course']),
     command('course.edit', 'Edit course', 'Course actions', ['edit course', 'rename course']),
+    command('course.delete', 'Delete course', 'Course actions', ['delete course', 'remove course']),
+    command('course.connectClassroom', 'Connect course to Classroom', 'Course actions', ['connect classroom', 'link classroom course']),
+    command('course.disconnectClassroom', 'Disconnect course from Classroom', 'Course actions', ['disconnect classroom', 'unlink classroom course']),
+    command('course.addWatchedFolder', 'Add watched folder', 'Course actions', ['watch folder', 'add watched folder', 'watch course folder']),
+    command('deadline.edit', 'Edit deadline', 'Deadlines', ['edit deadline', 'rename deadline']),
+    command('deadline.complete', 'Mark deadline complete or incomplete', 'Deadlines', ['complete deadline', 'finish deadline', 'mark deadline']),
+    command('deadline.delete', 'Delete deadline', 'Deadlines', ['delete deadline', 'remove deadline']),
     command('resource.ocr', 'Run OCR', 'Resources & notes', ['run ocr', 'ocr']),
     command('resource.drive', 'Open resource in Google Drive', 'Resources & notes', ['open in drive', 'open google drive', 'drive']),
+    command('resource.delete', 'Delete resource', 'Resources & notes', ['delete resource', 'remove resource', 'delete file']),
     command('note.move', 'Move note to course', 'Resources & notes', ['move note', 'assign note', 'move note to course']),
+    command('note.delete', 'Delete note', 'Resources & notes', ['delete note', 'remove note']),
+    command('settings.backup', 'Create backup now', 'Settings', ['backup', 'create backup', 'back up']),
+    command('settings.clearDriveCache', 'Clear Drive preview cache', 'Settings', ['clear drive cache', 'clear preview cache']),
+    command('settings.reviewDrive', 'Review pending Drive files', 'Settings', ['review drive files', 'pending drive', 'drive review']),
+    command('settings.reviewClassroom', 'Review pending Classroom courses', 'Settings', ['review classroom courses', 'pending classroom', 'classroom review']),
+    command('settings.resetShortcuts', 'Reset keyboard shortcuts', 'Settings', ['reset shortcuts', 'restore shortcuts']),
+    command('settings.themeLight', 'Use light theme', 'Settings', ['light theme', 'switch to light']),
+    command('settings.themeDark', 'Use dark theme', 'Settings', ['dark theme', 'switch to dark']),
     command('app.showShortcuts', 'Show keyboard shortcuts', 'Help', ['shortcuts', 'keyboard shortcuts', 'help']),
     command('nav.toggleSidebar', 'Toggle sidebar', 'View', ['sidebar', 'toggle sidebar']),
   ];
@@ -5425,6 +5444,11 @@ function paletteCurrentResource(): ResourceWithCourse | null {
   return commandPaletteResources.find((resource) => resource.id === currentPreviewResourceId) ?? null;
 }
 
+function paletteCurrentDeadline(): DashboardDeadline | null {
+  if (!currentViewingDeadline) return null;
+  return commandPaletteDeadlines.find((deadline) => deadline.id === currentViewingDeadline?.id) ?? null;
+}
+
 function paletteNoteChoices(query: string, handwrittenOnly = false): Array<{ note: NoteWithCourse; score: number }> {
   const normalizedQuery = normalizePaletteText(query);
   return commandPaletteNotes
@@ -5447,6 +5471,19 @@ function paletteResourceChoices(query: string, pdfOnly = false): Array<{ resourc
     }))
     .filter((entry): entry is { resource: ResourceWithCourse; score: number } => entry.score !== null)
     .sort((a, b) => b.score - a.score || a.resource.title.localeCompare(b.resource.title));
+}
+
+function paletteDeadlineChoices(query: string): Array<{ deadline: DashboardDeadline; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteDeadlines
+    .map((deadline) => ({
+      deadline,
+      score: normalizedQuery
+        ? scorePaletteText(normalizedQuery, deadline.title, [deadline.course_name, deadline.kind])
+        : 0,
+    }))
+    .filter((entry): entry is { deadline: DashboardDeadline; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.deadline.title.localeCompare(b.deadline.title));
 }
 
 function commandPaletteCommandItem(command: PaletteCommandDefinition, detail: string, run: () => void | Promise<void>): PaletteItem {
@@ -5614,6 +5651,175 @@ function driveCommandItems(match: PaletteCommandMatch | null, command: PaletteCo
   }));
 }
 
+function deadlineCourse(deadline: DashboardDeadline): Course | null {
+  return commandPaletteCourses.find((course) => course.id === deadline.course_id) ?? null;
+}
+
+async function refreshAfterPaletteDeadlineChange(courseId: number): Promise<void> {
+  invalidateCommandPaletteData();
+  if (selectedCourse?.id === courseId) await renderDeadlines();
+  else if (currentPage === 'calendar') await renderCalendarPage();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+async function runPaletteEditDeadline(deadline: DashboardDeadline): Promise<void> {
+  closeCommandPalette();
+  const course = deadlineCourse(deadline);
+  if (!course) return;
+  selectedCourse = course;
+  await openDeadlineEditForm(deadline);
+}
+
+async function runPaletteToggleDeadline(deadline: DashboardDeadline): Promise<void> {
+  closeCommandPalette();
+  await atlasApi.setDeadlineCompleted(deadline.id, deadline.completed !== 1);
+  await refreshAfterPaletteDeadlineChange(deadline.course_id);
+}
+
+async function runPaletteDeleteDeadline(deadline: DashboardDeadline): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete deadline "${deadline.title}"? This can't be undone.`))) return;
+  if (currentViewingDeadline?.id === deadline.id) closeDeadlineEditor();
+  await atlasApi.deleteDeadline(deadline.id);
+  await refreshAfterPaletteDeadlineChange(deadline.course_id);
+}
+
+function deadlineActionItems(
+  match: PaletteCommandMatch | null,
+  command: PaletteCommandDefinition,
+  action: 'edit' | 'complete' | 'delete'
+): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentDeadline();
+  const run = (deadline: DashboardDeadline): void | Promise<void> => {
+    if (action === 'edit') return runPaletteEditDeadline(deadline);
+    if (action === 'complete') return runPaletteToggleDeadline(deadline);
+    return runPaletteDeleteDeadline(deadline);
+  };
+  if (current) {
+    const label = action === 'complete'
+      ? (current.completed === 1 ? 'Mark deadline incomplete' : 'Mark deadline complete')
+      : command.label;
+    return [{ ...commandPaletteCommandItem(command, `Current deadline · ${current.title}`, () => run(current)), label }];
+  }
+  const choices = paletteDeadlineChoices(argument).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a deadline to continue', () => undefined)];
+  return choices.map(({ deadline }) => ({
+    id: `${action}-deadline:${deadline.id}`,
+    label: `${action === 'complete' ? (deadline.completed === 1 ? 'Mark incomplete' : 'Mark complete') : command.label} · ${deadline.title}`,
+    detail: `${deadline.course_name} · ${deadline.due_at ? formatDueDate(deadline.due_at) : 'No due date'}`,
+    group: 'Deadlines',
+    run: () => run(deadline),
+  }));
+}
+
+async function runPaletteDeleteNote(note: NoteWithCourse): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete note "${note.title}"? This can't be undone.`))) return;
+  if (currentNoteId === note.id) await closeNoteEditor();
+  await atlasApi.deleteNote(note.id);
+  invalidateCommandPaletteData();
+  await renderNotesPage();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+function noteDeleteCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentNote();
+  if (current) return [commandPaletteCommandItem(command, `Current note · ${current.title}`, () => runPaletteDeleteNote(current))];
+  const choices = paletteNoteChoices(argument).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a note to delete', () => undefined)];
+  return choices.map(({ note }) => ({
+    id: `delete-note:${note.id}`,
+    label: `${command.label} · ${note.title}`,
+    detail: `${note.course_name} · Note`,
+    group: 'Notes',
+    run: () => runPaletteDeleteNote(note),
+  }));
+}
+
+async function runPaletteDeleteResource(resource: ResourceWithCourse): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete resource "${resource.title}"? This can't be undone.`))) return;
+  if (currentPreviewResourceId === resource.id) closePreview();
+  await atlasApi.deleteResource(resource.id);
+  invalidateCommandPaletteData();
+  await renderResourcesPage();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+function resourceDeleteCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentResource();
+  if (current) return [commandPaletteCommandItem(command, `Current resource · ${current.title}`, () => runPaletteDeleteResource(current))];
+  const choices = paletteResourceChoices(argument).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a resource to delete', () => undefined)];
+  return choices.map(({ resource }) => ({
+    id: `delete-resource:${resource.id}`,
+    label: `${command.label} · ${resource.title}`,
+    detail: `${resource.course_name} · Resource`,
+    group: 'Resources',
+    run: () => runPaletteDeleteResource(resource),
+  }));
+}
+
+async function preparePaletteSettingsTab(tab: string): Promise<void> {
+  closeCommandPalette();
+  showPage('settings');
+  await renderSettingsPage();
+  setSettingsTab(tab);
+}
+
+async function runPaletteCreateBackup(): Promise<void> {
+  await preparePaletteSettingsTab('storage');
+  await atlasApi.createBackup();
+  await renderSettingsStorage();
+}
+
+async function runPaletteClearDriveCache(): Promise<void> {
+  await preparePaletteSettingsTab('sources');
+  if (!(await showConfirm('Clear every uploaded Drive preview copy? This cannot be undone in Drive.'))) return;
+  await clearDrivePreviewCache();
+}
+
+async function runPaletteReviewDrive(): Promise<void> {
+  await preparePaletteSettingsTab('sources');
+  await openDriveReviewPanel();
+}
+
+async function runPaletteReviewClassroom(): Promise<void> {
+  await preparePaletteSettingsTab('sources');
+  await openClassroomReviewPanel();
+}
+
+async function runPaletteResetShortcuts(): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm('Reset every keyboard shortcut back to its default binding?'))) return;
+  shortcutOverrides = {};
+  await saveShortcutOverrides();
+  showPage('settings');
+  await renderSettingsPage();
+  setSettingsTab('shortcuts');
+  await renderSettingsShortcuts();
+}
+
+async function runPaletteTheme(theme: 'light' | 'dark'): Promise<void> {
+  closeCommandPalette();
+  showPage('settings');
+  applyTheme(theme);
+  await atlasApi.setSetting('theme', theme);
+  setSettingsTab('appearance');
+}
+
+function runPaletteSettingsCommand(id: string): void | Promise<void> {
+  if (id === 'settings.backup') return runPaletteCreateBackup();
+  if (id === 'settings.clearDriveCache') return runPaletteClearDriveCache();
+  if (id === 'settings.reviewDrive') return runPaletteReviewDrive();
+  if (id === 'settings.reviewClassroom') return runPaletteReviewClassroom();
+  if (id === 'settings.resetShortcuts') return runPaletteResetShortcuts();
+  return runPaletteTheme(id === 'settings.themeLight' ? 'light' : 'dark');
+}
+
 async function runPaletteArchiveCourse(course: Course): Promise<void> {
   closeCommandPalette();
   const action = course.archived === 1 ? 'Unarchive' : 'Archive';
@@ -5629,15 +5835,59 @@ async function runPaletteArchiveCourse(course: Course): Promise<void> {
   }
 }
 
+async function runPaletteDeleteCourse(course: Course): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete course "${course.name}" and all its resources? This can't be undone.`))) return;
+  await atlasApi.deleteCourse(course.id);
+  invalidateCommandPaletteData();
+  if (selectedCourse?.id === course.id) backToCourseList();
+  await renderCourses();
+  await renderResourcesPage();
+  await renderNotesPage();
+  await renderDeadlines();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+async function openPaletteCourseDetail(course: Course): Promise<void> {
+  showPage('courses');
+  await selectCourse(course);
+}
+
+async function runPaletteConnectClassroom(course: Course): Promise<void> {
+  closeCommandPalette();
+  await openPaletteCourseDetail(course);
+  await openClassroomConnectPicker();
+}
+
+async function runPaletteDisconnectClassroom(course: Course): Promise<void> {
+  closeCommandPalette();
+  await openPaletteCourseDetail(course);
+  await disconnectCourseClassroomClicked();
+}
+
+async function runPaletteAddWatchedFolder(course: Course): Promise<void> {
+  closeCommandPalette();
+  await openPaletteCourseDetail(course);
+  const folder = await atlasApi.addWatchedFolder(course.id);
+  if (folder) {
+    await renderWatchedFolders();
+    await renderResourcesPage();
+  }
+}
+
 function courseActionItems(
   match: PaletteCommandMatch | null,
   command: PaletteCommandDefinition,
-  action: 'archive' | 'edit'
+  action: 'archive' | 'edit' | 'delete' | 'connect' | 'disconnect' | 'watch'
 ): PaletteItem[] {
   const argument = match?.argument ?? '';
   const current = argument ? null : paletteCurrentCourse();
   const run = (course: Course): void | Promise<void> => {
     if (action === 'archive') return runPaletteArchiveCourse(course);
+    if (action === 'delete') return runPaletteDeleteCourse(course);
+    if (action === 'connect') return runPaletteConnectClassroom(course);
+    if (action === 'disconnect') return runPaletteDisconnectClassroom(course);
+    if (action === 'watch') return runPaletteAddWatchedFolder(course);
     closeCommandPalette();
     openCourseEditModal(course);
   };
@@ -5751,11 +6001,23 @@ function commandPaletteItemsForQuery(query: string): PaletteItem[] {
   if (prefixMatch) {
     if (prefixMatch.command.id === 'export.course') return exportCommandItems(prefixMatch, prefixMatch.command);
     if (prefixMatch.command.id === 'create.deadline') return [commandPaletteCommandItem(prefixMatch.command, 'Open the deadline editor', runPaletteDeadline)];
+    if (prefixMatch.command.id === 'deadline.edit') return deadlineActionItems(prefixMatch, prefixMatch.command, 'edit');
+    if (prefixMatch.command.id === 'deadline.complete') return deadlineActionItems(prefixMatch, prefixMatch.command, 'complete');
+    if (prefixMatch.command.id === 'deadline.delete') return deadlineActionItems(prefixMatch, prefixMatch.command, 'delete');
     if (prefixMatch.command.id === 'resource.ocr') return ocrCommandItems(prefixMatch, prefixMatch.command);
     if (prefixMatch.command.id === 'note.move') return moveNoteCommandItems(prefixMatch, prefixMatch.command);
     if (prefixMatch.command.id === 'resource.drive') return driveCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'resource.delete') return resourceDeleteCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'note.delete') return noteDeleteCommandItems(prefixMatch, prefixMatch.command);
     if (prefixMatch.command.id === 'course.archive') return courseActionItems(prefixMatch, prefixMatch.command, 'archive');
     if (prefixMatch.command.id === 'course.edit') return courseActionItems(prefixMatch, prefixMatch.command, 'edit');
+    if (prefixMatch.command.id === 'course.delete') return courseActionItems(prefixMatch, prefixMatch.command, 'delete');
+    if (prefixMatch.command.id === 'course.connectClassroom') return courseActionItems(prefixMatch, prefixMatch.command, 'connect');
+    if (prefixMatch.command.id === 'course.disconnectClassroom') return courseActionItems(prefixMatch, prefixMatch.command, 'disconnect');
+    if (prefixMatch.command.id === 'course.addWatchedFolder') return courseActionItems(prefixMatch, prefixMatch.command, 'watch');
+    if (prefixMatch.command.id.startsWith('settings.')) {
+      return [commandPaletteCommandItem(prefixMatch.command, 'Open the relevant Settings panel', () => runPaletteSettingsCommand(prefixMatch.command.id))];
+    }
     const detail = prefixMatch.argument ? `No parameters are needed for ${prefixMatch.command.label}` : 'Run this command';
     return [commandPaletteCommandItem(prefixMatch.command, detail, () => runPaletteShortcut(prefixMatch.command.id))];
   }
@@ -5774,6 +6036,18 @@ function commandPaletteItemsForQuery(query: string): PaletteItem[] {
       }));
     } else if (command.id === 'create.deadline') {
       items.push(commandPaletteCommandItem(command, 'Open the deadline editor', runPaletteDeadline));
+    } else if (command.id === 'deadline.edit') {
+      items.push(...(hasQuery
+        ? deadlineActionItems(null, command, 'edit')
+        : [commandPaletteCommandItem(command, 'Choose a deadline to edit', () => focusPaletteCommand('edit deadline'))]));
+    } else if (command.id === 'deadline.complete') {
+      items.push(...(hasQuery
+        ? deadlineActionItems(null, command, 'complete')
+        : [commandPaletteCommandItem(command, 'Choose a deadline to update', () => focusPaletteCommand('complete deadline'))]));
+    } else if (command.id === 'deadline.delete') {
+      items.push(...(hasQuery
+        ? deadlineActionItems(null, command, 'delete')
+        : [commandPaletteCommandItem(command, 'Choose a deadline to delete', () => focusPaletteCommand('delete deadline'))]));
     } else if (command.id === 'resource.ocr') {
       items.push(...(hasQuery
         ? ocrCommandItems(null, command)
@@ -5786,6 +6060,10 @@ function commandPaletteItemsForQuery(query: string): PaletteItem[] {
       items.push(...(hasQuery
         ? driveCommandItems(null, command)
         : [commandPaletteCommandItem(command, 'Choose a resource', () => focusPaletteCommand('open in drive'))]));
+    } else if (command.id === 'resource.delete') {
+      items.push(...(hasQuery
+        ? resourceDeleteCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a resource to delete', () => focusPaletteCommand('delete resource'))]));
     } else if (command.id === 'course.archive') {
       items.push(...(hasQuery
         ? courseActionItems(null, command, 'archive')
@@ -5794,6 +6072,28 @@ function commandPaletteItemsForQuery(query: string): PaletteItem[] {
       items.push(...(hasQuery
         ? courseActionItems(null, command, 'edit')
         : [commandPaletteCommandItem(command, 'Choose a course', () => focusPaletteCommand('edit course'))]));
+    } else if (command.id === 'course.delete') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'delete')
+        : [commandPaletteCommandItem(command, 'Choose a course to delete', () => focusPaletteCommand('delete course'))]));
+    } else if (command.id === 'course.connectClassroom') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'connect')
+        : [commandPaletteCommandItem(command, 'Choose a course to connect', () => focusPaletteCommand('connect classroom'))]));
+    } else if (command.id === 'course.disconnectClassroom') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'disconnect')
+        : [commandPaletteCommandItem(command, 'Choose a course to disconnect', () => focusPaletteCommand('disconnect classroom'))]));
+    } else if (command.id === 'course.addWatchedFolder') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'watch')
+        : [commandPaletteCommandItem(command, 'Choose a course to watch', () => focusPaletteCommand('watch folder'))]));
+    } else if (command.id === 'note.delete') {
+      items.push(...(hasQuery
+        ? noteDeleteCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a note to delete', () => focusPaletteCommand('delete note'))]));
+    } else if (command.id.startsWith('settings.')) {
+      items.push(commandPaletteCommandItem(command, 'Open the relevant Settings panel', () => runPaletteSettingsCommand(command.id)));
     } else {
       items.push(commandPaletteCommandItem(command, 'Run this command', () => runPaletteShortcut(command.id)));
     }
@@ -5807,7 +6107,15 @@ function renderCommandPaletteItems(query: string): void {
   const context = document.getElementById('command-palette-context')!;
   const input = document.getElementById('command-palette-input') as HTMLInputElement;
   (document.querySelector('#command-palette-panel .command-palette-body') as HTMLElement).scrollTop = 0;
-  context.textContent = commandPaletteStep === 'course-selection' ? 'Export for AI · choose the course to use' : paletteContextText();
+  if (commandPaletteError) {
+    context.textContent = commandPaletteError;
+  } else if (commandPaletteStep === 'course-selection') {
+    context.textContent = 'Export for AI - choose the course to use';
+  } else if (commandPaletteLoading) {
+    context.textContent = `${paletteContextText()} - loading local items...`;
+  } else {
+    context.textContent = paletteContextText();
+  }
   input.placeholder = commandPaletteStep === 'course-selection' ? 'Choose a course…' : 'Search commands and Atlas…';
   (document.getElementById('command-palette-clear') as HTMLButtonElement).hidden = !input.value;
 
@@ -5884,7 +6192,22 @@ function updateCommandPaletteActiveRow(): void {
 async function executeCommandPaletteItem(index: number): Promise<void> {
   const item = commandPaletteItems[index];
   if (!item) return;
-  await item.run();
+  try {
+    await item.run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const overlay = document.getElementById('command-palette-overlay')!;
+    if (overlay.hidden) {
+      commandPaletteReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      commandPaletteStep = 'commands';
+      commandPalettePendingCommand = null;
+      overlay.hidden = false;
+    }
+    commandPaletteError = `That action could not be completed: ${message}`;
+    commandPaletteLoading = false;
+    renderCommandPaletteItems('');
+    (document.getElementById('command-palette-input') as HTMLInputElement).focus();
+  }
 }
 
 async function loadCommandPaletteData(): Promise<void> {
@@ -5894,12 +6217,14 @@ async function loadCommandPaletteData(): Promise<void> {
       atlasApi.getCourseSummaries(true),
       atlasApi.listAllNotes(),
       atlasApi.listAllResources(),
-    ]).then(([activeCourses, archivedCourses, notes, resources]) => {
+      atlasApi.listAllDeadlinesWithCourse(),
+    ]).then(([activeCourses, archivedCourses, notes, resources, deadlines]) => {
       const courses = new Map<number, Course>();
       [...activeCourses, ...archivedCourses].forEach((course) => courses.set(course.id, course));
       commandPaletteCourses = [...courses.values()];
       commandPaletteNotes = notes;
       commandPaletteResources = resources;
+      commandPaletteDeadlines = deadlines;
     });
   }
   await commandPaletteDataPromise;
@@ -5912,6 +6237,8 @@ function openCommandPalette(): void {
   commandPaletteStep = 'commands';
   commandPalettePendingCommand = null;
   commandPaletteActiveIndex = 0;
+  commandPaletteError = null;
+  commandPaletteLoading = true;
   const input = document.getElementById('command-palette-input') as HTMLInputElement;
   const clearButton = document.getElementById('command-palette-clear') as HTMLButtonElement;
   input.value = '';
@@ -5921,6 +6248,12 @@ function openCommandPalette(): void {
   input.focus();
   const token = ++commandPaletteRenderToken;
   void loadCommandPaletteData().then(() => {
+    commandPaletteLoading = false;
+    if (commandPaletteIsOpen() && token === commandPaletteRenderToken) renderCommandPaletteItems(input.value);
+  }).catch(() => {
+    commandPaletteLoading = false;
+    commandPaletteDataPromise = null;
+    commandPaletteError = 'Atlas items could not be loaded. Close and reopen the palette to try again.';
     if (commandPaletteIsOpen() && token === commandPaletteRenderToken) renderCommandPaletteItems(input.value);
   });
 }
@@ -5953,6 +6286,7 @@ function wireCommandPalette(): void {
     if (event.target === overlay) closeCommandPalette();
   });
   input.addEventListener('input', () => {
+    commandPaletteError = null;
     commandPaletteActiveIndex = 0;
     clearButton.hidden = !input.value;
     renderCommandPaletteItems(input.value);

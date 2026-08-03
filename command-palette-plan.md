@@ -257,13 +257,13 @@ Added the shared overlay markup and hidden-safe styles to the renderer. The pale
 
 Connected navigation, course/note/resource opening, new note, upload, scan import, sync commands, Export for AI, shortcut help, sidebar toggle, settings navigation, and the first parameterized actions through existing Atlas behavior without duplicating those workflows.
 
-### Stage 4 — Add guided workflows — in progress
+### Stage 4 — Add guided workflows — substantially complete
 
-Connected course selection, deadline creation, note reassignment, OCR handoff for PDFs/handwritten notes, resource-to-Drive handoff, course edit, and archive/unarchive confirmation. The remaining guided work includes target-aware deadline arguments, richer resource/note selection states, and the other confirmation-heavy actions.
+Connected course selection, deadline creation/edit/complete/delete, note reassignment/deletion, OCR handoff for PDFs/handwritten notes, resource-to-Drive handoff/deletion, course edit/delete, archive/unarchive confirmation, Classroom connect/disconnect, watched-folder setup, and settings actions that need confirmation or a destination panel. Actions reuse the existing Atlas workflows and show a target choice or confirmation before destructive operations. Remaining guided work is deeper ambiguity handling and any additional actions that emerge from real use.
 
 ### Stage 5 — Polish and verification — in progress
 
-The focused Electron verifier covers the new paths and its screenshot has been inspected. Remaining review includes long names, loading/errors, dark/light theme comparison, broader ambiguity handling, overlay stacking under more combinations, Drive-connected behavior, and final keyboard polish.
+The focused Electron verifier covers the new paths, including deadline completion, deadline editing, deletion confirmation, immediate backup, and shortcut-reset confirmation; its screenshot has been inspected. The palette reports local-data loading, preserves the overlay on action errors, and resets stale errors when the user searches again. Remaining review includes long names, dark/light theme comparison, broader ambiguity handling, overlay stacking under more combinations, Drive-connected behavior, and final keyboard polish.
 
 ## 14. Definition of done
 

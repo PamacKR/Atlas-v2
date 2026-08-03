@@ -23,6 +23,9 @@ const fs = require('fs');
       const mathematics = (await window.atlas.listCourses()).find((course) => course.code === 'MATH101');
       if (!mathematics) throw new Error('Mathematics course was not created.');
       await window.atlas.setCourseArchived(mathematics.id, true);
+      const developmentEconomics = (await window.atlas.listCourses()).find((course) => course.code === 'DEV201');
+      if (!developmentEconomics) throw new Error('Development Economics course was not created.');
+      await window.atlas.createDeadline(developmentEconomics.id, 'Palette verification deadline', 'assignment', '2026-08-15', null);
     });
     const scanFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'sample-scan.pdf'));
     const scanNoteTitle = await window.evaluate(async (bytes) => {
@@ -41,7 +44,7 @@ const fs = require('fs');
     await window.waitForSelector('#command-palette-overlay:not([hidden])');
     await window.waitForTimeout(200);
     const initialCommands = await window.textContent('#command-palette-results');
-    for (const label of ['Run OCR', 'Move note to course', 'Open resource in Google Drive', 'Edit course', 'Archive or unarchive course']) {
+    for (const label of ['Run OCR', 'Move note to course', 'Open resource in Google Drive', 'Edit course', 'Archive or unarchive course', 'Edit deadline', 'Delete note', 'Create backup now']) {
       if (!initialCommands.includes(label)) throw new Error(`Initial command list omitted: ${label}`);
     }
     if (await window.locator('#command-palette-input').inputValue() !== '') throw new Error('Palette did not open with an empty input.');
@@ -84,6 +87,28 @@ const fs = require('fs');
     await window.locator('#course-picker-list li').first().click();
     await window.waitForSelector('#deadline-editor-overlay:not([hidden])');
     await window.click('#deadline-edit-close');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', 'mark deadline palette verification');
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(300);
+    const completedDeadline = await window.evaluate(async () => {
+      const deadlines = await window.atlas.listAllDeadlinesWithCourse();
+      return deadlines.find((deadline) => deadline.title === 'Palette verification deadline');
+    });
+    if (!completedDeadline || completedDeadline.completed !== 1) throw new Error('Deadline completion command did not update the deadline.');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', 'edit deadline palette verification');
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#deadline-editor-overlay:not([hidden])');
+    await window.click('#deadline-edit-close');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', 'delete deadline palette verification');
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#confirm-overlay:not([hidden])');
+    await window.click('#confirm-cancel');
 
     await window.keyboard.press('Control+k');
     await window.fill('#command-palette-input', `move note ${scanNoteTitle}`);
@@ -134,6 +159,18 @@ const fs = require('fs');
     await window.keyboard.press('Enter');
     await window.waitForTimeout(200);
     if (await window.getAttribute('#page-calendar', 'hidden') !== null) throw new Error('Calendar navigation command did not switch pages.');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', 'create backup');
+    await window.keyboard.press('Enter');
+    await window.waitForTimeout(400);
+    if (await window.getAttribute('#page-settings', 'hidden') !== null) throw new Error('Create backup command did not open Settings.');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', 'reset shortcuts');
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#confirm-overlay:not([hidden])');
+    await window.click('#confirm-cancel');
 
     await window.keyboard.press('Control+k');
     await window.waitForSelector('#command-palette-overlay:not([hidden])');
