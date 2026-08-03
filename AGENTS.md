@@ -113,6 +113,10 @@ Commit and push to this repo's remote continuously as work happens — **don't w
 
 Atlas's own UI copy (empty states, dashboard labels, settings) should be plain and functional — this is a workspace tool, not a consumer app trying to be delightful. Favor clarity over personality in anything the *student* sees inside Atlas. This document's guidance is about engineering behavior; it does not mean the product itself should have a "voice."
 
+## Communication with the user
+
+The user prefers careful, high-quality work over fast responses. Take time to inspect the project and verify changes rather than rushing through multiple shallow iterations. When explaining technical work to the user, do not include code snippets unless they specifically ask for them. Use plain language with enough technical detail to be accurate and useful, but avoid unnecessary jargon and avoid oversimplifying important tradeoffs.
+
 ## When in doubt
 
 Ask. This project is still being actively shaped — the PRD explicitly leaves several product questions open (`open-questions.md`), and getting the data/reasoning split right matters more than moving fast on any individual feature.
