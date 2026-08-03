@@ -20,6 +20,9 @@ const fs = require('fs');
     await window.evaluate(async () => {
       await window.atlas.createCourse('Development Economics', 'DEV201', 'Monsoon 26');
       await window.atlas.createCourse('Mathematics', 'MATH101', 'Monsoon 26');
+      const mathematics = (await window.atlas.listCourses()).find((course) => course.code === 'MATH101');
+      if (!mathematics) throw new Error('Mathematics course was not created.');
+      await window.atlas.setCourseArchived(mathematics.id, true);
     });
     const scanFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'sample-scan.pdf'));
     const scanNoteTitle = await window.evaluate(async (bytes) => {
@@ -36,8 +39,18 @@ const fs = require('fs');
     await window.locator('#search-input').focus();
     await window.keyboard.press('Control+k');
     await window.waitForSelector('#command-palette-overlay:not([hidden])');
+    await window.waitForTimeout(200);
+    const initialCommands = await window.textContent('#command-palette-results');
+    for (const label of ['Run OCR', 'Move note to course', 'Open resource in Google Drive', 'Edit course', 'Archive or unarchive course']) {
+      if (!initialCommands.includes(label)) throw new Error(`Initial command list omitted: ${label}`);
+    }
     if (await window.locator('#command-palette-input').inputValue() !== '') throw new Error('Palette did not open with an empty input.');
     if (await window.evaluate(() => document.activeElement?.id) !== 'command-palette-input') throw new Error('Palette input did not receive focus.');
+    await window.fill('#command-palette-input', 'calendar');
+    if (await window.isHidden('#command-palette-clear') !== false) throw new Error('The themed search clear control did not appear after typing.');
+    await window.click('#command-palette-clear');
+    const clearState = await window.evaluate(() => ({ value: document.getElementById('command-palette-input').value, hidden: document.getElementById('command-palette-clear').hidden }));
+    if (clearState.value !== '' || !clearState.hidden) throw new Error(`The search clear control did not reset the palette: ${JSON.stringify(clearState)}`);
     await window.keyboard.press('Escape');
     if (await window.evaluate(() => document.activeElement?.id) !== 'search-input') throw new Error('Focus did not return to the previous control.');
 
@@ -85,6 +98,14 @@ const fs = require('fs');
 
     await window.keyboard.press('Control+k');
     await window.fill('#command-palette-input', `archive course development economics`);
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#confirm-overlay:not([hidden])');
+    await window.click('#confirm-cancel');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', 'unarchive course mathematics');
+    await window.keyboard.press('Enter');
+    if (!(await window.textContent('#command-palette-results')).includes('Unarchive course · Mathematics')) throw new Error('Archived course did not expose the Unarchive action.');
     await window.keyboard.press('Enter');
     await window.waitForSelector('#confirm-overlay:not([hidden])');
     await window.click('#confirm-cancel');

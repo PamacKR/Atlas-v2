@@ -3760,6 +3760,7 @@ async function toggleSelectedCourseArchived(): Promise<void> {
   const action = selectedCourse.archived === 1 ? 'Unarchive' : 'Archive';
   if (!(await showConfirm(`${action} "${selectedCourse.name}"? You can change this again later.`))) return;
   const updated = await atlasApi.setCourseArchived(selectedCourse.id, selectedCourse.archived !== 1);
+  invalidateCommandPaletteData();
   // Archiving the course currently open removes it from the active list (or
   // vice versa for unarchiving) — going back to the grid avoids leaving the
   // user stranded on a detail page for a course that no longer matches
@@ -5454,9 +5455,14 @@ function commandPaletteCommandItem(command: PaletteCommandDefinition, detail: st
 function focusPaletteCommand(text: string): void {
   const input = document.getElementById('command-palette-input') as HTMLInputElement;
   input.value = text;
+  (document.getElementById('command-palette-clear') as HTMLButtonElement).hidden = !text;
   commandPaletteActiveIndex = 0;
   renderCommandPaletteItems(text);
   input.focus();
+}
+
+function invalidateCommandPaletteData(): void {
+  commandPaletteDataPromise = null;
 }
 
 function findShortcutAction(id: string): ShortcutAction | null {
@@ -5596,6 +5602,7 @@ async function runPaletteArchiveCourse(course: Course): Promise<void> {
   const action = course.archived === 1 ? 'Unarchive' : 'Archive';
   if (!(await showConfirm(`${action} "${course.name}"? You can change this again later.`))) return;
   const updated = await atlasApi.setCourseArchived(course.id, course.archived !== 1);
+  invalidateCommandPaletteData();
   if (courseDetailVisible() && selectedCourse?.id === course.id) {
     backToCourseList();
     setShowArchivedCourses(updated.archived === 1);
@@ -5722,6 +5729,7 @@ function entityPaletteItems(query: string): PaletteItem[] {
 
 function commandPaletteItemsForQuery(query: string): PaletteItem[] {
   const commands = paletteCommands();
+  const normalizedQuery = normalizePaletteText(query);
   const prefixMatch = matchPaletteCommandPrefix(query, commands);
   if (prefixMatch) {
     if (prefixMatch.command.id === 'export.course') return exportCommandItems(prefixMatch, prefixMatch.command);
@@ -5736,8 +5744,11 @@ function commandPaletteItemsForQuery(query: string): PaletteItem[] {
   }
 
   const items: PaletteItem[] = [];
-  const hasQuery = Boolean(normalizePaletteText(query));
-  for (const { command } of rankPaletteCommands(query, commands).slice(0, 12)) {
+  const hasQuery = Boolean(normalizedQuery);
+  const rankedCommands = hasQuery
+    ? rankPaletteCommands(query, commands).slice(0, 12)
+    : commands.map((command) => ({ command, score: 0 }));
+  for (const { command } of rankedCommands) {
     if (command.id === 'export.course') {
       items.push(commandPaletteCommandItem(command, 'Choose a course when you run it', () => {
         const current = paletteCurrentCourse();
@@ -5770,7 +5781,7 @@ function commandPaletteItemsForQuery(query: string): PaletteItem[] {
       items.push(commandPaletteCommandItem(command, 'Run this command', () => runPaletteShortcut(command.id)));
     }
   }
-  return [...items, ...entityPaletteItems(query)].slice(0, 16);
+  return [...items, ...entityPaletteItems(query)].slice(0, hasQuery ? 16 : 40);
 }
 
 function renderCommandPaletteItems(query: string): void {
@@ -5781,6 +5792,7 @@ function renderCommandPaletteItems(query: string): void {
   (document.querySelector('#command-palette-panel .command-palette-body') as HTMLElement).scrollTop = 0;
   context.textContent = commandPaletteStep === 'course-selection' ? 'Export for AI · choose the course to use' : paletteContextText();
   input.placeholder = commandPaletteStep === 'course-selection' ? 'Choose a course…' : 'Search commands and Atlas…';
+  (document.getElementById('command-palette-clear') as HTMLButtonElement).hidden = !input.value;
 
   const items: PaletteItem[] = commandPaletteStep === 'course-selection'
     ? paletteCourseChoices(query).slice(0, 12).map(({ course }) => ({
@@ -5884,7 +5896,9 @@ function openCommandPalette(): void {
   commandPalettePendingCommand = null;
   commandPaletteActiveIndex = 0;
   const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  const clearButton = document.getElementById('command-palette-clear') as HTMLButtonElement;
   input.value = '';
+  clearButton.hidden = true;
   overlay.hidden = false;
   renderCommandPaletteItems('');
   input.focus();
@@ -5910,12 +5924,20 @@ function wireCommandPalette(): void {
   const overlay = document.getElementById('command-palette-overlay')!;
   const panel = document.getElementById('command-palette-panel')!;
   const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  const clearButton = document.getElementById('command-palette-clear') as HTMLButtonElement;
   document.getElementById('command-palette-close')!.addEventListener('click', closeCommandPalette);
+  clearButton.addEventListener('click', () => {
+    input.value = '';
+    commandPaletteActiveIndex = 0;
+    renderCommandPaletteItems('');
+    input.focus();
+  });
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) closeCommandPalette();
   });
   input.addEventListener('input', () => {
     commandPaletteActiveIndex = 0;
+    clearButton.hidden = !input.value;
     renderCommandPaletteItems(input.value);
   });
   input.addEventListener('keydown', (event) => {
@@ -6203,6 +6225,7 @@ async function init(): Promise<void> {
     const term = (document.getElementById('course-edit-term') as HTMLInputElement).value.trim() || null;
     const courseId = editingCourseId;
     const updated = await atlasApi.updateCourse(courseId, name, code, term);
+    invalidateCommandPaletteData();
     closeCourseEditModal();
     await renderCourses();
     if (selectedCourse && selectedCourse.id === courseId) await selectCourse(updated);
@@ -6614,6 +6637,7 @@ async function init(): Promise<void> {
 
   atlasApi.onCourseContextMenuToggleArchive(async (courseId, archived) => {
     await atlasApi.setCourseArchived(courseId, archived);
+    invalidateCommandPaletteData();
     if (selectedCourse && selectedCourse.id === courseId) backToCourseList();
     await renderCourses();
   });
