@@ -90,7 +90,7 @@ Added 2026-07-29. With the functional product essentially complete, this phase i
 - [x] **Local backup of `atlas.db`** — scheduled daily/weekly or off, retaining the five most recent copies in `Atlas-Storage/backups/`, with an immediate-backup action in Settings → Storage. Restore is intentionally deferred until it can safely use a controlled app-restart flow.
 - [ ] **Density setting** (compact/comfortable list spacing) — falls out of the token work above for free once it exists.
 - [ ] **Per-course readiness view** — "can the agent actually read everything for this course?" at a glance (readable / needs OCR / failed counts), instead of clicking through every file to check extraction status one at a time.
-- [ ] **Calendar rework** — the Calendar page (month grid + Upcoming sidebar) shipped as v1 scope only, in Phase 3. Three pieces logged as fast-follows back then, never built since: a Day/Week view toggle, a mini date-picker for jumping to a specific date, and a Filters panel (per-kind/per-course checkboxes) to narrow the month grid down. New visual surfaces on an existing page, so same reasoning as the other items above — built once against the redesigned UI.
+- [x] **Calendar rework** — rebuilt on the Direction A UI with functional Month/Week/Day views, a mini date-picker for month navigation, and per-kind/per-course filters. The focused Electron Calendar check verifies the views, filters, 42-cell grids, and hidden-state behavior.
 - Reading/coverage tracking (unread/reading/done per resource, so the agent can be asked "what haven't I covered?") — proposed, still awaiting the user's decision on whether to build it.
 
 ## Explicitly out of scope for V1
