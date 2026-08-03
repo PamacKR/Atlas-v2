@@ -104,6 +104,7 @@ body {
 
 *::-webkit-scrollbar-track {
   background: transparent;
+  border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb {
@@ -4316,20 +4317,25 @@ button#classroom-connect-confirm {
 #main-area[data-page="dashboard"] #dashboard-main-grid ul { margin: 0; padding: 0; }
 #main-area[data-page="dashboard"] #dashboard-deadlines,
 #main-area[data-page="dashboard"] #dashboard-resources,
-#main-area[data-page="dashboard"] #dashboard-activity { display: grid; gap: 2px; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: var(--space-2); }
+#main-area[data-page="dashboard"] #dashboard-activity { display: grid; gap: 2px; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 var(--space-2); }
 #main-area[data-page="dashboard"] li.dashboard-compact-row {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) minmax(180px, 240px) 46px;
   gap: var(--space-3);
   align-items: baseline;
-  padding: 8px var(--space-4);
-  margin: 0 calc(var(--space-3) * -1);
+  padding: var(--space-2);
+  margin: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
 }
-#main-area[data-page="dashboard"] li.dashboard-compact-row:hover { background: var(--bg-hover); transform: translateX(2px); }
+#main-area[data-page="dashboard"] li.dashboard-compact-row:hover {
+  background: var(--bg-hover);
+  /* These rows live in an overflow-clipped scroll list. A horizontal nudge
+     would push the rounded hover surface into the clipped edge. */
+  transform: none;
+}
 #main-area[data-page="dashboard"] .dashboard-listing-row { grid-template-columns: 34px minmax(0, 1fr) minmax(180px, 240px); }
 #main-area[data-page="dashboard"] .dashboard-update-row { grid-template-columns: 12px minmax(0, 1fr) minmax(160px, 220px) 30px; }
 .dashboard-update-unread { width: 5px; height: 5px; align-self: center; border-radius: 50%; background: var(--accent); }
@@ -4411,19 +4417,9 @@ button#classroom-connect-confirm {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  padding: 0 var(--space-2);
 }
 
-/* Dashboard rows need a visibly roomy, rounded interactive surface even on
-   first paint, rather than inheriting the old tight list-item geometry. */
-#dashboard-main-grid li.dashboard-compact-row {
-  padding: 10px 18px;
-  margin: 0 -10px;
-  border-radius: var(--radius-md);
-}
-#dashboard-main-grid li.dashboard-compact-row:hover {
-  background: var(--bg-hover);
-  transform: translateX(2px);
-}
 #dashboard-main-grid .section-action,
 #dashboard-main-grid .dashboard-widget-footer-btn {
   border-radius: var(--radius-sm);

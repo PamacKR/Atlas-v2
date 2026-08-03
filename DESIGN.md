@@ -183,10 +183,10 @@ The user uses `Launch Atlas.bat` for live feedback. Do not attribute a mismatch 
 
 ### Do not silently claim these are fixed
 
-1. **Scrollbar visual fidelity:** the user still sees square, overly thick scrollbar thumbs in the actual `Launch Atlas.bat` app. Multiple CSS-only fixes failed to reflect. Diagnose the live rendered cascade/environment in a dedicated pass rather than applying another speculative patch.
-2. **Dashboard row-hover geometry:** the user still sees tight left/right hover padding and no visible rounded hover surface in Dashboard's main body. This is the same dedicated fidelity debt as the scrollbar issue; verify against the live rendered app before closing it.
-3. **Search final verification:** the search overhaul is implemented, but the broad verifier stops in an unrelated historical course-detail flow before search. Add/run a focused Electron check and inspect its screenshot before calling the search pass fully verified.
-4. **Dashboard v2 visual review:** behavior is implemented and covered by `scripts/verify-dashboard-v2.js`, but the user has not yet reviewed the finished surface. Keep its `ROADMAP.md` checkbox unchecked until they do.
+1. **Search final verification:** the search overhaul is implemented, but the broad verifier stops in an unrelated historical course-detail flow before search. Add/run a focused Electron check and inspect its screenshot before calling the search pass fully verified.
+2. **Dashboard v2 visual review:** behavior is implemented and covered by `scripts/verify-dashboard-v2.js`, but the user has not yet reviewed the finished surface. Keep its `ROADMAP.md` checkbox unchecked until they do.
+
+The previously deferred scrollbar and Dashboard hover-fidelity debt was resolved on 2026-08-03 through a live Electron cascade diagnosis. The dedicated verifier confirms 6px rounded track/thumb geometry and unclipped rounded Dashboard row hovers.
 
 ### Start sequence for the next chat
 

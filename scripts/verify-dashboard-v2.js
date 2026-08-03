@@ -16,6 +16,65 @@ const fs = require('fs');
     await window.evaluate(() => window.atlas.seedDashboardV2TestItems());
     await window.click('.sidebar-nav-item[data-page="dashboard"]');
     await window.waitForTimeout(300);
+    const fidelityDiagnostics = await window.evaluate(() => {
+      const list = document.getElementById('dashboard-deadlines');
+      if (!list) throw new Error('Dashboard deadline list is missing.');
+      const row = document.createElement('li');
+      row.className = 'dashboard-compact-row';
+      row.innerHTML = '<span class="dashboard-row-leading">Today</span><span class="dashboard-row-title">Fidelity verification deadline</span><span class="dashboard-row-course">Development Economics</span><span class="dashboard-row-trailing">18:29</span>';
+      list.appendChild(row);
+
+      const scrollbarProbe = document.createElement('div');
+      scrollbarProbe.style.cssText = 'position:fixed; left:-10000px; top:0; width:40px; height:40px; overflow:scroll;';
+      scrollbarProbe.innerHTML = '<div style="width:200px;height:200px"></div>';
+      document.body.appendChild(scrollbarProbe);
+      const rowStyle = getComputedStyle(row);
+      const probeStyle = getComputedStyle(scrollbarProbe);
+      const scrollbarStyle = getComputedStyle(scrollbarProbe, '::-webkit-scrollbar');
+      const trackStyle = getComputedStyle(scrollbarProbe, '::-webkit-scrollbar-track');
+      const thumbStyle = getComputedStyle(scrollbarProbe, '::-webkit-scrollbar-thumb');
+      return {
+        row: {
+          paddingLeft: rowStyle.paddingLeft,
+          paddingRight: rowStyle.paddingRight,
+          marginLeft: rowStyle.marginLeft,
+          marginRight: rowStyle.marginRight,
+          borderRadius: rowStyle.borderRadius,
+          background: rowStyle.backgroundColor,
+        },
+        scrollbar: {
+          standardWidth: probeStyle.scrollbarWidth,
+          standardColor: probeStyle.scrollbarColor,
+          width: scrollbarStyle.width,
+          height: scrollbarStyle.height,
+          trackRadius: trackStyle.borderRadius,
+          thumbRadius: thumbStyle.borderRadius,
+          thumbBackground: thumbStyle.backgroundColor,
+        },
+      };
+    });
+    await window.locator('#dashboard-deadlines .dashboard-compact-row').last().hover();
+    const hoveredRow = await window.evaluate(() => {
+      const row = document.querySelector('#dashboard-deadlines .dashboard-compact-row:last-child');
+      if (!row) throw new Error('Dashboard fidelity row is missing.');
+      const style = getComputedStyle(row);
+      const rect = row.getBoundingClientRect();
+      const listRect = document.getElementById('dashboard-deadlines').getBoundingClientRect();
+      return {
+        background: style.backgroundColor,
+        borderRadius: style.borderRadius,
+        leftInset: rect.left - listRect.left,
+        rightInset: listRect.right - rect.right,
+      };
+    });
+    console.log(`dashboard fidelity diagnostics: ${JSON.stringify({ fidelityDiagnostics, hoveredRow })}`);
+    if (fidelityDiagnostics.scrollbar.trackRadius === '0px' || fidelityDiagnostics.scrollbar.thumbRadius === '0px') {
+      throw new Error(`Scrollbar corners are not rounded: ${JSON.stringify(fidelityDiagnostics.scrollbar)}`);
+    }
+    if (hoveredRow.background === 'rgba(0, 0, 0, 0)' || hoveredRow.leftInset < 0 || hoveredRow.rightInset < 0) {
+      throw new Error(`Dashboard hover surface is clipped or missing: ${JSON.stringify(hoveredRow)}`);
+    }
+    await window.screenshot({ path: path.join(__dirname, '..', 'verify-dashboard-v2-hover.png') });
     const updateRows = '#dashboard-announcements .dashboard-update-row';
     if ((await window.locator(updateRows).count()) !== 2) throw new Error('Expected two new Classroom updates after baseline.');
     await window.locator(`${updateRows}:not(.is-pinned) .dashboard-update-clear`).first().click();
