@@ -4609,7 +4609,11 @@ function renderSearchDropdown(resultsList: HTMLElement, allResults: SearchResult
     chip.classList.toggle('active', searchCourseFilterId === courseId);
     chip.textContent = label;
     chip.title = label;
-    chip.addEventListener('click', () => {
+    chip.addEventListener('click', (event) => {
+      // Re-rendering replaces the clicked chip synchronously. Without
+      // stopping this event, the later document click-away handler sees a
+      // detached target and closes the search overlay right after filtering.
+      event.stopPropagation();
       searchCourseFilterId = courseId;
       activeSearchIndex = -1;
       renderSearchDropdown(resultsList, allResults, query);
