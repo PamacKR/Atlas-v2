@@ -47,7 +47,7 @@ export interface WatchedFolder {
 }
 
 export type Preview =
-  | { type: 'pdf'; url: string }
+  | { type: 'pdf'; data: Uint8Array }
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }

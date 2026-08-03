@@ -11,6 +11,7 @@
     "watch": "tsc -b -w",
     "verify": "npm run build && node scripts/verify-app.js",
     "verify:command-palette": "npm run build && node scripts/verify-command-palette.js",
+    "verify:pdf-preview": "npm run build && node scripts/verify-pdf-preview.js",
     "verify:resources-filters": "npm run build && node scripts/verify-resources-filters.js",
     "mcp:server": "node scripts/run-mcp-server.js",
     "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js",

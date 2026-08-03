@@ -33,3 +33,7 @@ function copyDir(fromRel, toRel) {
 
 copyDir('assets/tessdata', 'dist/main/tessdata');
 copyDir('assets/standard_fonts', 'dist/main/standard_fonts');
+fs.copyFileSync(
+  path.join(__dirname, '..', 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs'),
+  path.join(__dirname, '..', 'dist', 'renderer', 'pdf.worker.mjs')
+);

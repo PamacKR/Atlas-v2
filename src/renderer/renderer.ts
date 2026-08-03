@@ -250,7 +250,7 @@ interface NoteWithCourse extends Note {
 }
 
 type Preview =
-  | { type: 'pdf'; url: string }
+  | { type: 'pdf'; data: Uint8Array }
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
@@ -436,6 +436,7 @@ import {
 import { Crepe } from '@milkdown/crepe';
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import '@milkdown/crepe/theme/common/style.css';
 // Crepe's frame/frame-dark theme files are just `--crepe-*` custom
 // properties on `.milkdown` — both variable sets are inlined directly in
@@ -444,6 +445,7 @@ import '@milkdown/crepe/theme/common/style.css';
 // imported, permanently-dark stylesheet.
 
 const atlasApi: AtlasApi = (window as any).atlas;
+GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', document.baseURI).toString();
 
 const ICON_EXTENSION_MAP: Record<string, string> = {
   pdf: 'pdf',
@@ -3594,17 +3596,62 @@ function toggleNoteTrueFullscreen(): void {
   button.setAttribute('aria-label', button.title);
 }
 
+async function renderPdfInto(container: HTMLElement, data: Uint8Array): Promise<void> {
+  container.classList.add('pdf-preview-body');
+  container.innerHTML = '<p class="pdf-preview-status muted">Loading PDF…</p>';
+
+  try {
+    const pdf = await getDocument({ data: new Uint8Array(data) }).promise;
+    const pages = document.createElement('div');
+    pages.className = 'pdf-preview-pages';
+    const availableWidth = Math.max(320, container.clientWidth - 2 * 26);
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(1.35, availableWidth / baseViewport.width);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not create a PDF canvas.');
+
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.ceil(viewport.width * pixelRatio);
+      canvas.height = Math.ceil(viewport.height * pixelRatio);
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+      canvas.setAttribute('aria-label', `PDF page ${pageNumber} of ${pdf.numPages}`);
+
+      const pageSurface = document.createElement('div');
+      pageSurface.className = 'pdf-preview-page';
+      pageSurface.appendChild(canvas);
+      pages.appendChild(pageSurface);
+
+      await page.render({
+        canvas,
+        canvasContext: context,
+        viewport,
+        transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
+      }).promise;
+    }
+
+    container.replaceChildren(pages);
+  } catch (error) {
+    console.error('PDF preview render failed:', error);
+    container.innerHTML = '<p class="muted pdf-preview-status">Could not render this PDF in Atlas. Use Open in browser for the original file.</p>';
+  }
+}
+
 // Renders a scan preview (image or PDF) into a plain container — same two
 // branches openPreview() has for resources, since a handwritten note's scan
 // is just a file on disk with no different rendering needs. Only image/pdf
 // are possible here (see SCAN_EXTENSIONS in main.ts), so the html/text/
 // unsupported branches openPreview() also handles don't apply.
-function renderScanInto(container: HTMLElement, preview: Preview): void {
+async function renderScanInto(container: HTMLElement, preview: Preview): Promise<void> {
   container.innerHTML = '';
+  container.classList.remove('pdf-preview-body');
   if (preview.type === 'pdf') {
-    const iframe = document.createElement('iframe');
-    iframe.src = preview.url;
-    container.appendChild(iframe);
+    await renderPdfInto(container, preview.data);
   } else if (preview.type === 'image') {
     const img = document.createElement('img');
     img.src = preview.url;
@@ -3646,7 +3693,7 @@ async function showNoteScanPanel(noteId: number): Promise<void> {
   editorRoot.hidden = true;
   updateScanToggleLabel(true);
   const preview = await atlasApi.getNoteScanPreview(noteId);
-  if (preview) renderScanInto(panel, preview);
+  if (preview) await renderScanInto(panel, preview);
 }
 
 async function toggleNoteScanPanel(): Promise<void> {
@@ -4271,11 +4318,10 @@ async function openPreview(resource: Resource): Promise<void> {
 
   const preview = await atlasApi.getPreview(resource.id);
   body.innerHTML = '';
+  body.classList.remove('pdf-preview-body');
 
   if (preview.type === 'pdf') {
-    const iframe = document.createElement('iframe');
-    iframe.src = preview.url;
-    body.appendChild(iframe);
+    await renderPdfInto(body, preview.data);
   } else if (preview.type === 'image') {
     const img = document.createElement('img');
     img.className = 'preview-image';
@@ -4333,6 +4379,7 @@ function closePreview(): void {
   fullscreenButton.title = 'Fullscreen';
   fullscreenButton.setAttribute('aria-label', 'Fullscreen');
   body.innerHTML = ''; // stop any iframe/media activity
+  body.classList.remove('pdf-preview-body');
   discardResourceOcr();
   currentPreviewResourceId = null;
 }

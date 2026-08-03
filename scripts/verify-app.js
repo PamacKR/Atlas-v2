@@ -771,16 +771,19 @@ const fs = require('fs');
 
   const scanPanelVisibleByDefault = !(await window.isHidden('#note-scan-panel'));
   const editorHiddenByDefault = await window.isHidden('#note-editor-root');
-  const scanIframeSrcByDefault = await window.getAttribute('#note-scan-panel iframe', 'src').catch(() => null);
+  const scanPdfPageCount = await window.locator('#note-scan-panel .pdf-preview-page canvas').count();
+  const scanUsesAtlasScrollbar = (await window.getAttribute('#note-scan-panel', 'class')).includes('pdf-preview-body');
   console.log(
     'scan shown by default for a handwritten note:',
     scanPanelVisibleByDefault,
     '— editor hidden:',
     editorHiddenByDefault,
-    '— iframe src:',
-    scanIframeSrcByDefault
+    '— rendered PDF pages:',
+    scanPdfPageCount,
+    '— Atlas scrollbar container:',
+    scanUsesAtlasScrollbar
   );
-  if (!scanPanelVisibleByDefault || !editorHiddenByDefault || !scanIframeSrcByDefault) {
+  if (!scanPanelVisibleByDefault || !editorHiddenByDefault || scanPdfPageCount !== 2 || !scanUsesAtlasScrollbar) {
     throw new Error('FAIL: opening a handwritten note should show the original scan by default, not the editor');
   }
 
@@ -938,9 +941,12 @@ const fs = require('fs');
   if (!ocrResourceButtonVisible) throw new Error('FAIL: "Run OCR" should be visible for a PDF resource preview');
   // The original PDF must still be what's showing by default (not any OCR
   // view) — Run OCR is purely an opt-in extra, never the default preview.
-  const pdfIframeSrcBeforeOcr = await window.getAttribute('#preview-body iframe', 'src').catch(() => null);
-  console.log('PDF iframe src before running OCR:', pdfIframeSrcBeforeOcr);
-  if (!pdfIframeSrcBeforeOcr) throw new Error('FAIL: opening a PDF resource should show the original PDF by default');
+  const pdfPageCountBeforeOcr = await window.locator('#preview-body.pdf-preview-body .pdf-preview-page canvas').count();
+  const pdfUsesAtlasScrollbar = (await window.getAttribute('#preview-body', 'class')).includes('pdf-preview-body');
+  console.log('PDF pages rendered before OCR:', pdfPageCountBeforeOcr, '— Atlas scrollbar container:', pdfUsesAtlasScrollbar);
+  if (pdfPageCountBeforeOcr !== 2 || !pdfUsesAtlasScrollbar) {
+    throw new Error('FAIL: opening a PDF resource should render the original PDF inside Atlas by default');
+  }
 
   await window.click('#preview-run-ocr');
   await window.waitForTimeout(8000); // real OCR round-trip, not mocked

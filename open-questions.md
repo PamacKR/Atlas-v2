@@ -120,11 +120,13 @@ The user has a Google One/Google AI Pro-type subscription on their personal acco
 
 ### 10. Remembering zoom for PDF previews
 
-The user asked (2026-07-23) whether Atlas can remember each file's preferred preview zoom, using PDFs as the example ("for one pdf 100% would work, for another maybe 150%"). Per-resource zoom memory is now implemented for **image** previews (`resources.zoom_level`, restored automatically on reopen). PDFs are different: they render inside an `<iframe>` using Chromium's own built-in PDF viewer, which is a separate document — there's no scripting API to read back whatever zoom level the user sets inside it, and Ctrl+scroll can't reach into it either (confirmed why the user's "doesn't work on other file types" observation is expected, not a bug).
+**2026-08-03 update:** Atlas-owned PDF previews now use the bundled local `pdfjs-dist` renderer rather than Chromium's iframe viewer. This removes the old scripting limitation, but PDF-specific zoom controls and remembered per-resource PDF zoom are still not implemented; the question is now whether that polish is worth adding.
 
-The only lever available is one-directional: appending `#zoom=N` to the PDF's `file://` URL sets its *initial* zoom on load (a Chromium PDF-viewer convention), but we'd have to build our own separate control (outside the iframe) for the user to pick/save a preferred value — we can't observe what they actually change it to inside the native viewer afterward.
+The user asked (2026-07-23) whether Atlas can remember each file's preferred preview zoom, using PDFs as the example ("for one pdf 100% would work, for another maybe 150%"). Per-resource zoom memory is now implemented for **image** previews (`resources.zoom_level`, restored automatically on reopen). PDFs now render with local `pdfjs-dist` canvases inside Atlas, so the old iframe limitation no longer applies; however, PDF-specific zoom controls and per-resource PDF zoom memory have not been built yet.
 
-**Status:** Open — needs a decision from the user on whether that one-way, "set an initial zoom via a separate small control, can't reflect live changes" approach is worth building for PDFs, given the real UX limitation. Not implemented yet.
+The remaining decision is whether PDF previews should gain their own zoom controls and saved per-resource zoom level, using the same Atlas-owned preview surface rather than Chromium's old built-in viewer.
+
+**Status:** Open — needs a decision from the user on whether PDF zoom controls and remembered PDF zoom are worth adding. The earlier native-viewer limitation is resolved by the local PDF.js preview, but the feature itself is still not implemented.
 
 ### 11. Folder→course mapping for local folder watching
 
@@ -158,9 +160,11 @@ The schema has two separate tables that both cover "things with a due date": `de
 
 ### 14. Multiple scrollbars visible at once in some views
 
+**2026-08-03 update:** the Atlas-owned in-app PDF preview no longer embeds Chromium's PDF viewer, so its preview scrollbar is now part of Atlas and receives the global rounded styling. This question remains open only for scrollbars in external browser windows, which Atlas cannot style.
+
 The user flagged (2026-07-26, with a screenshot) a case where several scrollbars render simultaneously and visually clash — looked like a "Open in browser" PDF view, where Chromium's own built-in PDF viewer toolbar/scrollbar can end up nested alongside the page's own scrollbar. Explicitly said not to fix now — just note it for later.
 
-**Status:** Open, deliberately deferred — this is a UI/layout pass item, not something to fix opportunistically mid-feature-work. Revisit when doing a dedicated UI/layout cleanup pass (per `AGENTS.md`, Atlas's own UI is currently functional-first, not yet polished). Worth checking both the resource preview overlay (`#preview-overlay`/`#preview-body`) and the local-server-backed "Open in browser" PDF route (`localServer.ts`) for nested scrollable containers when this is picked up.
+**Status:** Partially resolved — Atlas-owned in-app PDF preview nesting was removed on 2026-08-03. Any remaining scrollbar behavior in the local-server-backed "Open in browser" route (`localServer.ts`) belongs to the external browser and remains outside Atlas's styling control.
 
 ### 15. Importing finalized courses from `ashoka-planner`'s registration tracker
 

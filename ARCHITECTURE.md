@@ -189,7 +189,7 @@ Why MCP over static file export:
 
 PRD section 10 asks for in-app viewing "whenever practical," with an external-app fallback otherwise. Implementation, per resource kind:
 
-- **PDF, image** — rendered directly (`<iframe>`/`<img>` against a `file://` URL); Chromium's built-in PDF viewer handles PDFs with no extra library.
+- **PDF, image** — PDFs are rendered locally with the bundled `pdfjs-dist` worker into Atlas-owned canvas pages, so the preview's scroll surface and styling remain under Atlas's control. Images render directly with `<img>` against a `file://` URL. The separate "Open in browser" route still streams the native PDF and therefore uses the browser's own viewer outside Atlas's styling boundary.
 - **Markdown** — rendered to HTML via `marked`. Deliberately pinned to `marked@12` — v13+ dropped the CommonJS build Atlas's main process needs (it's ESM-only from v13 on), which crashes with `ERR_REQUIRE_ESM` under `require()`.
 - **Text** — shown as-is.
 - **DOCX** — converted to HTML via `mammoth` (pure JS, no native compile step, no Word installation needed).
