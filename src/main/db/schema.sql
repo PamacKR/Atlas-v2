@@ -245,6 +245,9 @@ CREATE TABLE IF NOT EXISTS announcements (
   title TEXT NOT NULL,
   body TEXT,
   posted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- A user-created announcement deliberately kept on the Dashboard until
+  -- removed there. It remains part of the course record when unpinned.
+  dashboard_pinned INTEGER NOT NULL DEFAULT 0,
   -- External Classroom announcement ID, used to detect "already imported"
   -- across syncs. NULL for anything not sourced from Classroom.
   classroom_announcement_id TEXT

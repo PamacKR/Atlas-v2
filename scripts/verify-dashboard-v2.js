@@ -18,17 +18,27 @@ const fs = require('fs');
     await window.waitForTimeout(300);
     const updateRows = '#dashboard-announcements .dashboard-update-row';
     if ((await window.locator(updateRows).count()) !== 2) throw new Error('Expected two new Classroom updates after baseline.');
+    await window.click('#dashboard-add-important');
+    if (await window.isHidden('#dashboard-important-overlay')) throw new Error('Important announcement overlay did not open.');
+    await window.fill('#dashboard-important-title-input', 'Important verification announcement');
+    await window.fill('#dashboard-important-body', 'Keep this on Dashboard.');
+    await window.locator('#dashboard-important-form button[type="submit"]').click();
+    await window.waitForTimeout(100);
+    if ((await window.locator(updateRows).count()) !== 3) throw new Error('Expected two Classroom updates and one pinned announcement after baseline.');
     if (await window.isHidden('#dashboard-mark-all-updates')) throw new Error('Mark all read should be visible with updates.');
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-dashboard-v2-populated.png') });
 
-    await window.locator(`${updateRows} .dashboard-update-clear`).first().click();
+    await window.locator(`${updateRows}:not(.is-pinned) .dashboard-update-clear`).first().click();
     await window.waitForTimeout(100);
-    if ((await window.locator(updateRows).count()) !== 1) throw new Error('Individual clear did not remove exactly one update.');
+    if ((await window.locator(updateRows).count()) !== 2) throw new Error('Individual clear did not remove exactly one Classroom update.');
 
     await window.click('#dashboard-mark-all-updates');
     await window.waitForTimeout(100);
-    if ((await window.locator(updateRows).count()) !== 0) throw new Error('Mark all read did not clear remaining updates.');
+    if ((await window.locator(updateRows).count()) !== 1) throw new Error('Mark all read should leave the pinned announcement visible.');
     if (!await window.isHidden('#dashboard-mark-all-updates')) throw new Error('Mark all read remained visible after clearing updates.');
+    await window.locator(`${updateRows}.is-pinned .dashboard-update-clear`).click();
+    await window.waitForTimeout(100);
+    if ((await window.locator(updateRows).count()) !== 0) throw new Error('Removing an important announcement did not unpin it.');
 
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-dashboard-v2.png') });
     console.log('dashboard v2 verify: PASS');

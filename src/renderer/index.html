@@ -91,7 +91,7 @@
             <button id="dashboard-view-calendar" type="button" class="dashboard-widget-footer-btn">Calendar →</button>
           </div>
           <div class="dashboard-widget" id="dashboard-announcements-widget">
-            <div class="resources-header section-head"><h2>Announcements</h2><button id="dashboard-mark-all-updates" type="button" class="section-action" hidden>Mark all read</button></div>
+            <div class="resources-header section-head"><h2>Announcements</h2><div class="dashboard-announcement-actions"><button id="dashboard-add-important" type="button" class="section-action">+ Add important</button><button id="dashboard-mark-all-updates" type="button" class="section-action" hidden>Mark all read</button></div></div>
             <ul id="dashboard-announcements"></ul>
           </div>
           </div>
@@ -765,6 +765,23 @@
         </div>
         <ul id="drive-review-list"></ul>
       </div>
+    </div>
+  </div>
+
+  <div id="dashboard-important-overlay" hidden>
+    <div id="dashboard-important-panel" class="overlay-panel size-sm" role="dialog" aria-modal="true" aria-labelledby="dashboard-important-title">
+      <div class="overlay-header">
+        <div class="overlay-header-titles"><h3 id="dashboard-important-title">Add important announcement</h3></div>
+        <div class="overlay-header-actions"><button id="dashboard-important-close" class="overlay-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      </div>
+      <form id="dashboard-important-form">
+        <div class="overlay-body">
+          <label>Title<input id="dashboard-important-title-input" type="text" required /></label>
+          <label>Course<div id="dashboard-important-course" class="dselect"></div></label>
+          <label>Details <span>(optional)</span><textarea id="dashboard-important-body" rows="4"></textarea></label>
+        </div>
+        <div class="overlay-footer"><button id="dashboard-important-cancel" class="btn" type="button">Cancel</button><button class="btn primary" type="submit">Add announcement</button></div>
+      </form>
     </div>
   </div>
 

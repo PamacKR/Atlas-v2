@@ -1132,7 +1132,8 @@ ipcMain.handle('dashboard:recentAnnouncements', () => {
 // Dashboard v2 deliberately shows only Classroom content first observed
 // after the one-time baseline in database.ts. A cleared row is a user action,
 // not an inference from the item's timestamp, so re-syncing never makes an
-// old item look new again.
+// old item look new again. Pinned manual announcements are a separate,
+// explicitly user-curated lane and do not participate in that cleared state.
 ipcMain.handle('dashboard:newClassroomItems', (_event, courseId: number | null = null) => {
   const db = getDb();
   const courseClause = courseId === null ? '' : ' AND course_id = ?';
@@ -1157,10 +1158,35 @@ ipcMain.handle('dashboard:newClassroomItems', (_event, courseId: number | null =
            ON cleared.item_type = 'assignment' AND cleared.item_id = assignments.id
          WHERE assignments.source = 'classroom' AND assignments.classroom_removed = 0
            AND courses.archived = 0 AND cleared.item_id IS NULL${courseClause}
+         UNION ALL
+         SELECT 'pinned_announcement' AS item_type, announcements.id, announcements.course_id,
+                announcements.title, announcements.posted_at AS occurred_at,
+                courses.name AS course_name
+         FROM announcements
+         JOIN courses ON courses.id = announcements.course_id
+         WHERE announcements.source = 'manual' AND announcements.dashboard_pinned = 1
+           AND courses.archived = 0${courseClause}
        ) ORDER BY occurred_at DESC, id DESC LIMIT 20`
     )
-    .all(...(courseId === null ? [] : [courseId, courseId]));
+    .all(...(courseId === null ? [] : [courseId, courseId, courseId]));
   return rows;
+});
+
+ipcMain.handle('dashboard:createPinnedAnnouncement', (_event, courseId: number, title: string, body: string) => {
+  const cleanTitle = title.trim();
+  if (!Number.isInteger(courseId) || !cleanTitle) throw new Error('A course and title are required.');
+  const db = getDb();
+  const course = db.prepare('SELECT id FROM courses WHERE id = ? AND archived = 0').get(courseId);
+  if (!course) throw new Error('Choose an active course.');
+  const result = db.prepare(
+    "INSERT INTO announcements (course_id, source, title, body, dashboard_pinned) VALUES (?, 'manual', ?, ?, 1)"
+  ).run(courseId, cleanTitle, body.trim() || null);
+  return db.prepare('SELECT * FROM announcements WHERE id = ?').get(result.lastInsertRowid);
+});
+
+ipcMain.handle('dashboard:unpinAnnouncement', (_event, announcementId: number) => {
+  const db = getDb();
+  return db.prepare("UPDATE announcements SET dashboard_pinned = 0 WHERE id = ? AND source = 'manual' AND dashboard_pinned = 1").run(announcementId).changes > 0;
 });
 
 ipcMain.handle('dashboard:clearNewClassroomItem', (_event, itemType: 'announcement' | 'assignment', itemId: number) => {
@@ -1209,6 +1235,7 @@ if (process.env.ATLAS_TEST_DASHBOARD_V2 === '1') {
     db.prepare(
       "INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, posted_at, updated_at) VALUES (?, 'New assignment', '', NULL, 'classroom', 'verify-assignment', datetime('now'), datetime('now'))"
     ).run(courseId);
+    return courseId;
   });
 }
 

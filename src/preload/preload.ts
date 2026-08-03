@@ -446,7 +446,11 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('dashboard:clearNewClassroomItem', itemType, itemId),
   clearAllNewClassroomItems: (courseId: number | null = null) =>
     ipcRenderer.invoke('dashboard:clearAllNewClassroomItems', courseId),
-  seedDashboardV2TestItems: (): Promise<void> => ipcRenderer.invoke('test:seedDashboardV2Items'),
+  createPinnedDashboardAnnouncement: (courseId: number, title: string, body: string) =>
+    ipcRenderer.invoke('dashboard:createPinnedAnnouncement', courseId, title, body),
+  unpinDashboardAnnouncement: (announcementId: number) =>
+    ipcRenderer.invoke('dashboard:unpinAnnouncement', announcementId),
+  seedDashboardV2TestItems: (): Promise<number> => ipcRenderer.invoke('test:seedDashboardV2Items'),
   getCourseSummaries: (archived = false): Promise<CourseSummary[]> =>
     ipcRenderer.invoke('dashboard:courseSummaries', archived),
   listAllResources: (): Promise<ResourceWithCourse[]> => ipcRenderer.invoke('resources:listAll'),

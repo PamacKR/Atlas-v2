@@ -216,6 +216,9 @@ function migrate(db: Database.Database): void {
   if (!announcementColumns.includes('classroom_announcement_id')) {
     db.exec('ALTER TABLE announcements ADD COLUMN classroom_announcement_id TEXT');
   }
+  if (!announcementColumns.includes('dashboard_pinned')) {
+    db.exec('ALTER TABLE announcements ADD COLUMN dashboard_pinned INTEGER NOT NULL DEFAULT 0');
+  }
 
   const assignmentColumns = (
     db.prepare('PRAGMA table_info(assignments)').all() as { name: string }[]
