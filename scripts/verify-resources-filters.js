@@ -80,6 +80,29 @@ const fs = require('fs');
     if (dropdownStyle.gap > 12) throw new Error(`Source dropdown arrow is too far from its label: ${JSON.stringify(dropdownStyle)}`);
     if (dropdownStyle.arrowRightGap > 18) throw new Error(`Source dropdown has too much space after its arrow: ${JSON.stringify(dropdownStyle)}`);
     if (dropdownStyle.optionJustify !== 'flex-start' || dropdownStyle.optionGap !== '8px') throw new Error(`Source dropdown checkmark alignment is too loose: ${JSON.stringify(dropdownStyle)}`);
+    for (const page of ['dashboard', 'courses', 'resources', 'notes', 'calendar']) {
+      await window.click(`.sidebar-nav-item[data-page="${page}"]`);
+      await window.waitForTimeout(100);
+      const heights = await window.evaluate((currentPage) => {
+        const search = document.getElementById('search-input');
+        const controls = Array.from(document.querySelectorAll('#topbar .topbar-page-actions:not([hidden]) button'))
+          .filter((element) => element.getClientRects().length > 0);
+        if (currentPage === 'dashboard') {
+          const dashboardFilter = document.getElementById('dashboard-course-filter-trigger');
+          if (dashboardFilter?.getClientRects().length) controls.push(dashboardFilter);
+        }
+        return {
+          search: search?.getBoundingClientRect().height ?? 0,
+          controls: controls.map((control) => ({ id: control.id, height: control.getBoundingClientRect().height })),
+        };
+      }, page);
+      if (heights.controls.some((control) => Math.abs(control.height - heights.search) > 0.5)) {
+        throw new Error(`${page} topbar controls do not match the search height: ${JSON.stringify(heights)}`);
+      }
+    }
+    await window.click('.sidebar-nav-item[data-page="resources"]');
+    await window.waitForTimeout(150);
+    await window.click('#resources-source-filter .dselect-trigger');
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-resources-filters.png') });
     console.log('resources source filter verify: PASS');
   } finally {

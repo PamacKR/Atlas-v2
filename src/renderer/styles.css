@@ -3838,11 +3838,11 @@ button#classroom-connect-confirm {
 #topbar-page-titles .dim { color: var(--text-faint); font-weight: 400; }
 #topbar-right { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .topbar-page-actions:not([hidden]) { display: flex; align-items: center; gap: var(--space-2); }
-#topbar .topbar-page-actions button { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition); }
+#topbar .topbar-page-actions button { height: 37px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition); }
 #topbar .topbar-page-actions button:hover, #topbar .topbar-page-actions button:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 #resources-topbar-actions .resources-source-select { width: 108px; flex: 0 0 108px; }
 #resources-topbar-actions .resources-source-select .dselect-menu { min-width: 108px; }
-#topbar .topbar-page-actions .resources-source-select .dselect-trigger { justify-content: flex-start; gap: 6px; padding: 0 10px; }
+#topbar .topbar-page-actions .resources-source-select .dselect-trigger { justify-content: center; gap: 6px; padding: 0 10px; }
 #topbar .topbar-page-actions .resources-source-select .dselect-option { height: auto; justify-content: flex-start; gap: 8px; padding: 6px 8px; border: 0; border-radius: 6px; }
 
 #search-box {
@@ -4205,6 +4205,7 @@ button#classroom-connect-confirm {
 }
 #main-area:not([data-page="dashboard"]) #dashboard-course-filter { display: none; }
 .dashboard-course-filter { width: 120px; flex: 0 0 120px; }
+.dashboard-course-filter .dselect-trigger { height: 37px; padding: 0 var(--space-3); }
 .dashboard-course-filter .dselect-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dselect { position: relative; }
 .dselect-trigger {
