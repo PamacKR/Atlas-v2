@@ -998,7 +998,7 @@ const fs = require('fs');
   if (!searchResultTexts.some((t) => t && t.includes('Sample lecture notes') && t.includes('Verify Script Test Course'))) {
     throw new Error(`FAIL: search did not find the expected resource, got ${JSON.stringify(searchResultTexts)}`);
   }
-  await window.click('#search-results li');
+  await window.click('#search-results [data-search-index="0"]');
   await window.waitForTimeout(400);
   const previewVisibleAfterSearchClick = !(await window.isHidden('#preview-overlay'));
   console.log('preview opened from a search result:', previewVisibleAfterSearchClick);
@@ -1017,7 +1017,7 @@ const fs = require('fs');
   await window.fill('#search-input', 'lecture');
   await window.waitForTimeout(500);
   await window.press('#search-input', 'ArrowDown');
-  const activeAfterArrowDown = await window.$eval('#search-results li', (el) => el.classList.contains('active'));
+  const activeAfterArrowDown = await window.$eval('#search-results [data-search-index="0"]', (el) => el.classList.contains('active'));
   console.log('first search result active after ArrowDown:', activeAfterArrowDown);
   if (!activeAfterArrowDown) {
     throw new Error('FAIL: ArrowDown did not mark the first search result as active');

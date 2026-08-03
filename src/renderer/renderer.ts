@@ -188,6 +188,9 @@ interface SearchResult {
   // slide/sheet hit belongs to, since a search hit resolves to one part but
   // there's nothing to open at the part level itself (see openSearchResult).
   resourceId: number | null;
+  source: 'local' | 'drive' | 'classroom' | null;
+  parentTitle: string | null;
+  searchSection: 'courses' | 'names' | 'content' | 'classroom';
 }
 
 interface DashboardDeadline extends Deadline {
@@ -4452,9 +4455,10 @@ let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 // having to re-read the DOM to figure out which result is "current."
 let currentSearchResults: SearchResult[] = [];
 let activeSearchIndex = -1;
+let searchCourseFilterId: number | null = null;
 
 function updateActiveSearchResult(): void {
-  const items = document.querySelectorAll('#search-results li');
+  const items = document.querySelectorAll<HTMLElement>('#search-results [data-search-index]');
   items.forEach((item, index) => {
     const isActive = index === activeSearchIndex;
     item.classList.toggle('active', isActive);
@@ -4473,6 +4477,9 @@ async function runSearch(query: string): Promise<void> {
   }
 
   const results = await atlasApi.search(query);
+  renderSearchDropdown(resultsList, results, query);
+  resultsList.hidden = false;
+  return;
   currentSearchResults = results;
   resultsList.innerHTML = '';
 
@@ -4512,6 +4519,156 @@ async function runSearch(query: string): Promise<void> {
     });
   }
   resultsList.hidden = false;
+}
+
+const SEARCH_ICON = {
+  course: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>',
+  file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
+  classroom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></svg>',
+};
+
+function highlightSearchTitle(text: string, query: string): string {
+  const words = query.trim().split(/\s+/).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!words.length) return escapeHtml(text);
+  const escapedWords = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return escapeHtml(text).replace(new RegExp(`(${escapedWords})`, 'gi'), '<mark>$1</mark>');
+}
+
+function searchBadge(result: SearchResult): { label: string; kind: string; icon: string } {
+  if (result.entityType === 'course') return { label: 'Course', kind: 'course', icon: SEARCH_ICON.course };
+  if (result.entityType === 'announcement' || result.entityType === 'assignment')
+    return { label: 'Classroom', kind: 'classroom', icon: SEARCH_ICON.classroom };
+  if (result.entityType === 'note') return { label: 'Note', kind: 'note', icon: SEARCH_ICON.file };
+  if (result.source === 'drive') return { label: 'Drive', kind: 'drive', icon: SEARCH_ICON.file };
+  return { label: 'File', kind: 'file', icon: SEARCH_ICON.file };
+}
+
+function courseSwatchColor(courseId: number): string {
+  return ['#3b82f6', '#8b5cf6', '#f59e0b', '#14b88a', '#ec4899'][Math.abs(courseId) % 5];
+}
+
+function appendSearchRow(
+  section: HTMLElement,
+  result: SearchResult,
+  query: string,
+  index: number,
+  detail = '',
+  titleOverride?: string
+): void {
+  const badge = searchBadge(result);
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'result-row';
+  row.dataset.searchIndex = String(index);
+  row.innerHTML = `<span class="r-icon">${badge.icon}</span><span class="r-main"><span class="r-title">${highlightSearchTitle(titleOverride ?? result.title, query)}</span><span class="r-sub"><span class="swatch" style="background:${courseSwatchColor(result.courseId)}"></span>${escapeHtml(result.courseName)}${detail ? ` · ${escapeHtml(detail)}` : ''}</span></span><span class="source-badge ${badge.kind}">${badge.label}</span>`;
+  row.addEventListener('click', () => void openSearchResult(result));
+  row.addEventListener('mouseenter', () => {
+    activeSearchIndex = index;
+    updateActiveSearchResult();
+  });
+  section.appendChild(row);
+}
+
+function appendPageHits(section: HTMLElement, parts: SearchResult[]): void {
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'page-hits-toggle';
+  toggle.textContent = `▸ ${parts.length} matching page${parts.length === 1 ? '' : 's'}`;
+  const hits = document.createElement('div');
+  hits.className = 'page-hits';
+  for (const part of parts) {
+    const hit = document.createElement('button');
+    hit.type = 'button';
+    hit.className = 'page-hit-row';
+    hit.innerHTML = `<span class="p-num">${escapeHtml(part.title)}</span><span>${highlightSnippet(part.snippet)}</span>`;
+    hit.addEventListener('click', () => void openSearchResult(part));
+    hits.appendChild(hit);
+  }
+  toggle.addEventListener('click', () => {
+    const expanded = hits.classList.toggle('expanded');
+    toggle.textContent = `${expanded ? '▾' : '▸'} ${parts.length} matching page${parts.length === 1 ? '' : 's'}`;
+  });
+  section.append(toggle, hits);
+}
+
+function renderSearchDropdown(resultsList: HTMLElement, allResults: SearchResult[], query: string): void {
+  resultsList.innerHTML = '';
+  const courses = new Map<number, string>();
+  allResults.forEach((result) => {
+    if (result.courseId && result.courseName) courses.set(result.courseId, result.courseName);
+    if (result.entityType === 'course') courses.set(result.entityId, result.title);
+  });
+  if (searchCourseFilterId !== null && !courses.has(searchCourseFilterId)) searchCourseFilterId = null;
+
+  const filters = document.createElement('li');
+  filters.className = 'search-filter-row';
+  const addFilter = (label: string, courseId: number | null): void => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'filter-chip';
+    chip.classList.toggle('active', searchCourseFilterId === courseId);
+    chip.textContent = label;
+    chip.title = label;
+    chip.addEventListener('click', () => {
+      searchCourseFilterId = courseId;
+      activeSearchIndex = -1;
+      renderSearchDropdown(resultsList, allResults, query);
+    });
+    filters.appendChild(chip);
+  };
+  addFilter('All courses', null);
+  courses.forEach((name, id) => addFilter(name, id));
+  if (courses.size) resultsList.appendChild(filters);
+
+  const results = searchCourseFilterId === null ? allResults : allResults.filter((r) => r.courseId === searchCourseFilterId || (r.entityType === 'course' && r.entityId === searchCourseFilterId));
+  if (!results.length) {
+    const empty = document.createElement('li');
+    empty.className = 'result-empty-hint';
+    empty.textContent = 'No matches in this course';
+    resultsList.appendChild(empty);
+    currentSearchResults = [];
+    return;
+  }
+
+  const grouped = {
+    Courses: results.filter((r) => r.searchSection === 'courses'),
+    Names: results.filter((r) => r.searchSection === 'names'),
+    Content: results.filter((r) => r.searchSection === 'content'),
+    Classroom: results.filter((r) => r.searchSection === 'classroom'),
+  };
+  const primary: SearchResult[] = [];
+  Object.entries(grouped).forEach(([heading, sectionResults]) => {
+    if (!sectionResults.length) return;
+    const section = document.createElement('li');
+    section.className = 'result-section';
+    const head = document.createElement('div');
+    head.className = 'result-section-head';
+    head.textContent = heading;
+    section.appendChild(head);
+    if (heading === 'Content') {
+      const documentGroups = new Map<number, SearchResult[]>();
+      sectionResults.filter((r) => r.entityType === 'document_part').forEach((part) => {
+        if (part.resourceId !== null) documentGroups.set(part.resourceId, [...(documentGroups.get(part.resourceId) ?? []), part]);
+      });
+      sectionResults.filter((r) => r.entityType !== 'document_part').forEach((result) => {
+        const index = primary.push(result) - 1;
+        appendSearchRow(section, result, query, index, result.snippet ? 'content match' : '');
+      });
+      documentGroups.forEach((parts) => {
+        const representative = parts[0];
+        const index = primary.push(representative) - 1;
+        appendSearchRow(section, representative, query, index, `${parts.length} page${parts.length === 1 ? '' : 's'} match`, representative.parentTitle ?? representative.title);
+        appendPageHits(section, parts);
+      });
+    } else {
+      sectionResults.forEach((result) => {
+        const index = primary.push(result) - 1;
+        appendSearchRow(section, result, query, index, result.entityType === 'assignment' ? 'Assignment' : result.entityType === 'announcement' ? 'Announcement' : '');
+      });
+    }
+    resultsList.appendChild(section);
+  });
+  currentSearchResults = primary;
 }
 
 async function openSearchResult(result: SearchResult): Promise<void> {

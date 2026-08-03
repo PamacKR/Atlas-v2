@@ -977,6 +977,9 @@ ipcMain.handle('search:query', (_event, query: string) => {
     courseName: '',
     snippet: '',
     resourceId: null,
+    source: null,
+    parentTitle: null,
+    searchSection: 'courses',
   }));
 
   const searchIndexColumns = `search_index.entity_type AS entityType,
@@ -985,17 +988,24 @@ ipcMain.handle('search:query', (_event, query: string) => {
               search_index.title AS title,
               courses.name AS courseName,
               snippet(search_index, 4, '<mark>', '</mark>', '…', 12) AS snippet,
-              document_parts.resource_id AS resourceId`;
+              document_parts.resource_id AS resourceId,
+              search_resource.source AS source,
+              search_resource.title AS parentTitle`;
   const searchIndexJoins = `FROM search_index
        JOIN courses ON courses.id = search_index.course_id
        LEFT JOIN document_parts
-         ON search_index.entity_type = 'document_part' AND document_parts.id = search_index.entity_id`;
+         ON search_index.entity_type = 'document_part' AND document_parts.id = search_index.entity_id
+       LEFT JOIN resources AS search_resource
+         ON search_resource.id = CASE
+           WHEN search_index.entity_type = 'resource' THEN search_index.entity_id
+           WHEN search_index.entity_type = 'document_part' THEN document_parts.resource_id
+         END`;
 
   // "Names" — a file's or note's own title, not anything found inside it.
   // FTS5's column-filter syntax (`title:`) restricts the match to that one
   // column, so a resource whose *body* happens to contain the query but
   // whose title doesn't never lands in this section.
-  const nameMatches = db
+  const nameMatches = (db
     .prepare(
       `SELECT ${searchIndexColumns}
        ${searchIndexJoins}
@@ -1003,7 +1013,7 @@ ipcMain.handle('search:query', (_event, query: string) => {
        ORDER BY rank
        LIMIT 20`
     )
-    .all(ftsQuery) as { entityType: string; entityId: number }[];
+    .all(ftsQuery) as { entityType: string; entityId: number }[]).map((result) => ({ ...result, searchSection: 'names' }));
   const namedIds = new Set(nameMatches.map((r) => `${r.entityType}:${r.entityId}`));
 
   // "Inside content" — everything else the query matches: page/slide/sheet
@@ -1020,11 +1030,11 @@ ipcMain.handle('search:query', (_event, query: string) => {
        LIMIT 40`
       )
       .all(ftsQuery) as { entityType: string; entityId: number }[]
-  ).filter((r) => !namedIds.has(`${r.entityType}:${r.entityId}`));
+  ).filter((r) => !namedIds.has(`${r.entityType}:${r.entityId}`)).map((result) => ({ ...result, searchSection: 'content' }));
 
   // "Classroom" — announcements and assignments, one section regardless of
   // whether the match was in the title or the body.
-  const classroomMatches = db
+  const classroomMatches = (db
     .prepare(
       `SELECT ${searchIndexColumns}
        ${searchIndexJoins}
@@ -1032,7 +1042,7 @@ ipcMain.handle('search:query', (_event, query: string) => {
        ORDER BY rank
        LIMIT 20`
     )
-    .all(ftsQuery);
+    .all(ftsQuery) as { entityType: string; entityId: number }[]).map((result) => ({ ...result, searchSection: 'classroom' }));
 
   return [...courseMatches, ...nameMatches, ...contentMatches, ...classroomMatches];
 });
