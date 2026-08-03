@@ -218,6 +218,15 @@ interface DashboardAnnouncement {
   course_name: string;
 }
 
+interface DashboardClassroomUpdate {
+  item_type: 'announcement' | 'assignment';
+  id: number;
+  course_id: number;
+  title: string;
+  occurred_at: string | null;
+  course_name: string;
+}
+
 interface DashboardStats {
   courseCount: number;
   resourceCount: number;
@@ -385,6 +394,10 @@ interface AtlasApi {
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
   getRecentAnnouncements: () => Promise<DashboardAnnouncement[]>;
+  getNewClassroomItems: (courseId?: number | null) => Promise<DashboardClassroomUpdate[]>;
+  clearNewClassroomItem: (itemType: DashboardClassroomUpdate['item_type'], itemId: number) => Promise<boolean>;
+  clearAllNewClassroomItems: (courseId?: number | null) => Promise<number>;
+  seedDashboardV2TestItems: () => Promise<void>;
   getCourseSummaries: (archived?: boolean) => Promise<CourseSummary[]>;
   listAllResources: () => Promise<ResourceWithCourse[]>;
   listAllNotes: () => Promise<NoteWithCourse[]>;
@@ -3145,33 +3158,70 @@ function makeDashboardListingRow(title: string, courseName: string, courseId: nu
 
 async function renderDashboardAnnouncements(): Promise<void> {
   const list = document.getElementById('dashboard-announcements')!;
-  const announcements = await atlasApi.getRecentAnnouncements();
-  const visibleAnnouncements = dashboardCourseFilterId === null
-    ? announcements
-    : announcements.filter((announcement) => announcement.course_id === dashboardCourseFilterId);
+  const markAllButton = document.getElementById('dashboard-mark-all-updates') as HTMLButtonElement;
+  const updates = await atlasApi.getNewClassroomItems(dashboardCourseFilterId);
   list.innerHTML = '';
+  markAllButton.hidden = updates.length === 0;
 
-  if (visibleAnnouncements.length === 0) {
+  markAllButton.onclick = async () => {
+    await atlasApi.clearAllNewClassroomItems(dashboardCourseFilterId);
+    await renderDashboardAnnouncements();
+  };
+
+  if (updates.length === 0) {
     const li = document.createElement('li');
     li.className = 'muted';
-    li.textContent = 'No announcements.';
+    li.textContent = 'No new Classroom updates.';
     list.appendChild(li);
     return;
   }
 
-  for (const announcement of visibleAnnouncements.slice(0, 5)) {
-    const li = makeDashboardListingRow(
-      announcement.title,
-      announcement.course_name,
-      announcement.course_id,
-      relativeTime(announcement.posted_at)
-    );
-    li.addEventListener('click', async () => {
-      const courses = await atlasApi.listCourses();
-      const course = courses.find((item) => item.id === announcement.course_id);
-      if (course) await openDashboardCourse(course);
+  for (const update of updates.slice(0, 5)) {
+    const li = document.createElement('li');
+    li.className = 'dashboard-compact-row dashboard-listing-row dashboard-update-row is-unread';
+    const unread = document.createElement('span');
+    unread.className = 'dashboard-update-unread';
+    unread.setAttribute('aria-label', 'New');
+    const title = document.createElement('span');
+    title.className = 'dashboard-row-title dashboard-update-title';
+    const titleText = document.createElement('span');
+    titleText.className = 'dashboard-update-title-text';
+    titleText.textContent = update.title;
+    const kind = document.createElement('span');
+    kind.className = 'dashboard-update-kind';
+    kind.textContent = update.item_type === 'assignment' ? 'Assignment' : 'Announcement';
+    title.append(titleText, kind);
+    const course = document.createElement('span');
+    course.className = 'dashboard-row-course';
+    const swatch = document.createElement('span');
+    swatch.className = 'dashboard-course-swatch';
+    swatch.style.backgroundColor = courseAvatarColor(update.course_id);
+    course.append(swatch, document.createTextNode(update.course_name));
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'dashboard-update-clear';
+    clear.setAttribute('aria-label', `Mark ${update.title} as read`);
+    clear.title = 'Mark as read';
+    clear.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';
+    clear.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      await atlasApi.clearNewClassroomItem(update.item_type, update.id);
+      await renderDashboardAnnouncements();
     });
+    li.append(unread, title, course, clear);
+    li.addEventListener('click', () => void openDashboardClassroomUpdate(update));
     list.appendChild(li);
+  }
+}
+
+async function openDashboardClassroomUpdate(update: DashboardClassroomUpdate): Promise<void> {
+  const content = await atlasApi.getClassroomCourseContent(update.course_id);
+  if (update.item_type === 'announcement') {
+    const announcement = content.announcements.find((item) => item.id === update.id);
+    if (announcement) openClassroomItemDetail('Announcement', announcement.title, formatIsoTimestamp(announcement.posted_at), announcement.body, announcement.links);
+  } else {
+    const assignment = content.assignments.find((item) => item.id === update.id);
+    if (assignment) await openAssignmentDetail(assignment, update.course_id);
   }
 }
 

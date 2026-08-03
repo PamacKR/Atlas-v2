@@ -349,6 +349,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT NOT NULL
 );
 
+-- Classroom items the user has deliberately cleared from Dashboard v2.
+-- Absence is meaningful: a Classroom announcement/assignment first synced
+-- after the initial baseline is new until the user clears it.
+CREATE TABLE IF NOT EXISTS dashboard_cleared_items (
+  item_type TEXT NOT NULL CHECK (item_type IN ('announcement', 'assignment')),
+  item_id INTEGER NOT NULL,
+  cleared_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (item_type, item_id)
+);
+
 -- Full-text search across notes, resources, announcements (PRD §14).
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
   entity_type UNINDEXED, -- 'note', 'resource', 'announcement', 'assignment'

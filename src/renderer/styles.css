@@ -4297,6 +4297,14 @@ button#classroom-connect-confirm {
 }
 #main-area[data-page="dashboard"] li.dashboard-compact-row:hover { background: var(--bg-hover); transform: translateX(2px); }
 #main-area[data-page="dashboard"] .dashboard-listing-row { grid-template-columns: 34px minmax(0, 1fr) minmax(180px, 240px); }
+#main-area[data-page="dashboard"] .dashboard-update-row { grid-template-columns: 12px minmax(0, 1fr) minmax(160px, 220px) 30px; }
+.dashboard-update-unread { width: 5px; height: 5px; align-self: center; border-radius: 50%; background: var(--accent); }
+.dashboard-update-title { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.dashboard-update-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-update-kind { flex: 0 0 auto; color: var(--text-faint); font-size: var(--text-xs); font-weight: 400; }
+.dashboard-update-clear { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
+.dashboard-update-clear svg { width: 15px; height: 15px; }
+.dashboard-update-clear:hover, .dashboard-update-clear:focus-visible { background: var(--bg-hover); color: var(--text); outline: none; }
 .dashboard-row-leading, .dashboard-row-trailing { color: var(--text-faint); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .dashboard-row-trailing { text-align: right; }
 .dashboard-compact-row.is-today .dashboard-row-leading { color: var(--urgent); font-weight: 500; }

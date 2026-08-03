@@ -1129,6 +1129,89 @@ ipcMain.handle('dashboard:recentAnnouncements', () => {
     .all();
 });
 
+// Dashboard v2 deliberately shows only Classroom content first observed
+// after the one-time baseline in database.ts. A cleared row is a user action,
+// not an inference from the item's timestamp, so re-syncing never makes an
+// old item look new again.
+ipcMain.handle('dashboard:newClassroomItems', (_event, courseId: number | null = null) => {
+  const db = getDb();
+  const courseClause = courseId === null ? '' : ' AND course_id = ?';
+  const rows = db
+    .prepare(
+      `SELECT * FROM (
+         SELECT 'announcement' AS item_type, announcements.id, announcements.course_id,
+                announcements.title, announcements.posted_at AS occurred_at,
+                courses.name AS course_name
+         FROM announcements
+         JOIN courses ON courses.id = announcements.course_id
+         LEFT JOIN dashboard_cleared_items cleared
+           ON cleared.item_type = 'announcement' AND cleared.item_id = announcements.id
+         WHERE announcements.source = 'classroom' AND courses.archived = 0 AND cleared.item_id IS NULL${courseClause}
+         UNION ALL
+         SELECT 'assignment' AS item_type, assignments.id, assignments.course_id,
+                assignments.title, COALESCE(assignments.updated_at, assignments.posted_at) AS occurred_at,
+                courses.name AS course_name
+         FROM assignments
+         JOIN courses ON courses.id = assignments.course_id
+         LEFT JOIN dashboard_cleared_items cleared
+           ON cleared.item_type = 'assignment' AND cleared.item_id = assignments.id
+         WHERE assignments.source = 'classroom' AND assignments.classroom_removed = 0
+           AND courses.archived = 0 AND cleared.item_id IS NULL${courseClause}
+       ) ORDER BY occurred_at DESC, id DESC LIMIT 20`
+    )
+    .all(...(courseId === null ? [] : [courseId, courseId]));
+  return rows;
+});
+
+ipcMain.handle('dashboard:clearNewClassroomItem', (_event, itemType: 'announcement' | 'assignment', itemId: number) => {
+  if (itemType !== 'announcement' && itemType !== 'assignment') throw new Error('Invalid Dashboard item type.');
+  const db = getDb();
+  const table = itemType === 'announcement' ? 'announcements' : 'assignments';
+  const row = db.prepare(`SELECT id FROM ${table} WHERE id = ? AND source = 'classroom'`).get(itemId);
+  if (!row) return false;
+  db.prepare('INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id) VALUES (?, ?)').run(itemType, itemId);
+  return true;
+});
+
+ipcMain.handle('dashboard:clearAllNewClassroomItems', (_event, courseId: number | null = null) => {
+  const db = getDb();
+  const courseClause = courseId === null ? '' : ' AND course_id = ?';
+  const clearAll = db.transaction(() => {
+    const announcements = db.prepare(
+      `INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id)
+       SELECT 'announcement', id FROM announcements
+       WHERE source = 'classroom'${courseClause}`
+    ).run(...(courseId === null ? [] : [courseId])).changes;
+    const assignments = db.prepare(
+      `INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id)
+       SELECT 'assignment', id FROM assignments
+       WHERE source = 'classroom' AND classroom_removed = 0${courseClause}`
+    ).run(...(courseId === null ? [] : [courseId])).changes;
+    return announcements + assignments;
+  });
+  return clearAll();
+});
+
+// Kept behind an explicit verifier-only environment flag: creates records
+// after the database's first-launch Dashboard v2 baseline has run, allowing
+// the focused Electron check to exercise real new-item behavior without a
+// Google Classroom account or a separate native-SQLite runtime.
+if (process.env.ATLAS_TEST_DASHBOARD_V2 === '1') {
+  ipcMain.handle('test:seedDashboardV2Items', () => {
+    const db = getDb();
+    const courseId = Number(
+      db.prepare("INSERT INTO courses (name, folder_name) VALUES ('Dashboard v2 verification course', 'dashboard-v2-verify')").run()
+        .lastInsertRowid
+    );
+    db.prepare(
+      "INSERT INTO announcements (course_id, source, title, body, posted_at, classroom_announcement_id) VALUES (?, 'classroom', 'New announcement', '', datetime('now'), 'verify-announcement')"
+    ).run(courseId);
+    db.prepare(
+      "INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, posted_at, updated_at) VALUES (?, 'New assignment', '', NULL, 'classroom', 'verify-assignment', datetime('now'), datetime('now'))"
+    ).run(courseId);
+  });
+}
+
 // `archived` param: false (default, and every existing caller that doesn't
 // pass one) returns only active courses, matching the behavior this handler
 // always had. Passing true switches to *only* archived courses instead — the
