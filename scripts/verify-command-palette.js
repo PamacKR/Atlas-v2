@@ -16,7 +16,17 @@ const fs = require('fs');
 
     await window.evaluate(async () => {
       await window.atlas.createCourse('Development Economics', 'DEV201', 'Monsoon 26');
+      await window.atlas.createCourse('Mathematics', 'MATH101', 'Monsoon 26');
     });
+    const scanFixture = fs.readFileSync(path.join(__dirname, 'fixtures', 'sample-scan.pdf'));
+    const scanNoteTitle = await window.evaluate(async (bytes) => {
+      const course = (await window.atlas.listCourses()).find((item) => item.code === 'DEV201');
+      if (!course) throw new Error('Seed course was not created.');
+      await window.atlas.createNote(course.id);
+      const note = await window.atlas.importScanBuffer(course.id, 'sample-scan.pdf', new Uint8Array(bytes).buffer);
+      if (!note) throw new Error('Scan note was not imported.');
+      return note.title;
+    }, Array.from(scanFixture));
     await window.click('.sidebar-nav-item[data-page="dashboard"]');
     await window.waitForTimeout(250);
 
@@ -48,6 +58,40 @@ const fs = require('fs');
     await window.keyboard.press('Escape');
     if (await window.isHidden('#command-palette-overlay')) throw new Error('Escape closed the palette instead of returning from course selection.');
     await window.keyboard.press('Escape');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', 'add deadline');
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#course-picker-overlay:not([hidden])');
+    await window.locator('#course-picker-list li').first().click();
+    await window.waitForSelector('#deadline-editor-overlay:not([hidden])');
+    await window.click('#deadline-edit-close');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', `move note ${scanNoteTitle}`);
+    await window.waitForSelector('#command-palette-results');
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#course-picker-overlay:not([hidden])');
+    await window.click('#course-picker-close');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', `edit course development economics`);
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#course-edit-overlay:not([hidden])');
+    await window.click('#course-edit-close');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', `archive course development economics`);
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#confirm-overlay:not([hidden])');
+    await window.click('#confirm-cancel');
+
+    await window.keyboard.press('Control+k');
+    await window.fill('#command-palette-input', `run ocr ${scanNoteTitle}`);
+    await window.keyboard.press('Enter');
+    await window.waitForSelector('#note-overlay:not([hidden])');
+    await window.click('#note-close');
+    await window.waitForTimeout(100);
 
     await window.keyboard.press('Control+k');
     await window.fill('#command-palette-input', 'new note');

@@ -5350,10 +5350,16 @@ function paletteCommands(): PaletteCommandDefinition[] {
     command('create.note', 'New note', 'Create', ['new note', 'note', 'create note']),
     command('create.upload', 'Upload file', 'Create', ['upload', 'upload file', 'add file']),
     command('create.scan', 'Import scan', 'Create', ['scan', 'import scan']),
+    command('create.deadline', 'Add deadline', 'Create', ['add deadline', 'deadline', 'new deadline']),
     command('sync.now', 'Sync all sources', 'Sync', ['sync', 'sync all', 'refresh everything']),
     command('sync.drive', 'Sync Google Drive', 'Sync', ['sync drive', 'refresh drive']),
     command('sync.classroom', 'Sync Google Classroom', 'Sync', ['sync classroom', 'refresh classroom']),
     command('export.course', 'Export course for AI', 'Course actions', ['export for ai', 'export ai', 'export context']),
+    command('course.archive', 'Archive or unarchive course', 'Course actions', ['archive course', 'unarchive course']),
+    command('course.edit', 'Edit course', 'Course actions', ['edit course', 'rename course']),
+    command('resource.ocr', 'Run OCR', 'Resources & notes', ['run ocr', 'ocr']),
+    command('resource.drive', 'Open resource in Google Drive', 'Resources & notes', ['open in drive', 'open google drive', 'drive']),
+    command('note.move', 'Move note to course', 'Resources & notes', ['move note', 'assign note', 'move note to course']),
     command('app.showShortcuts', 'Show keyboard shortcuts', 'Help', ['shortcuts', 'keyboard shortcuts', 'help']),
     command('nav.toggleSidebar', 'Toggle sidebar', 'View', ['sidebar', 'toggle sidebar']),
   ];
@@ -5400,6 +5406,40 @@ function paletteCurrentCourse(): Course | null {
   return null;
 }
 
+function paletteCurrentNote(): NoteWithCourse | null {
+  if (currentNoteId === null) return null;
+  return commandPaletteNotes.find((note) => note.id === currentNoteId) ?? null;
+}
+
+function paletteCurrentResource(): ResourceWithCourse | null {
+  if (currentPreviewResourceId === null) return null;
+  return commandPaletteResources.find((resource) => resource.id === currentPreviewResourceId) ?? null;
+}
+
+function paletteNoteChoices(query: string, handwrittenOnly = false): Array<{ note: NoteWithCourse; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteNotes
+    .filter((note) => !handwrittenOnly || note.is_handwritten === 1)
+    .map((note) => ({
+      note,
+      score: normalizedQuery ? scorePaletteText(normalizedQuery, note.title, [note.course_name]) : 0,
+    }))
+    .filter((entry): entry is { note: NoteWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.note.title.localeCompare(b.note.title));
+}
+
+function paletteResourceChoices(query: string, pdfOnly = false): Array<{ resource: ResourceWithCourse; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteResources
+    .filter((resource) => !pdfOnly || resource.kind === 'pdf')
+    .map((resource) => ({
+      resource,
+      score: normalizedQuery ? scorePaletteText(normalizedQuery, resource.title, [resource.course_name]) : 0,
+    }))
+    .filter((entry): entry is { resource: ResourceWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.resource.title.localeCompare(b.resource.title));
+}
+
 function commandPaletteCommandItem(command: PaletteCommandDefinition, detail: string, run: () => void | Promise<void>): PaletteItem {
   return {
     id: `command:${command.id}`,
@@ -5409,6 +5449,14 @@ function commandPaletteCommandItem(command: PaletteCommandDefinition, detail: st
     shortcut: command.shortcut,
     run,
   };
+}
+
+function focusPaletteCommand(text: string): void {
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  input.value = text;
+  commandPaletteActiveIndex = 0;
+  renderCommandPaletteItems(text);
+  input.focus();
 }
 
 function findShortcutAction(id: string): ShortcutAction | null {
@@ -5440,6 +5488,150 @@ function beginPaletteCourseSelection(commandId: 'export.course'): void {
   input.placeholder = 'Choose a course…';
   renderCommandPaletteItems('');
   input.focus();
+}
+
+function runPaletteDeadline(): void {
+  closeCommandPalette();
+  const current = paletteCurrentCourse();
+  if (current) {
+    selectedCourse = current;
+    void openDeadlineEditForm(null);
+  } else {
+    void openCoursePicker('deadline');
+  }
+}
+
+async function runPaletteResourceOcr(resource: ResourceWithCourse): Promise<void> {
+  closeCommandPalette();
+  await openPreview(resource);
+  await runResourceOcr();
+}
+
+async function runPaletteNoteOcr(note: NoteWithCourse): Promise<void> {
+  closeCommandPalette();
+  await openNoteEditor(note);
+  await runNoteOcr();
+}
+
+function ocrCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const currentResource = argument ? null : paletteCurrentResource();
+  const currentNote = argument ? null : paletteCurrentNote();
+  if (currentResource && currentResource.kind === 'pdf') {
+    return [
+      commandPaletteCommandItem(command, `Current resource · ${currentResource.title}`, () => runPaletteResourceOcr(currentResource)),
+    ];
+  }
+  if (currentNote && currentNote.is_handwritten === 1) {
+    return [
+      commandPaletteCommandItem(command, `Current handwritten note · ${currentNote.title}`, () => runPaletteNoteOcr(currentNote)),
+    ];
+  }
+
+  const resources = paletteResourceChoices(argument, true).slice(0, 8).map(({ resource }) => ({
+    id: `ocr-resource:${resource.id}`,
+    label: `${command.label} · ${resource.title}`,
+    detail: `${resource.course_name} · PDF`,
+    group: 'Resources',
+    run: () => runPaletteResourceOcr(resource),
+  }));
+  const notes = paletteNoteChoices(argument, true).slice(0, 8).map(({ note }) => ({
+    id: `ocr-note:${note.id}`,
+    label: `${command.label} · ${note.title}`,
+    detail: `${note.course_name} · Handwritten note`,
+    group: 'Notes',
+    run: () => runPaletteNoteOcr(note),
+  }));
+  if (resources.length || notes.length) return [...resources, ...notes];
+  return [commandPaletteCommandItem(command, 'Open a PDF or handwritten note first', () => undefined)];
+}
+
+function runPaletteMoveNote(note: NoteWithCourse): void {
+  closeCommandPalette();
+  openAssignNoteCoursePicker(note.id);
+}
+
+function moveNoteCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentNote();
+  if (current) {
+    return [commandPaletteCommandItem(command, `Current note · ${current.title}`, () => runPaletteMoveNote(current))];
+  }
+  const choices = paletteNoteChoices(argument).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose an existing note to move', () => undefined)];
+  return choices.map(({ note }) => ({
+    id: `move-note:${note.id}`,
+    label: `${command.label} · ${note.title}`,
+    detail: `${note.course_name} · Choose a destination course`,
+    group: 'Notes',
+    run: () => runPaletteMoveNote(note),
+  }));
+}
+
+async function runPaletteOpenInDrive(resource: ResourceWithCourse): Promise<void> {
+  closeCommandPalette();
+  await openPreview(resource);
+  openCurrentPreviewInGoogleDrive();
+}
+
+function driveCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentResource();
+  if (current) {
+    return [commandPaletteCommandItem(command, `Current resource · ${current.title}`, () => runPaletteOpenInDrive(current))];
+  }
+  const choices = paletteResourceChoices(argument).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a resource to open in Google Drive', () => undefined)];
+  return choices.map(({ resource }) => ({
+    id: `drive-resource:${resource.id}`,
+    label: `${command.label} · ${resource.title}`,
+    detail: `${resource.course_name} · ${resource.kind.toUpperCase()}`,
+    group: 'Resources',
+    run: () => runPaletteOpenInDrive(resource),
+  }));
+}
+
+async function runPaletteArchiveCourse(course: Course): Promise<void> {
+  closeCommandPalette();
+  const action = course.archived === 1 ? 'Unarchive' : 'Archive';
+  if (!(await showConfirm(`${action} "${course.name}"? You can change this again later.`))) return;
+  const updated = await atlasApi.setCourseArchived(course.id, course.archived !== 1);
+  if (courseDetailVisible() && selectedCourse?.id === course.id) {
+    backToCourseList();
+    setShowArchivedCourses(updated.archived === 1);
+  } else {
+    await renderCourses();
+    if (currentPage === 'dashboard') await renderDashboard();
+  }
+}
+
+function courseActionItems(
+  match: PaletteCommandMatch | null,
+  command: PaletteCommandDefinition,
+  action: 'archive' | 'edit'
+): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentCourse();
+  const run = (course: Course): void | Promise<void> => {
+    if (action === 'archive') return runPaletteArchiveCourse(course);
+    closeCommandPalette();
+    openCourseEditModal(course);
+  };
+  if (current) {
+    const label = action === 'archive' ? (current.archived === 1 ? 'Unarchive course' : 'Archive course') : command.label;
+    return [
+      { ...commandPaletteCommandItem(command, `Current course · ${current.name}`, () => run(current)), label },
+    ];
+  }
+  const choices = paletteCourseChoices(argument).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a course to continue', () => undefined)];
+  return choices.map(({ course }) => ({
+    id: `${action}-course:${course.id}`,
+    label: `${action === 'archive' ? (course.archived === 1 ? 'Unarchive course' : 'Archive course') : command.label} · ${course.name}`,
+    detail: [course.code, course.term, course.archived === 1 ? 'Archived course' : 'Course'].filter(Boolean).join(' · '),
+    group: 'Courses',
+    run: () => run(course),
+  }));
 }
 
 function exportCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
@@ -5533,21 +5725,51 @@ function commandPaletteItemsForQuery(query: string): PaletteItem[] {
   const prefixMatch = matchPaletteCommandPrefix(query, commands);
   if (prefixMatch) {
     if (prefixMatch.command.id === 'export.course') return exportCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'create.deadline') return [commandPaletteCommandItem(prefixMatch.command, 'Open the deadline editor', runPaletteDeadline)];
+    if (prefixMatch.command.id === 'resource.ocr') return ocrCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'note.move') return moveNoteCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'resource.drive') return driveCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'course.archive') return courseActionItems(prefixMatch, prefixMatch.command, 'archive');
+    if (prefixMatch.command.id === 'course.edit') return courseActionItems(prefixMatch, prefixMatch.command, 'edit');
     const detail = prefixMatch.argument ? `No parameters are needed for ${prefixMatch.command.label}` : 'Run this command';
     return [commandPaletteCommandItem(prefixMatch.command, detail, () => runPaletteShortcut(prefixMatch.command.id))];
   }
 
-  const items: PaletteItem[] = rankPaletteCommands(query, commands).slice(0, 12).map(({ command }) => {
-    const detail = command.id === 'export.course' ? 'Choose a course when you run it' : 'Run this command';
-    const run = command.id === 'export.course'
-      ? () => {
+  const items: PaletteItem[] = [];
+  const hasQuery = Boolean(normalizePaletteText(query));
+  for (const { command } of rankPaletteCommands(query, commands).slice(0, 12)) {
+    if (command.id === 'export.course') {
+      items.push(commandPaletteCommandItem(command, 'Choose a course when you run it', () => {
         const current = paletteCurrentCourse();
         if (current) executeExportForCourse(current);
         else beginPaletteCourseSelection('export.course');
-      }
-      : () => runPaletteShortcut(command.id);
-    return commandPaletteCommandItem(command, detail, run);
-  });
+      }));
+    } else if (command.id === 'create.deadline') {
+      items.push(commandPaletteCommandItem(command, 'Open the deadline editor', runPaletteDeadline));
+    } else if (command.id === 'resource.ocr') {
+      items.push(...(hasQuery
+        ? ocrCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a PDF or handwritten note', () => focusPaletteCommand('run ocr'))]));
+    } else if (command.id === 'note.move') {
+      items.push(...(hasQuery
+        ? moveNoteCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a note and destination course', () => focusPaletteCommand('move note'))]));
+    } else if (command.id === 'resource.drive') {
+      items.push(...(hasQuery
+        ? driveCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a resource', () => focusPaletteCommand('open in drive'))]));
+    } else if (command.id === 'course.archive') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'archive')
+        : [commandPaletteCommandItem(command, 'Choose a course', () => focusPaletteCommand('archive course'))]));
+    } else if (command.id === 'course.edit') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'edit')
+        : [commandPaletteCommandItem(command, 'Choose a course', () => focusPaletteCommand('edit course'))]));
+    } else {
+      items.push(commandPaletteCommandItem(command, 'Run this command', () => runPaletteShortcut(command.id)));
+    }
+  }
   return [...items, ...entityPaletteItems(query)].slice(0, 16);
 }
 
@@ -5556,6 +5778,7 @@ function renderCommandPaletteItems(query: string): void {
   const empty = document.getElementById('command-palette-empty')!;
   const context = document.getElementById('command-palette-context')!;
   const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  (document.querySelector('#command-palette-panel .command-palette-body') as HTMLElement).scrollTop = 0;
   context.textContent = commandPaletteStep === 'course-selection' ? 'Export for AI · choose the course to use' : paletteContextText();
   input.placeholder = commandPaletteStep === 'course-selection' ? 'Choose a course…' : 'Search commands and Atlas…';
 

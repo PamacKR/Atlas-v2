@@ -1,6 +1,6 @@
 # Atlas Command Palette — Implementation Plan
 
-**Status:** First implementation milestone in progress. The deterministic resolver, shared overlay, initial command set, course selection flow, and focused Electron verification are implemented; parameterized actions and final polish remain.
+**Status:** Second implementation milestone in progress. The deterministic resolver, shared overlay, initial command set, first parameterized workflows, and focused Electron verification are implemented; broader confirmation-heavy actions and final polish remain.
 
 **Scope:** A keyboard-first command and navigation surface opened with `Ctrl+K`, implemented entirely with deterministic local matching. Atlas must not call an AI/LLM API or any paid service to interpret commands.
 
@@ -237,7 +237,7 @@ It should cover:
 
 Focused build/type checks should be used during implementation. The full Electron suite should run after a cohesive milestone, not after every small visual edit.
 
-The first focused verifier now exists as `scripts/verify-command-palette.js` and is available through `npm run verify:command-palette`. It covers opening and focus restoration, missing-course export flow, `dev eco` course matching, export file creation, new-note handoff to the existing course picker, and navigation. Its screenshot is saved as `verify-command-palette.png` and is ignored by Git.
+The focused verifier `scripts/verify-command-palette.js` is available through `npm run verify:command-palette`. It covers opening and focus restoration, missing-course export flow, `dev eco` course matching, export file creation, new-note handoff to the existing course picker, deadline creation handoff, note reassignment, course edit/archive confirmation, OCR handoff, and navigation. Its screenshot is saved as `verify-command-palette.png` and is ignored by Git.
 
 ## 13. Implementation stages
 
@@ -253,17 +253,17 @@ Implemented in `src/renderer/command-palette.ts` and the renderer: command metad
 
 Added the shared overlay markup and hidden-safe styles to the renderer. The palette has a focused search field, current-page context line, grouped results, visible shortcut bindings, active-row state, empty state, mouse selection, keyboard navigation, Escape back-stepping, and focus restoration.
 
-### Stage 3 — Connect the first commands — in progress
+### Stage 3 — Connect the first commands — complete for the current action set
 
-Connected navigation, course/note/resource opening, new note, upload, scan import, sync commands, Export for AI, shortcut help, sidebar toggle, and settings navigation through existing Atlas behavior. The remaining work in this stage is to expand result feedback and cover the remaining high-value commands without duplicating existing workflows.
+Connected navigation, course/note/resource opening, new note, upload, scan import, sync commands, Export for AI, shortcut help, sidebar toggle, settings navigation, and the first parameterized actions through existing Atlas behavior without duplicating those workflows.
 
-### Stage 4 — Add guided workflows
+### Stage 4 — Add guided workflows — in progress
 
-Connect course selection, resource selection, deadline creation, note reassignment, OCR, archive/edit, and confirmation flows.
+Connected course selection, deadline creation, note reassignment, OCR handoff for PDFs/handwritten notes, resource-to-Drive handoff, course edit, and archive/unarchive confirmation. The remaining guided work includes target-aware deadline arguments, richer resource/note selection states, and the other confirmation-heavy actions.
 
-### Stage 5 — Polish and verification
+### Stage 5 — Polish and verification — in progress
 
-Review long names, loading, errors, themes, keyboard smoothness, overlay stacking, ambiguous matches, and real Electron behavior. Add focused verification and inspect screenshots.
+The focused Electron verifier covers the new paths and its screenshot has been inspected. Remaining review includes long names, loading/errors, dark/light theme comparison, broader ambiguity handling, overlay stacking under more combinations, Drive-connected behavior, and final keyboard polish.
 
 ## 14. Definition of done
 
