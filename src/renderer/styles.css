@@ -3842,6 +3842,8 @@ button#classroom-connect-confirm {
 #topbar .topbar-page-actions button:hover, #topbar .topbar-page-actions button:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
 #resources-topbar-actions .resources-source-select { width: 132px; flex: 0 0 132px; }
 #resources-topbar-actions .resources-source-select .dselect-menu { min-width: 132px; }
+#topbar .topbar-page-actions .resources-source-select .dselect-trigger { justify-content: flex-start; gap: 6px; padding: 0 10px; }
+#topbar .topbar-page-actions .resources-source-select .dselect-option { height: auto; padding: 6px 8px; border: 0; border-radius: 6px; }
 
 #search-box {
   width: 300px;

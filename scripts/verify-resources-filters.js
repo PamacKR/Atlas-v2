@@ -55,6 +55,25 @@ const fs = require('fs');
       'Classroom filter verification file',
       'Drive filter verification file',
     ], 'All sources did not restore the complete list');
+    await window.click('#resources-source-filter .dselect-trigger');
+    const dropdownStyle = await window.evaluate(() => {
+      const root = document.getElementById('resources-source-filter');
+      const option = root.querySelector('.dselect-option');
+      const label = root.querySelector('.dselect-trigger span');
+      const arrow = root.querySelector('.dselect-trigger svg');
+      if (!option || !label || !arrow) return null;
+      const labelRect = label.getBoundingClientRect();
+      const arrowRect = arrow.getBoundingClientRect();
+      const optionStyle = getComputedStyle(option);
+      return {
+        border: optionStyle.borderTopWidth,
+        paddingTop: optionStyle.paddingTop,
+        gap: arrowRect.left - labelRect.right,
+      };
+    });
+    if (!dropdownStyle || dropdownStyle.border !== '0px') throw new Error(`Source dropdown options still have an outline: ${JSON.stringify(dropdownStyle)}`);
+    if (dropdownStyle.paddingTop !== '6px') throw new Error(`Source dropdown option padding was not tightened: ${JSON.stringify(dropdownStyle)}`);
+    if (dropdownStyle.gap > 12) throw new Error(`Source dropdown arrow is too far from its label: ${JSON.stringify(dropdownStyle)}`);
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-resources-filters.png') });
     console.log('resources source filter verify: PASS');
   } finally {
