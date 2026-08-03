@@ -237,7 +237,7 @@ It should cover:
 
 Focused build/type checks should be used during implementation. The full Electron suite should run after a cohesive milestone, not after every small visual edit.
 
-The focused verifier `scripts/verify-command-palette.js` is available through `npm run verify:command-palette`. It covers opening and focus restoration, missing-course export flow, `dev eco` course matching, export file creation, new-note handoff to the existing course picker, deadline creation handoff, note reassignment, course edit/archive confirmation, OCR handoff, and navigation. Its screenshot is saved as `verify-command-palette.png` and is ignored by Git.
+The focused verifier `scripts/verify-command-palette.js` is available through `npm run verify:command-palette`. It covers opening and focus restoration, missing-course export flow, `dev eco` course matching, export file creation, new-note handoff to the existing course picker, deadline creation handoff, note reassignment, course edit/archive confirmation, OCR handoff, and navigation. It suppresses only the export's normal File Explorer reveal during testing, so repeated runs do not open extra windows. Its screenshot is saved as `verify-command-palette.png` and is ignored by Git.
 
 ## 13. Implementation stages
 

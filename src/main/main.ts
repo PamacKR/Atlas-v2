@@ -1319,7 +1319,10 @@ ipcMain.handle('courses:exportContext', (_event, courseId: number) => {
   fs.mkdirSync(exportsDir, { recursive: true });
   const filePath = path.join(exportsDir, `atlas-context-${sanitizeFolderName(briefing.course.name)}.md`);
   fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
-  shell.showItemInFolder(filePath);
+  // The real app reveals the export in File Explorer. Focused Electron tests
+  // still validate the written file but suppress this OS-level side effect so
+  // repeated verification runs do not open a new Explorer window each time.
+  if (process.env.ATLAS_TEST_NO_REVEAL !== '1') shell.showItemInFolder(filePath);
   return { ok: true as const, filePath };
 });
 

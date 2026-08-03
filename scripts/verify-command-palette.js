@@ -7,7 +7,10 @@ const fs = require('fs');
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-command-palette-'));
-  const app = await electron.launch({ args: [path.join(__dirname, '..')], env: { ...process.env, ATLAS_DATA_DIR: dataDir } });
+  const app = await electron.launch({
+    args: [path.join(__dirname, '..')],
+    env: { ...process.env, ATLAS_DATA_DIR: dataDir, ATLAS_TEST_NO_REVEAL: '1' },
+  });
   try {
     const window = await app.firstWindow();
     window.on('pageerror', (error) => console.error('[renderer error]', error));
