@@ -5306,6 +5306,7 @@ interface PaletteItem {
   detail: string;
   group: string;
   shortcut?: string;
+  requiresExplicitSelection?: boolean;
   run: () => void | Promise<void>;
 }
 
@@ -5324,6 +5325,7 @@ let commandPaletteDataPromise: Promise<void> | null = null;
 let commandPaletteRenderToken = 0;
 let commandPaletteLoading = false;
 let commandPaletteError: string | null = null;
+let commandPaletteSelectionRequired = false;
 
 function commandPaletteIsOpen(): boolean {
   return (document.getElementById('command-palette-overlay') as HTMLElement | null)?.hidden === false;
@@ -5486,6 +5488,11 @@ function paletteDeadlineChoices(query: string): Array<{ deadline: DashboardDeadl
     .sort((a, b) => b.score - a.score || a.deadline.title.localeCompare(b.deadline.title));
 }
 
+function paletteStrongChoices<T extends { score: number }>(query: string, choices: T[]): T[] {
+  if (!normalizePaletteText(query)) return choices;
+  return choices.filter(({ score }) => score >= 620);
+}
+
 function commandPaletteCommandItem(command: PaletteCommandDefinition, detail: string, run: () => void | Promise<void>): PaletteItem {
   return {
     id: `command:${command.id}`,
@@ -5579,21 +5586,24 @@ function ocrCommandItems(match: PaletteCommandMatch | null, command: PaletteComm
     ];
   }
 
-  const resources = paletteResourceChoices(argument, true).slice(0, 8).map(({ resource }) => ({
+  const resources = paletteStrongChoices(argument, paletteResourceChoices(argument, true)).slice(0, 8).map(({ resource }) => ({
     id: `ocr-resource:${resource.id}`,
     label: `${command.label} · ${resource.title}`,
     detail: `${resource.course_name} · PDF`,
     group: 'Resources',
     run: () => runPaletteResourceOcr(resource),
   }));
-  const notes = paletteNoteChoices(argument, true).slice(0, 8).map(({ note }) => ({
+  const notes = paletteStrongChoices(argument, paletteNoteChoices(argument, true)).slice(0, 8).map(({ note }) => ({
     id: `ocr-note:${note.id}`,
     label: `${command.label} · ${note.title}`,
     detail: `${note.course_name} · Handwritten note`,
     group: 'Notes',
     run: () => runPaletteNoteOcr(note),
   }));
-  if (resources.length || notes.length) return [...resources, ...notes];
+  if (resources.length || notes.length) {
+    const choices = [...resources, ...notes];
+    return choices.map((item) => ({ ...item, requiresExplicitSelection: choices.length > 1 }));
+  }
   return [commandPaletteCommandItem(command, 'Open a PDF or handwritten note first', () => undefined)];
 }
 
@@ -5608,13 +5618,14 @@ function moveNoteCommandItems(match: PaletteCommandMatch | null, command: Palett
   if (current) {
     return [commandPaletteCommandItem(command, `Current note · ${current.title}`, () => runPaletteMoveNote(current))];
   }
-  const choices = paletteNoteChoices(argument).slice(0, 12);
+  const choices = paletteStrongChoices(argument, paletteNoteChoices(argument)).slice(0, 12);
   if (!choices.length) return [commandPaletteCommandItem(command, 'Choose an existing note to move', () => undefined)];
   return choices.map(({ note }) => ({
     id: `move-note:${note.id}`,
     label: `${command.label} · ${note.title}`,
     detail: `${note.course_name} · Choose a destination course`,
     group: 'Notes',
+    requiresExplicitSelection: choices.length > 1,
     run: () => runPaletteMoveNote(note),
   }));
 }
@@ -5638,7 +5649,7 @@ function driveCommandItems(match: PaletteCommandMatch | null, command: PaletteCo
     }
     return [commandPaletteCommandItem(command, `Current resource · ${current.title}`, () => runPaletteOpenInDrive(current))];
   }
-  const choices = paletteResourceChoices(argument)
+  const choices = paletteStrongChoices(argument, paletteResourceChoices(argument))
     .filter(({ resource }) => resource.kind === 'link' || DRIVE_PREVIEW_KINDS.has(resource.kind))
     .slice(0, 12);
   if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a resource to open in Google Drive', () => undefined)];
@@ -5647,6 +5658,7 @@ function driveCommandItems(match: PaletteCommandMatch | null, command: PaletteCo
     label: `${command.label} · ${resource.title}`,
     detail: `${resource.course_name} · ${resource.kind.toUpperCase()}`,
     group: 'Resources',
+    requiresExplicitSelection: choices.length > 1,
     run: () => runPaletteOpenInDrive(resource),
   }));
 }
@@ -5702,13 +5714,14 @@ function deadlineActionItems(
       : command.label;
     return [{ ...commandPaletteCommandItem(command, `Current deadline · ${current.title}`, () => run(current)), label }];
   }
-  const choices = paletteDeadlineChoices(argument).slice(0, 12);
+  const choices = paletteStrongChoices(argument, paletteDeadlineChoices(argument)).slice(0, 12);
   if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a deadline to continue', () => undefined)];
   return choices.map(({ deadline }) => ({
     id: `${action}-deadline:${deadline.id}`,
     label: `${action === 'complete' ? (deadline.completed === 1 ? 'Mark incomplete' : 'Mark complete') : command.label} · ${deadline.title}`,
     detail: `${deadline.course_name} · ${deadline.due_at ? formatDueDate(deadline.due_at) : 'No due date'}`,
     group: 'Deadlines',
+    requiresExplicitSelection: choices.length > 1,
     run: () => run(deadline),
   }));
 }
@@ -5727,13 +5740,14 @@ function noteDeleteCommandItems(match: PaletteCommandMatch | null, command: Pale
   const argument = match?.argument ?? '';
   const current = argument ? null : paletteCurrentNote();
   if (current) return [commandPaletteCommandItem(command, `Current note · ${current.title}`, () => runPaletteDeleteNote(current))];
-  const choices = paletteNoteChoices(argument).slice(0, 12);
+  const choices = paletteStrongChoices(argument, paletteNoteChoices(argument)).slice(0, 12);
   if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a note to delete', () => undefined)];
   return choices.map(({ note }) => ({
     id: `delete-note:${note.id}`,
     label: `${command.label} · ${note.title}`,
     detail: `${note.course_name} · Note`,
     group: 'Notes',
+    requiresExplicitSelection: choices.length > 1,
     run: () => runPaletteDeleteNote(note),
   }));
 }
@@ -5752,13 +5766,14 @@ function resourceDeleteCommandItems(match: PaletteCommandMatch | null, command: 
   const argument = match?.argument ?? '';
   const current = argument ? null : paletteCurrentResource();
   if (current) return [commandPaletteCommandItem(command, `Current resource · ${current.title}`, () => runPaletteDeleteResource(current))];
-  const choices = paletteResourceChoices(argument).slice(0, 12);
+  const choices = paletteStrongChoices(argument, paletteResourceChoices(argument)).slice(0, 12);
   if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a resource to delete', () => undefined)];
   return choices.map(({ resource }) => ({
     id: `delete-resource:${resource.id}`,
     label: `${command.label} · ${resource.title}`,
     detail: `${resource.course_name} · Resource`,
     group: 'Resources',
+    requiresExplicitSelection: choices.length > 1,
     run: () => runPaletteDeleteResource(resource),
   }));
 }
@@ -5897,13 +5912,14 @@ function courseActionItems(
       { ...commandPaletteCommandItem(command, `Current course · ${current.name}`, () => run(current)), label },
     ];
   }
-  const choices = paletteCourseChoices(argument).slice(0, 12);
+  const choices = paletteStrongChoices(argument, paletteCourseChoices(argument)).slice(0, 12);
   if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a course to continue', () => undefined)];
   return choices.map(({ course }) => ({
     id: `${action}-course:${course.id}`,
     label: `${action === 'archive' ? (course.archived === 1 ? 'Unarchive course' : 'Archive course') : command.label} · ${course.name}`,
     detail: [course.code, course.term, course.archived === 1 ? 'Archived course' : 'Course'].filter(Boolean).join(' · '),
     group: 'Courses',
+    requiresExplicitSelection: choices.length > 1,
     run: () => run(course),
   }));
 }
@@ -5921,7 +5937,7 @@ function exportCommandItems(match: PaletteCommandMatch | null, command: PaletteC
     ];
   }
 
-  const choices = paletteCourseChoices(argument);
+  const choices = paletteStrongChoices(argument, paletteCourseChoices(argument));
   if (!argument) {
     return [
       commandPaletteCommandItem(command, 'Choose a course to continue', () => beginPaletteCourseSelection('export.course')),
@@ -5938,6 +5954,7 @@ function exportCommandItems(match: PaletteCommandMatch | null, command: PaletteC
     label: `${command.label} · ${course.name}`,
     detail: course.code || course.term || 'Course',
     group: 'Courses',
+    requiresExplicitSelection: choices.length > 1,
     run: () => executeExportForCourse(course),
   }));
 }
@@ -6132,7 +6149,17 @@ function renderCommandPaletteItems(query: string): void {
     : commandPaletteItemsForQuery(query);
 
   commandPaletteItems = items;
-  commandPaletteActiveIndex = Math.max(0, Math.min(commandPaletteActiveIndex, items.length - 1));
+  commandPaletteSelectionRequired = commandPaletteStep === 'course-selection'
+    ? items.length > 1
+    : items.some((item) => item.requiresExplicitSelection);
+  if (commandPaletteSelectionRequired) {
+    commandPaletteActiveIndex = -1;
+    context.textContent = commandPaletteStep === 'course-selection'
+      ? 'Export for AI - choose a specific course'
+      : `${paletteContextText()} - choose a specific result`;
+  } else {
+    commandPaletteActiveIndex = Math.max(0, Math.min(commandPaletteActiveIndex, items.length - 1));
+  }
   list.innerHTML = '';
   empty.hidden = items.length !== 0;
   empty.textContent = commandPaletteStep === 'course-selection' ? 'No matching courses.' : 'No commands or Atlas items match that search.';
@@ -6152,6 +6179,7 @@ function renderCommandPaletteItems(query: string): void {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'command-palette-item';
+    row.id = `command-palette-option-${index}`;
     row.dataset.index = String(index);
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(index === commandPaletteActiveIndex));
@@ -6177,16 +6205,29 @@ function renderCommandPaletteItems(query: string): void {
     row.addEventListener('click', () => void executeCommandPaletteItem(index));
     group!.appendChild(row);
   });
+  updateCommandPaletteActiveRow();
 }
 
 function updateCommandPaletteActiveRow(): void {
+  const input = document.getElementById('command-palette-input') as HTMLInputElement | null;
   document.querySelectorAll<HTMLButtonElement>('.command-palette-item').forEach((row) => {
     const active = Number(row.dataset.index) === commandPaletteActiveIndex;
     row.classList.toggle('active', active);
     row.setAttribute('aria-selected', String(active));
   });
   const active = document.querySelector<HTMLButtonElement>(`.command-palette-item[data-index="${commandPaletteActiveIndex}"]`);
+  if (input) {
+    if (active?.id) input.setAttribute('aria-activedescendant', active.id);
+    else input.removeAttribute('aria-activedescendant');
+  }
   active?.scrollIntoView({ block: 'nearest' });
+}
+
+function commandPaletteFocusableElements(): HTMLElement[] {
+  const panel = document.getElementById('command-palette-panel');
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll<HTMLElement>('button, input'))
+    .filter((element) => !element.hidden && !element.hasAttribute('disabled') && element.getAttribute('tabindex') !== '-1');
 }
 
 async function executeCommandPaletteItem(index: number): Promise<void> {
@@ -6265,6 +6306,7 @@ function closeCommandPalette(): void {
   commandPaletteStep = 'commands';
   commandPalettePendingCommand = null;
   commandPaletteItems = [];
+  commandPaletteSelectionRequired = false;
   const focusTarget = commandPaletteReturnFocus;
   commandPaletteReturnFocus = null;
   focusTarget?.focus();
@@ -6278,6 +6320,7 @@ function wireCommandPalette(): void {
   document.getElementById('command-palette-close')!.addEventListener('click', closeCommandPalette);
   clearButton.addEventListener('click', () => {
     input.value = '';
+    commandPaletteError = null;
     commandPaletteActiveIndex = 0;
     renderCommandPaletteItems('');
     input.focus();
@@ -6294,11 +6337,13 @@ function wireCommandPalette(): void {
   input.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = Math.min(commandPaletteActiveIndex + 1, commandPaletteItems.length - 1);
+      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = (commandPaletteActiveIndex + 1) % commandPaletteItems.length;
       updateCommandPaletteActiveRow();
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = Math.max(commandPaletteActiveIndex - 1, 0);
+      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = commandPaletteActiveIndex <= 0
+        ? commandPaletteItems.length - 1
+        : commandPaletteActiveIndex - 1;
       updateCommandPaletteActiveRow();
     } else if (event.key === 'Enter') {
       event.preventDefault();
@@ -6318,8 +6363,14 @@ function wireCommandPalette(): void {
   });
   panel.addEventListener('keydown', (event) => {
     if (event.key === 'Tab') {
+      const focusables = commandPaletteFocusableElements();
+      const currentIndex = focusables.indexOf(document.activeElement as HTMLElement);
+      if (!focusables.length) return;
       event.preventDefault();
-      input.focus();
+      const nextIndex = currentIndex < 0
+        ? 0
+        : (currentIndex + (event.shiftKey ? -1 : 1) + focusables.length) % focusables.length;
+      focusables[nextIndex].focus();
     }
   });
 }

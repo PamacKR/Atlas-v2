@@ -5689,7 +5689,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
   font-size: var(--text-md);
 }
 #command-palette-input::placeholder { color: var(--text-faint); }
-#command-palette-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(217, 164, 65, .16); }
+#command-palette-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft-strong); }
 #command-palette-clear {
   position: absolute;
   top: 50%;

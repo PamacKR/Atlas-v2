@@ -1,6 +1,6 @@
 # Atlas Command Palette — Implementation Plan
 
-**Status:** Second implementation milestone in progress. The deterministic resolver, shared overlay, initial command set, first parameterized workflows, and focused Electron verification are implemented; broader confirmation-heavy actions and final polish remain.
+**Status:** Second implementation milestone is substantially complete. The deterministic resolver, shared overlay, guided/confirmation-heavy workflows, explicit ambiguity handling, and focused Electron verification are implemented; deeper real-use review and edge-case polish remain.
 
 **Scope:** A keyboard-first command and navigation surface opened with `Ctrl+K`, implemented entirely with deterministic local matching. Atlas must not call an AI/LLM API or any paid service to interpret commands.
 
@@ -263,7 +263,7 @@ Connected course selection, deadline creation/edit/complete/delete, note reassig
 
 ### Stage 5 — Polish and verification — in progress
 
-The focused Electron verifier covers the new paths, including deadline completion, deadline editing, deletion confirmation, immediate backup, and shortcut-reset confirmation; its screenshot has been inspected. The palette reports local-data loading, preserves the overlay on action errors, and resets stale errors when the user searches again. Remaining review includes long names, dark/light theme comparison, broader ambiguity handling, overlay stacking under more combinations, Drive-connected behavior, and final keyboard polish.
+The focused Electron verifier covers the new paths, including deadline completion, deadline editing, deletion confirmation, immediate backup, shortcut-reset confirmation, explicit selection for ambiguous course targets, keyboard focus cycling, and light/dark theme switching; both theme screenshots have been inspected. The palette reports local-data loading, preserves the overlay on action errors, resets stale errors when the user searches again, and never preselects the first result in an ambiguous target list. Remaining review includes long names, broader ambiguity handling beyond the current target lists, overlay stacking under more combinations, Drive-connected behavior, and final real-use keyboard polish.
 
 ## 14. Definition of done
 
