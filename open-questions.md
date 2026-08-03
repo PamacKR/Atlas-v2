@@ -11,19 +11,19 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 
 ## 2. Synchronization
 
-- How frequently should Classroom and Gmail sync?
+- How frequently should Classroom and Drive sync?
 - Should synchronization be manual, automatic, or configurable?
 
-**Status:** Partially resolved for Classroom (2026-07-26) — no background polling interval, unlike Drive's ~20s. Classroom syncs once on app launch plus an explicit "Sync now" button. Classroom content (new assignments, announcements, courses) changes far less often than a Drive inbox, so continuous polling against the college Workspace account isn't worth the extra API load — see `ARCHITECTURE.md` §4b. Gmail's half of this question is still open, deferred to when the Gmail adapter is built.
+**Status:** Resolved/built — Drive and Classroom each use the user-configurable per-source schedule delivered in Settings (Off / On launch only / Every N minutes where applicable), with explicit per-source and global sync actions. Classroom's default remains launch-only; Drive's default preserves its short automatic interval. Gmail is explicitly out of scope for Atlas as of 2026-07-29, so it is not an unresolved sync question.
 
-**Answered in principle (2026-07-28), to be built as the next piece of work.** The real answer to "manual, automatic, or configurable" is **configurable, per source** — every sync schedule in Atlas today is hardcoded and invisible (Drive polls every 20s, Classroom is launch + manual only), which also means the user has no way to tell when anything last ran. That invisibility is not a cosmetic gap: the Classroom adapter was silently failing on every single sync for weeks (#21) and nothing in the UI could have revealed it. Planned shape:
+**Implemented (2026-07-28).** The answer to "manual, automatic, or configurable" is **configurable, per source**. The Settings sync surface makes each active source's schedule and last-sync state visible, so a broken sync does not look identical to "nothing new":
 
-- A **Sync section in Settings**, one row per source (Drive / Classroom / Gmail once it exists): **Off / On launch only / Every N minutes**, chosen from a small set of sensible intervals rather than a free-text field.
+- A **Sync section in Settings**, one row per active source (Drive / Classroom): **Off / On launch only / Every N minutes**, chosen from a small set of sensible intervals rather than a free-text field.
 - A **"last synced" timestamp** per source, in plain relative language ("2 minutes ago"), plus the last error if the most recent attempt failed — so a broken sync looks broken instead of looking identical to "nothing new."
 - A per-source **"Sync now"**, plus one "Sync everything."
 - **Defaults exactly preserve today's behavior** (Drive 20s, Classroom launch-only), so nothing changes for the user unless they change it.
 
-This supersedes the per-adapter, hardcoded-and-undocumented approach; the existing `setInterval` in `main.ts` becomes driven by the stored setting. Gmail will plug into the same system rather than inventing a third convention (see #28).
+This supersedes the per-adapter, hardcoded-and-undocumented approach; the existing `setInterval` in `main.ts` becomes driven by the stored setting. The historical Gmail discussion below is superseded: Gmail is not an Atlas source.
 
 **Status: Resolved/built (2026-07-28), Phase 3 item 2 of 3 (after conflict handling, #3).**
 
