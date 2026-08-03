@@ -452,7 +452,7 @@ const ICON_EXTENSION_MAP: Record<string, string> = {
   docx: 'docx',
   xls: 'xlsx',
   xlsx: 'xlsx',
-  csv: 'xlsx',
+  csv: 'text',
   png: 'image',
   jpg: 'image',
   jpeg: 'image',
@@ -4172,12 +4172,20 @@ function setImageZoom(zoom: number): void {
 // A global overlay (near the end of <body>), not scoped to the Resources
 // page — opening one never navigates away from whatever page is currently
 // showing (Dashboard, a course detail view, etc.), it just layers on top.
-// Only these kinds have anything Google Drive's viewer offers that the
-// in-app preview can't (real slide/document layout) — PDFs/images already
-// render natively, so the button would just be clutter there.
-const OFFICE_PREVIEW_KINDS = new Set(['pptx', 'docx', 'xlsx']);
+// These local file kinds can be copied to Atlas's Drive preview folder. A
+// Classroom/link resource is handled separately by opening its URL directly.
+const DRIVE_PREVIEW_KINDS = new Set(['pdf', 'image', 'pptx', 'docx', 'xlsx']);
 
 async function openPreview(resource: Resource): Promise<void> {
+  // Classroom attachments that are links (including Drive files, YouTube,
+  // Forms, and ordinary URLs) already have their destination in file_path.
+  // Send them straight to the browser instead of opening a dead-end preview
+  // that only repeats the same Open link action.
+  if (resource.kind === 'link') {
+    await atlasApi.openExternalUrl(resource.file_path);
+    return;
+  }
+
   const overlay = document.getElementById('preview-overlay')!;
   const title = document.getElementById('preview-title')!;
   const note = document.getElementById('preview-note') as HTMLParagraphElement;
@@ -4210,7 +4218,7 @@ async function openPreview(resource: Resource): Promise<void> {
       : '';
   discardResourceOcr();
 
-  driveButton.hidden = !OFFICE_PREVIEW_KINDS.has(resource.kind);
+  driveButton.hidden = !DRIVE_PREVIEW_KINDS.has(resource.kind);
   driveButton.disabled = false;
   document.getElementById('preview-drive-status')!.textContent = '';
 
@@ -4244,13 +4252,12 @@ async function openPreview(resource: Resource): Promise<void> {
     pre.textContent = preview.text;
     body.appendChild(pre);
   } else if (preview.type === 'link') {
-    // No in-app rendering for an external link/Drive-file attachment —
-    // opening it means handing off to the real browser/Drive, not showing
-    // it inside Atlas's preview modal.
+    // Defensive fallback for a link returned by an older main-process build.
     const p = document.createElement('p');
     p.className = 'muted';
     p.textContent = 'This is a link to an external file.';
-    body.appendChild(p);
+    const row = document.createElement('div');
+    row.id = 'preview-link-row';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'link-button';
@@ -4258,7 +4265,8 @@ async function openPreview(resource: Resource): Promise<void> {
     button.addEventListener('click', () => {
       void atlasApi.openExternalUrl(preview.url);
     });
-    body.appendChild(button);
+    row.append(p, button);
+    body.appendChild(row);
     body.classList.add('centered');
   } else if (preview.type === 'unsupported') {
     const p = document.createElement('p');
@@ -5576,6 +5584,10 @@ function moveNoteCommandItems(match: PaletteCommandMatch | null, command: Palett
 
 async function runPaletteOpenInDrive(resource: ResourceWithCourse): Promise<void> {
   closeCommandPalette();
+  if (resource.kind === 'link') {
+    await atlasApi.openExternalUrl(resource.file_path);
+    return;
+  }
   await openPreview(resource);
   openCurrentPreviewInGoogleDrive();
 }
@@ -5584,9 +5596,14 @@ function driveCommandItems(match: PaletteCommandMatch | null, command: PaletteCo
   const argument = match?.argument ?? '';
   const current = argument ? null : paletteCurrentResource();
   if (current) {
+    if (current.kind !== 'link' && !DRIVE_PREVIEW_KINDS.has(current.kind)) {
+      return [commandPaletteCommandItem(command, `${current.title} cannot be opened in Google Drive`, () => undefined)];
+    }
     return [commandPaletteCommandItem(command, `Current resource · ${current.title}`, () => runPaletteOpenInDrive(current))];
   }
-  const choices = paletteResourceChoices(argument).slice(0, 12);
+  const choices = paletteResourceChoices(argument)
+    .filter(({ resource }) => resource.kind === 'link' || DRIVE_PREVIEW_KINDS.has(resource.kind))
+    .slice(0, 12);
   if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a resource to open in Google Drive', () => undefined)];
   return choices.map(({ resource }) => ({
     id: `drive-resource:${resource.id}`,

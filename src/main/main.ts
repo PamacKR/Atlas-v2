@@ -71,6 +71,18 @@ const KIND_BY_EXTENSION: Record<string, string> = {
   '.txt': 'text',
   '.md': 'markdown',
   '.markdown': 'markdown',
+  '.csv': 'text',
+  '.tsv': 'text',
+  '.json': 'text',
+  '.xml': 'text',
+  '.html': 'text',
+  '.htm': 'text',
+  '.log': 'text',
+  '.rtf': 'text',
+  '.ini': 'text',
+  '.yaml': 'text',
+  '.yml': 'text',
+  '.tex': 'text',
   '.zip': 'zip',
 };
 
@@ -2031,7 +2043,7 @@ ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) =
 });
 
 // --- Google Drive preview (open-questions.md #12, ARCHITECTURE.md §7) ---
-// Uploads a .pptx/.docx/.xlsx to Atlas's dedicated Drive preview folder (or
+// Uploads a PDF, image, or .pptx/.docx/.xlsx to Atlas's dedicated Drive preview folder (or
 // reuses the existing upload if the file hasn't changed) and opens Drive's
 // own viewer for it in the user's browser — real slide/document layout,
 // which the in-app preview deliberately can't render. Shared by both the
@@ -2042,7 +2054,7 @@ ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) =
 // so the renderer can show "Uploading…" immediately (there's no byte-level
 // progress to report — see the comment on uploadResourceForPreview), then
 // exactly one of 'driveOpenSuccess'/'driveOpenError'.
-const OFFICE_PREVIEW_KINDS = new Set(['pptx', 'docx', 'xlsx']);
+const DRIVE_PREVIEW_KINDS = new Set(['pdf', 'image', 'pptx', 'docx', 'xlsx']);
 
 async function openResourceInGoogleDrive(resourceId: number, sender: Electron.WebContents): Promise<void> {
   sender.send('resources:driveOpenStart', resourceId);
@@ -2085,10 +2097,9 @@ ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
       label: isLink ? 'Open link' : 'Open in browser',
       click: () => shell.openExternal(isLink ? resource.file_path : getResourceBrowserUrl(resourceId)),
     },
-    // Only for the file kinds where Drive's viewer actually offers something
-    // the in-app preview can't (real slide/document layout) — PDFs/images
-    // already render natively, and this would just be clutter there.
-    ...(OFFICE_PREVIEW_KINDS.has(resource.kind)
+    // Drive can open the same PDF/image files Atlas previews locally, along
+    // with Office files where Drive provides a richer native viewer.
+    ...(DRIVE_PREVIEW_KINDS.has(resource.kind)
       ? [
           {
             label: 'Open in Google Drive',

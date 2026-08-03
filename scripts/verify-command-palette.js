@@ -48,9 +48,11 @@ const fs = require('fs');
     if (await window.evaluate(() => document.activeElement?.id) !== 'command-palette-input') throw new Error('Palette input did not receive focus.');
     await window.fill('#command-palette-input', 'calendar');
     if (await window.isHidden('#command-palette-clear') !== false) throw new Error('The themed search clear control did not appear after typing.');
+    if (await window.evaluate(() => getComputedStyle(document.getElementById('command-palette-clear')).display) === 'none') throw new Error('The search clear control stayed visually hidden after typing.');
     await window.click('#command-palette-clear');
     const clearState = await window.evaluate(() => ({ value: document.getElementById('command-palette-input').value, hidden: document.getElementById('command-palette-clear').hidden }));
     if (clearState.value !== '' || !clearState.hidden) throw new Error(`The search clear control did not reset the palette: ${JSON.stringify(clearState)}`);
+    if (await window.evaluate(() => getComputedStyle(document.getElementById('command-palette-clear')).display) !== 'none') throw new Error('The search clear control remained visually visible after clearing.');
     await window.keyboard.press('Escape');
     if (await window.evaluate(() => document.activeElement?.id) !== 'search-input') throw new Error('Focus did not return to the previous control.');
 

@@ -51,6 +51,7 @@ export type Preview =
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
+  | { type: 'link'; url: string }
   | { type: 'unsupported'; reason?: string };
 
 export interface Note {

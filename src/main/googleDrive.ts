@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { google } from 'googleapis';
 import { getDb } from './db/database';
 import { getDriveClient } from './googleAuth';
@@ -13,10 +14,19 @@ const FOLDER_NAME_SETTING_KEY = 'google_drive_folder_name';
 const PREVIEW_FOLDER_ID_SETTING_KEY = 'google_drive_preview_folder_id';
 const PREVIEW_FOLDER_NAME = 'Atlas Previews';
 
-const OFFICE_MIME_TYPES: Record<string, string> = {
+const DRIVE_PREVIEW_MIME_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
 };
 
 // Google's own native file types (Docs/Sheets/Slides/...) can't be fetched
@@ -342,7 +352,9 @@ export async function uploadResourceForPreview(resourceId: number): Promise<Driv
     | undefined;
   if (!resource) throw new Error('Resource not found.');
 
-  const mimeType = OFFICE_MIME_TYPES[resource.kind];
+  const mimeType = resource.kind === 'image'
+    ? IMAGE_MIME_TYPES[path.extname(resource.file_path).toLowerCase()]
+    : DRIVE_PREVIEW_MIME_TYPES[resource.kind];
   if (!mimeType) throw new Error(`Unsupported file type for Google Drive preview: ${resource.kind}`);
 
   const stat = fs.statSync(resource.file_path);
