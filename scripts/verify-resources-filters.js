@@ -64,16 +64,22 @@ const fs = require('fs');
       if (!option || !label || !arrow) return null;
       const labelRect = label.getBoundingClientRect();
       const arrowRect = arrow.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
       const optionStyle = getComputedStyle(option);
       return {
         border: optionStyle.borderTopWidth,
         paddingTop: optionStyle.paddingTop,
         gap: arrowRect.left - labelRect.right,
+        arrowRightGap: rootRect.right - arrowRect.right,
+        optionJustify: optionStyle.justifyContent,
+        optionGap: optionStyle.gap,
       };
     });
     if (!dropdownStyle || dropdownStyle.border !== '0px') throw new Error(`Source dropdown options still have an outline: ${JSON.stringify(dropdownStyle)}`);
     if (dropdownStyle.paddingTop !== '6px') throw new Error(`Source dropdown option padding was not tightened: ${JSON.stringify(dropdownStyle)}`);
     if (dropdownStyle.gap > 12) throw new Error(`Source dropdown arrow is too far from its label: ${JSON.stringify(dropdownStyle)}`);
+    if (dropdownStyle.arrowRightGap > 18) throw new Error(`Source dropdown has too much space after its arrow: ${JSON.stringify(dropdownStyle)}`);
+    if (dropdownStyle.optionJustify !== 'flex-start' || dropdownStyle.optionGap !== '8px') throw new Error(`Source dropdown checkmark alignment is too loose: ${JSON.stringify(dropdownStyle)}`);
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-resources-filters.png') });
     console.log('resources source filter verify: PASS');
   } finally {

@@ -3840,10 +3840,10 @@ button#classroom-connect-confirm {
 .topbar-page-actions:not([hidden]) { display: flex; align-items: center; gap: var(--space-2); }
 #topbar .topbar-page-actions button { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; transition: border-color var(--transition), color var(--transition), background var(--transition); }
 #topbar .topbar-page-actions button:hover, #topbar .topbar-page-actions button:focus-visible { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); outline: none; }
-#resources-topbar-actions .resources-source-select { width: 132px; flex: 0 0 132px; }
-#resources-topbar-actions .resources-source-select .dselect-menu { min-width: 132px; }
+#resources-topbar-actions .resources-source-select { width: 108px; flex: 0 0 108px; }
+#resources-topbar-actions .resources-source-select .dselect-menu { min-width: 108px; }
 #topbar .topbar-page-actions .resources-source-select .dselect-trigger { justify-content: flex-start; gap: 6px; padding: 0 10px; }
-#topbar .topbar-page-actions .resources-source-select .dselect-option { height: auto; padding: 6px 8px; border: 0; border-radius: 6px; }
+#topbar .topbar-page-actions .resources-source-select .dselect-option { height: auto; justify-content: flex-start; gap: 8px; padding: 6px 8px; border: 0; border-radius: 6px; }
 
 #search-box {
   width: 300px;
