@@ -436,19 +436,6 @@ import '@milkdown/crepe/theme/common/style.css';
 
 const atlasApi: AtlasApi = (window as any).atlas;
 
-const KIND_ICON: Record<string, string> = {
-  pdf: '📄',
-  pptx: '📊',
-  docx: '📝',
-  xlsx: '📈',
-  image: '🖼️',
-  text: '📃',
-  markdown: '📃',
-  zip: '🗜️',
-  link: '🔗',
-  other: '📁',
-};
-
 const ICON_EXTENSION_MAP: Record<string, string> = {
   pdf: 'pdf',
   ppt: 'pptx',
@@ -475,13 +462,6 @@ const ICON_EXTENSION_MAP: Record<string, string> = {
 // 🔗, no matter what it actually links to. This guesses a more specific
 // icon from the linked file's own name/extension (still preserved in the
 // resource's title) purely for display; it never changes the stored kind.
-function resourceDisplayIcon(resource: { kind: string; title: string }): string {
-  if (resource.kind !== 'link') return KIND_ICON[resource.kind] ?? KIND_ICON.other;
-  const ext = resource.title.split('.').pop()?.toLowerCase() ?? '';
-  const mapped = ICON_EXTENSION_MAP[ext];
-  return mapped ? KIND_ICON[mapped] : KIND_ICON.link;
-}
-
 const DEADLINE_KIND_LABEL: Record<string, string> = {
   assignment: 'Assignment',
   reading: 'Reading',
@@ -770,80 +750,6 @@ function makeMonoIcon(kind: string, className = 'mono-icon'): HTMLElement {
   return icon;
 }
 
-// Card grid by default (matches the mockup the user provided), a flat list
-// as the alternative — same view-toggle convention used for resources/
-// deadlines elsewhere, just a separate mode since a course card carries
-// more information (counts, code) than a resource/deadline row does.
-async function renderLegacyCourses(): Promise<void> {
-  void renderDashboard();
-  const list = document.getElementById('course-list')!;
-  const emptyState = document.getElementById('course-list-empty')!;
-  const allSummaries = await atlasApi.getCourseSummaries(showArchivedCourses);
-  let courses = semesterFilter ? allSummaries.filter((c) => c.term === semesterFilter) : allSummaries;
-  courses = [...courses].sort((a, b) => compareCourseSummaries(a, b, courseSort));
-
-  emptyState.hidden = courses.length > 0;
-  emptyState.textContent = showArchivedCourses ? 'No archived courses.' : 'No courses yet.';
-
-  list.className = courseViewMode === 'grid' ? 'view-grid' : 'view-list';
-  list.innerHTML = '';
-
-  for (const course of courses) {
-    const li = document.createElement('li');
-    li.className = 'course-card';
-    li.dataset.courseId = String(course.id);
-    if (selectedCourse && selectedCourse.id === course.id) li.classList.add('selected');
-
-    const top = document.createElement('div');
-    top.className = 'course-card-top';
-    top.appendChild(makeCourseAvatar(course));
-
-    const titleBlock = document.createElement('div');
-    titleBlock.className = 'course-card-title-block';
-    const name = document.createElement('div');
-    name.className = 'course-card-name';
-    name.textContent = course.name;
-    titleBlock.appendChild(name);
-    if (course.code) {
-      const code = document.createElement('div');
-      code.className = 'course-card-code';
-      code.textContent = course.code;
-      titleBlock.appendChild(code);
-    }
-    top.appendChild(titleBlock);
-
-    const menuButton = document.createElement('button');
-    menuButton.type = 'button';
-    menuButton.className = 'course-card-menu';
-    menuButton.textContent = '⋯';
-    menuButton.title = 'Course options';
-    menuButton.setAttribute('aria-label', 'Course options');
-    menuButton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      atlasApi.showCourseContextMenu(course.id);
-    });
-    top.appendChild(menuButton);
-    li.appendChild(top);
-
-    const counts = document.createElement('div');
-    counts.className = 'course-card-counts';
-    const resourceCount = document.createElement('span');
-    resourceCount.textContent = `📄 ${course.resource_count} Resources`;
-    counts.appendChild(resourceCount);
-    const deadlineCount = document.createElement('span');
-    deadlineCount.textContent = `📌 ${course.deadline_count} Deadlines`;
-    counts.appendChild(deadlineCount);
-    li.appendChild(counts);
-
-    li.addEventListener('click', () => selectCourse(course));
-    li.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      atlasApi.showCourseContextMenu(course.id);
-    });
-    list.appendChild(li);
-  }
-}
-
 function isCurrentOrFutureDeadline(deadline: Deadline): boolean {
   if (deadline.completed === 1 || !deadline.due_at) return false;
   const { year, month, day, hour, minute } = splitDueAt(deadline.due_at);
@@ -993,125 +899,6 @@ let notesCourseFilterId: number | null = null; // null = all courses
 let notesViewMode: 'list' | 'grid' = 'list';
 let notesSort: 'recent' | 'name' | 'course' = 'recent';
 let showOnlyAgentNotes = false; // Phase 4 Part B filter — agent-generated notes only
-
-// A plain-language readability label for a Classroom/Drive link resource —
-// null for anything else (a local file's readability is implicit; it's
-// either extracted or not, same as before this feature). See
-// remote-attachments-spec.md §7 for the status meanings.
-function remoteReadabilityLabel(resource: Resource): string | null {
-  if (resource.kind !== 'link') return null;
-  if (resource.link_kind && resource.link_kind !== 'driveFile') return null; // YouTube/Form/plain link — never fetchable
-  if (!resource.remote_source) return null;
-  switch (resource.extraction_status) {
-    case 'done':
-      return 'readable by agent';
-    case 'empty':
-      return 'no readable text found';
-    case 'failed':
-      return resource.extraction_error ? `not readable — ${resource.extraction_error}` : 'not readable';
-    case 'unsupported':
-      return null;
-    case 'pending':
-    default:
-      return 'not fetched yet';
-  }
-}
-
-function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTMLLIElement {
-  const li = document.createElement('li');
-  li.dataset.resourceId = String(resource.id);
-
-  if (iconView) {
-    li.className = 'icon-tile';
-    const icon = document.createElement('div');
-    icon.className = 'icon-glyph';
-    icon.appendChild(makeMonoIcon(resourceIconKind(resource)));
-    li.appendChild(icon);
-    const name = document.createElement('div');
-    name.className = 'icon-name';
-    name.textContent = resource.title;
-    li.appendChild(name);
-    const course = document.createElement('div');
-    course.className = 'icon-course';
-    course.textContent = resource.course_name;
-    li.appendChild(course);
-  } else {
-    const name = document.createElement('span');
-    name.className = 'resource-name';
-    name.textContent = resource.title;
-    li.appendChild(name);
-    const course = document.createElement('span');
-    course.className = 'code';
-    course.textContent = resource.course_name;
-    li.appendChild(course);
-    const kind = document.createElement('span');
-    kind.className = 'code resource-kind';
-    kind.textContent = resource.kind;
-    li.appendChild(kind);
-
-    // A Classroom/Drive link resource has no local file — whether the AI
-    // agent can actually read it (vs. just see a title) isn't obvious from
-    // the row otherwise, so "the agent didn't find it" doesn't become a
-    // silent mystery (remote-attachments-spec.md §8).
-    const remoteLabel = remoteReadabilityLabel(resource);
-    if (remoteLabel) {
-      const status = document.createElement('span');
-      status.className = 'code resource-remote-status';
-      status.textContent = remoteLabel;
-      li.appendChild(status);
-    }
-  }
-
-  li.addEventListener('click', () => openPreview(resource));
-  li.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    atlasApi.showResourceContextMenu(resource.id);
-  });
-  return li;
-}
-
-function renderLegacyAllResourcesList(resources: ResourceWithCourse[]): void {
-  const list = document.getElementById('all-resources-list')!;
-  list.className = viewMode === 'list' ? 'view-list' : 'view-grid';
-  list.innerHTML = '';
-
-  if (resources.length === 0) {
-    const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = 'No resources match this filter.';
-    list.appendChild(li);
-    return;
-  }
-
-  for (const resource of resources) {
-    list.appendChild(resourceListItem(resource, viewMode === 'grid'));
-  }
-}
-
-// Shared by the Resources and Notes pages' course rails — both filter a
-// global list down to one course (or show everything) the same way.
-function renderCourseRail(
-  railId: string,
-  courses: Course[],
-  allLabel: string,
-  selectedCourseId: number | null,
-  onSelect: (courseId: number | null) => void
-): void {
-  const rail = document.getElementById(railId)!;
-  rail.innerHTML = '';
-  const allLi = document.createElement('li');
-  allLi.textContent = allLabel;
-  allLi.classList.toggle('selected', selectedCourseId === null);
-  allLi.addEventListener('click', () => onSelect(null));
-  rail.appendChild(allLi);
-  for (const course of courses) {
-    const li = document.createElement('li');
-    li.textContent = course.name;
-    li.classList.toggle('selected', selectedCourseId === course.id);
-    li.addEventListener('click', () => onSelect(course.id));
-    rail.appendChild(li);
-  }
-}
 
 // --- Course picker modal: choose a target course for an action that isn't
 // scoped to any one course already visible on screen (uploading a resource,
@@ -1495,13 +1282,6 @@ async function renderWatchedFolders(): Promise<void> {
   }
 }
 
-
-function formatNoteTimestamp(sqliteDatetime: string): string {
-  // SQLite's datetime('now') is UTC with no 'Z' suffix — append it so
-  // Date parses it as UTC instead of assuming local time.
-  const date = new Date(sqliteDatetime.replace(' ', 'T') + 'Z');
-  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
 
 // --- Global Notes page: every note across every course, grouped by
 // recency (Today / This week / Older), with an inline docked editor
@@ -3455,7 +3235,6 @@ let currentNoteId: number | null = null;
 // Tracks whether the currently-open note has a course yet — drives the
 // "Assign to course" button's visibility (see openNoteEditor). NULL means
 // unsorted (a quick-capture note, createUnsortedNote in main.ts).
-let currentNoteCourseId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let noteTitleBeforeEdit = '';
 // The note's markdown right after it finished opening (post-Crepe-mount, not
@@ -3647,7 +3426,6 @@ async function openNoteEditor(note: Note): Promise<void> {
   const statusEl = document.getElementById('note-save-status')!;
 
   currentNoteId = note.id;
-  currentNoteCourseId = note.course_id;
   // Reset here, not just at the two creation call sites — opening any other
   // note (including navigating straight from one fresh note to another)
   // must never inherit a stale "discard if untouched" flag from whatever

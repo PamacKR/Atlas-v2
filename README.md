@@ -23,14 +23,14 @@ Atlas never tries to become an AI assistant — it makes no AI/LLM API calls of 
 - [`open-questions.md`](open-questions.md) — open product questions from the PRD, with current recommendations/decisions and their status.
 - [`phase4-spec.md`](phase4-spec.md) — the Context Builder/MCP server design (page-aware extraction, persistent agent memory, agent-created notes, the query layer, the MCP server, static export).
 - [`remote-attachments-spec.md`](remote-attachments-spec.md) — reading Classroom Drive attachments (and links discovered inside them) without downloading them locally.
-- [`phase5-spec.md`](phase5-spec.md) — the search overhaul, Dashboard v2, and configurable keyboard shortcuts (drafted, not yet built).
-- [`phase6-spec.md`](phase6-spec.md) — UI overhaul and design tokens, settings redesign, design-style themes, app packaging, and startup performance (drafted, not yet built).
+- [`phase5-spec.md`](phase5-spec.md) — the implementation record and remaining design notes for search, Dashboard v2, and configurable keyboard shortcuts.
+- [`phase6-spec.md`](phase6-spec.md) — the UI overhaul/design-token contract, packaging notes, design-style themes, and startup performance work.
 - [`mcp-setup.md`](mcp-setup.md) — how to connect an MCP-capable AI tool to Atlas's local MCP server.
 - [`STATUS.md`](STATUS.md) — living session-by-session log of what's actually been built, found, and fixed; the first thing to read after this file.
 
 ## Status
 
-Phases 0–5 of the roadmap are complete, plus the Context Builder/MCP server (Phase 4) and remote-attachment reading beyond it — see [`ROADMAP.md`](ROADMAP.md) and [`STATUS.md`](STATUS.md) for the accurate, current detail (this file doesn't try to track day-to-day status itself).
+Phases 0–5 are complete. Phase 6 is in progress: search results, Dashboard v2, Calendar rework, Settings redesign, and startup indexing work are complete, while the full UI overhaul, packaging, icon, themes, and other polish remain — see [`ROADMAP.md`](ROADMAP.md) and [`STATUS.md`](STATUS.md) for the accurate current detail.
 
 ## Connecting an AI agent
 
@@ -48,10 +48,10 @@ npm start
 
 **Everyday use, without a terminal:** double-click [`Launch Atlas.bat`](Launch%20Atlas.bat) — it `cd`s into this folder and launches the already-built app immediately. The development workflow builds after every code change, so normal launches no longer spend several seconds compiling first. If you ever edit source files yourself, run `npm run build` once before launching.
 
-**A real packaged install** is also available now (`phase6-spec.md` §4):
+**Windows packaging is configured but is not yet considered complete** (`phase6-spec.md` §4):
 
 ```bash
 npm run package:win
 ```
 
-Produces `release/Atlas Setup <version>.exe` — an NSIS installer that installs a real `Atlas.exe` with its own Start Menu entry and Desktop shortcut, no build step or console window at launch. No custom icon yet (electron-builder's own default is used) — a real logo is still waiting on design direction the user is supplying separately (`phase6-spec.md` §8).
+The command is the pending packaging path; a release installer and packaged-app validation still need to be completed. No custom icon is included yet — the logo/icon remains a separate pending roadmap item.

@@ -20,5 +20,8 @@ atlas.db-wal
 # Output of scripts/verify-app.js (Playwright self-test)
 verify-screenshot.png
 
+# Local Git snapshots are not source or release artifacts.
+*.bundle
+
 # UI mockup screenshots — regenerated on demand, not source of truth
 mockups/*.png

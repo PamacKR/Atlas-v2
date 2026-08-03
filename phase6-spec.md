@@ -1,6 +1,6 @@
 # Phase 6 — Design system, theming, and desktop polish (specification)
 
-Status: **drafted 2026-07-29, nothing built yet.** Parts of §1–§3 deliberately need the user's visual direction before they can be specced further — flagged inline in §8.
+Status: **Partially implemented (2026-08-03).** Approved mockups and the cross-page implementation contract now exist; search, Dashboard v2, Calendar rework, Settings redesign, and startup indexing work are complete. The full UI overhaul and Windows packaging remain in progress. `ROADMAP.md` is the live completion source.
 
 The functional product is essentially complete (Phases 0–5 plus the MCP/Context Builder and remote attachment work). This phase is about Atlas *feeling* like a real, finished desktop app rather than a working prototype.
 
@@ -16,7 +16,7 @@ Three standing rules follow from that, and they apply from now until the redesig
 
 1. **Don't patch the current UI.** If something in `styles.css`/`index.html` looks wrong or off-theme, note it as input for the redesign rather than fixing it in place. Incremental polish on a stylesheet that is about to be replaced is wasted work twice over — once writing it, once reconciling it. (This supersedes the previous default of "match the existing per-ID button styling convention" — that guidance was correct while the current UI was the target, and is now only relevant for the small number of pre-redesign changes that are genuinely unavoidable.)
 2. **Time is not the constraint; quality is.** The user has said directly they're willing to sit through a long build. So don't optimize this phase for speed, don't propose a minimum-viable redesign, and don't cut scope to finish faster. The bar is "something I'd be excited to use daily."
-3. **Do not start without the user's design framework.** They will supply direction — reference material, structure, possibly output from other AI/design tools — and have said they won't ask to proceed without giving something concrete to work from (§8). Starting early from my own guesses would produce exactly the generic result this phase exists to avoid.
+3. **Do not start without the user's design framework.** The user has now supplied the approved page mockups and shared control/overlay contracts. Every remaining UI pass must copy those sources directly rather than reconstructing a generic design from memory.
 
 ## 1. UI overhaul — and the one architectural decision that matters
 
@@ -151,17 +151,17 @@ The user raised these as two separate items (5.1 "starting the app takes a littl
 
 So **every single launch** does a full TypeScript compile, a second full type-check pass of the renderer, an esbuild bundle, and an asset copy — *before the window even opens*. That's the startup delay. It isn't Electron being slow; it's a full development build running every time the user wants to read their notes.
 
-And `electron-builder` is already installed as a devDependency — but there is **no build configuration anywhere**: no `build` key in `package.json`, no `electron-builder.yml`, no `build/` directory. The app has never been packaged. That's why the `.bat` file exists at all.
+The packaging path is now configured in `package.json`, but the app has not yet completed the real Windows installer/package validation required to mark this roadmap item done. That's why the `.bat` file remains the supported development launcher.
 
-### 4.2 The fix — **done**
+### 4.2 The packaging path — **configured, completion pending**
 
-`electron-builder` is now configured (`package.json`'s `build` key) and `npm run package:win` produces a real installed Windows application:
+`electron-builder` is configured (`package.json`'s `build` key) and `npm run package:win` is the intended path to a real installed Windows application. The installer output and packaged-app validation still need to be completed before this is marked done:
 
-- A real `Atlas.exe` with a Start Menu entry and Desktop shortcut, created by the NSIS installer — **no custom icon yet**, electron-builder's own default Electron icon is used, since the user hasn't supplied a logo concept (§8). Swapping one in later is a one-line `build.win.icon` addition, not a rebuild of anything else.
+- The eventual target is a real `Atlas.exe` with a Start Menu entry and Desktop shortcut, created by the NSIS installer — **no custom icon yet**, since the logo/icon remains a separate pending roadmap item.
 - **No build step at launch.** The packaged app ships already-compiled code from `dist/`, so startup is Electron cold-start only.
 - Proper app identity (`appId: "com.atlas.desktop"`, `productName: "Atlas"`) so Windows treats it as one application.
 - NSIS installer target, per-user install (`perMachine: false`, no admin prompt needed), `allowToChangeInstallationDirectory: true`.
-- `asarUnpack: ["**/*.node"]` so `better-sqlite3`'s native binding isn't packed into the (non-executable) asar archive. Verified end-to-end: built, packaged, and launched the packaged `.exe` directly to confirm the native module actually works under the packaged Electron ABI, not just the dev one.
+- `asarUnpack: ["**/*.node"]` so `better-sqlite3`'s native binding isn't packed into the (non-executable) asar archive. Packaged-app validation is still pending.
 
 `Launch Atlas.bat` stays for development. Added a dev-only fast path for when nothing's changed since the last build:
 
@@ -240,7 +240,7 @@ From the real extraction data: Development Economics has 17 readable files, 9 th
 
 | # | Piece | Size | Notes |
 |---|---|---|---|
-| 1 | Package with electron-builder: real `.exe`, installer, no build-at-launch (§4) | Medium | **Done 2026-07-29.** No custom icon yet — using electron-builder's default until #3. |
+| 1 | Package with electron-builder: real `.exe`, installer, no build-at-launch (§4) | Medium | **Pending.** Configuration exists; installer output and packaged-app validation are not complete. |
 | 2 | Skip the redundant launch-time search reindex (§5) | Small | **Done 2026-07-29.** |
 | 3 | Design a logo/icon (§8) | — | Still needed for #1's installer/taskbar icon; ships with the redesign's visual direction, not before. |
 | 4 | **Design-token layer + UI overhaul** (§1) | **Very large** | The core of this phase. Needs the user's visual direction first. |
@@ -268,7 +268,7 @@ The redesign and the logo both wait on the user, **by their own explicit choice*
 >
 > *"Same with the logo as well. it would need lot of thought put into it to come up with something i like and i wont tell you to just go and make something without giving you an idea."*
 
-So the correct behavior next session is: **wait for the framework, then build against it.** Don't propose mockups unprompted, don't draft a logo speculatively, and don't treat the absence of direction as a blocker to raise — it's a deliberate, communicated pause.
+The framework is now present in the approved mockups and `DESIGN.md`. Continue only from those sources; do not invent a replacement design or logo speculatively.
 
 When the direction does arrive, these are the things it will need to resolve, listed so the work can start immediately rather than round-tripping:
 
