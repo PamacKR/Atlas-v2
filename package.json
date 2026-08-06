@@ -14,6 +14,7 @@
     "verify:pdf-preview": "npm run build && node scripts/verify-pdf-preview.js",
     "verify:resources-filters": "npm run build && node scripts/verify-resources-filters.js",
     "verify:readiness": "npm run build && node scripts/verify-readiness.js",
+    "measure:performance": "npm run build && node scripts/run-as-electron-node.js scripts/measure-performance.js",
     "mcp:server": "node scripts/run-mcp-server.js",
     "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js",
     "verify:extraction": "npm run build && node scripts/run-as-electron-node.js scripts/verify-extraction.js",
