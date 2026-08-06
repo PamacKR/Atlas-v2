@@ -168,6 +168,15 @@ const fs = require('fs');
   const darkLogoSource = await window.getAttribute('#sidebar-brand-logo', 'src');
   if (darkLogoSource !== 'assets/atlas-logo-reference-dark-transparent.png') throw new Error(`FAIL: dark theme used the wrong logo asset: ${darkLogoSource}`);
   if (await window.isHidden('#sidebar-brand .wm-rest')) throw new Error('FAIL: expanded sidebar hid the Atlas wordmark');
+  const expandedBrandGeometry = await window.evaluate(() => {
+    const logo = document.querySelector('#sidebar-brand-logo').getBoundingClientRect();
+    const navIcon = document.querySelector('.sidebar-nav-item[data-page="dashboard"] .nav-icon').getBoundingClientRect();
+    return { logo: { x: logo.x, y: logo.y, width: logo.width, height: logo.height }, navIcon: { x: navIcon.x, y: navIcon.y, width: navIcon.width, height: navIcon.height } };
+  });
+  if (expandedBrandGeometry.logo.width !== 34 || expandedBrandGeometry.logo.height !== 34) throw new Error(`FAIL: expanded logo cell changed size: ${JSON.stringify(expandedBrandGeometry.logo)}`);
+  if (Math.abs((expandedBrandGeometry.logo.x + expandedBrandGeometry.logo.width / 2) - (expandedBrandGeometry.navIcon.x + expandedBrandGeometry.navIcon.width / 2)) > 1) {
+    throw new Error(`FAIL: expanded logo was not aligned with the sidebar icon column: ${JSON.stringify(expandedBrandGeometry)}`);
+  }
   await goToPage('settings');
   await window.click('#settings-theme-light');
   await window.waitForTimeout(200);
@@ -197,6 +206,18 @@ const fs = require('fs');
   if (!sidebarCollapsed) throw new Error('FAIL: sidebar did not collapse on toggle click');
   if (await window.isHidden('#sidebar-brand-logo')) throw new Error('FAIL: collapsed sidebar hid the Atlas logo');
   if (!(await window.isHidden('#sidebar-brand .wm-rest'))) throw new Error('FAIL: collapsed sidebar still showed the Atlas wordmark');
+  const collapsedBrandGeometry = await window.evaluate(() => {
+    const logo = document.querySelector('#sidebar-brand-logo').getBoundingClientRect();
+    const navIcon = document.querySelector('.sidebar-nav-item[data-page="dashboard"] .nav-icon').getBoundingClientRect();
+    return { logo: { x: logo.x, y: logo.y, width: logo.width, height: logo.height }, navIcon: { x: navIcon.x, y: navIcon.y, width: navIcon.width, height: navIcon.height } };
+  });
+  if (collapsedBrandGeometry.logo.width !== 34 || collapsedBrandGeometry.logo.height !== 34) throw new Error(`FAIL: collapsed logo cell changed size: ${JSON.stringify(collapsedBrandGeometry.logo)}`);
+  if (Math.abs(collapsedBrandGeometry.logo.x - expandedBrandGeometry.logo.x) > 1 || Math.abs(collapsedBrandGeometry.logo.width - expandedBrandGeometry.logo.width) > 1) {
+    throw new Error(`FAIL: logo moved or resized between sidebar states: expanded=${JSON.stringify(expandedBrandGeometry.logo)} collapsed=${JSON.stringify(collapsedBrandGeometry.logo)}`);
+  }
+  if (Math.abs((collapsedBrandGeometry.logo.x + collapsedBrandGeometry.logo.width / 2) - (collapsedBrandGeometry.navIcon.x + collapsedBrandGeometry.navIcon.width / 2)) > 1) {
+    throw new Error(`FAIL: collapsed logo was not aligned with the sidebar icon column: ${JSON.stringify(collapsedBrandGeometry)}`);
+  }
   await window.reload();
   await window.waitForTimeout(500);
   sidebarCollapsed = await window.evaluate(() => document.getElementById('sidebar').classList.contains('collapsed'));

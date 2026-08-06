@@ -3716,9 +3716,10 @@ button#classroom-connect-confirm {
 
 .atlas-logo {
   display: block;
-  width: 27px;
+  width: 34px;
   height: 34px;
   flex: 0 0 auto;
+  padding: 3px;
   object-fit: contain;
 }
 
@@ -3822,7 +3823,7 @@ button#classroom-connect-confirm {
 }
 
 #sidebar.collapsed .wordmark .atlas-logo {
-  width: 30px;
+  width: 34px;
   height: 34px;
   margin: 0;
 }
