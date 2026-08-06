@@ -174,8 +174,8 @@ const fs = require('fs');
     return { logo: { x: logo.x, y: logo.y, width: logo.width, height: logo.height }, navIcon: { x: navIcon.x, y: navIcon.y, width: navIcon.width, height: navIcon.height } };
   });
   if (expandedBrandGeometry.logo.width !== 34 || expandedBrandGeometry.logo.height !== 34) throw new Error(`FAIL: expanded logo cell changed size: ${JSON.stringify(expandedBrandGeometry.logo)}`);
-  if (Math.abs((expandedBrandGeometry.logo.x + expandedBrandGeometry.logo.width / 2) - (expandedBrandGeometry.navIcon.x + expandedBrandGeometry.navIcon.width / 2)) > 1) {
-    throw new Error(`FAIL: expanded logo was not aligned with the sidebar icon column: ${JSON.stringify(expandedBrandGeometry)}`);
+  if (Math.abs((expandedBrandGeometry.logo.x - expandedBrandGeometry.navIcon.x) - 3) > 1) {
+    throw new Error(`FAIL: expanded logo did not receive the intended optical alignment nudge: ${JSON.stringify(expandedBrandGeometry)}`);
   }
   await goToPage('settings');
   await window.click('#settings-theme-light');
@@ -215,8 +215,8 @@ const fs = require('fs');
   if (Math.abs(collapsedBrandGeometry.logo.x - expandedBrandGeometry.logo.x) > 1 || Math.abs(collapsedBrandGeometry.logo.width - expandedBrandGeometry.logo.width) > 1) {
     throw new Error(`FAIL: logo moved or resized between sidebar states: expanded=${JSON.stringify(expandedBrandGeometry.logo)} collapsed=${JSON.stringify(collapsedBrandGeometry.logo)}`);
   }
-  if (Math.abs((collapsedBrandGeometry.logo.x + collapsedBrandGeometry.logo.width / 2) - (collapsedBrandGeometry.navIcon.x + collapsedBrandGeometry.navIcon.width / 2)) > 1) {
-    throw new Error(`FAIL: collapsed logo was not aligned with the sidebar icon column: ${JSON.stringify(collapsedBrandGeometry)}`);
+  if (Math.abs((collapsedBrandGeometry.logo.x - collapsedBrandGeometry.navIcon.x) - 3) > 1) {
+    throw new Error(`FAIL: collapsed logo did not receive the intended optical alignment nudge: ${JSON.stringify(collapsedBrandGeometry)}`);
   }
   await window.reload();
   await window.waitForTimeout(500);
