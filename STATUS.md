@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-06 (personal-use UI overhaul complete on `ui-overhaul-v2`; the current-session section below supersedes historical notes.)
+**Last updated:** 2026-08-06 (personal-use UI overhaul complete on `ui-overhaul-v2`; performance and responsiveness is now the next focused workstream.)
 
 ## Next session — start here
 
@@ -33,6 +33,10 @@ The personal-use UI overhaul is complete on `ui-overhaul-v2`; the earlier statem
 - **Sidebar brand optical alignment, 2026-08-06:** after comparing the visible edges in the expanded sidebar, the entire logo + Atlas lockup now receives a consistent 3px rightward optical nudge. The underlying icon cells remain unchanged; this compensates for the navigation SVGs' internal whitespace so the visible brand edge lines up with the visible glyphs below. The focused build passes. The full suite was not used for this small visual change; one attempted run reached and passed the branding assertions before encountering the unrelated intermittent handwritten-PDF preview failure.
 
 - **Startup taskbar icon timing, 2026-08-06:** Atlas now creates its BrowserWindow before waiting for the local browser server to finish binding. This removes an avoidable startup window in which Windows could display Electron's default taskbar icon before the Atlas icon and App User Model ID were applied. The batch workflow remains the fast development launch path; packaged Atlas.exe remains the only path that can guarantee a branded executable icon before any Electron process exists.
+
+- **Brand milestone and next focus, 2026-08-06:** the user considers the supplied logo and app-icon implementation complete for personal use. A small follow-up remains: the sidebar mark appears slightly too far right, so a later layout-only pass should centre the larger mark on the fixed nav-icon rail and align the Atlas wordmark with the navigation labels. The next implementation focus is performance and responsiveness; no performance code has been changed yet.
+
+- **Performance audit, 2026-08-06:** a read-only inspection of the user's real Atlas database found 5 courses, 196 resources, 3,081 extracted document parts, 3,444 full-text-search rows, 152 announcements, 42 deadlines, and 2 notes. The code audit found several concrete sources of sluggishness and stale UI: every non-Dashboard page also re-renders the hidden Dashboard; startup loads and renders overlapping data twice; note autosaves synchronously rewrite the exported Markdown mirror and rebuild the entire search index; uploads, deletions, extraction, and watcher events also rebuild that index synchronously; several pages use repeated global IPC reads and some per-course queries; and mutations do not share one consistent change-event/targeted-refresh path. The planned fix is recorded in `ROADMAP.md` under the new Performance and responsiveness pass. The live database was inspected read-only and was not changed.
 
 - **Window-control glyph refinement, 2026-08-06:** corrected the restore icon to use a slightly larger, complete native-style overlapping-window outline, mirrored so the rear square extends to the right instead of the left. The focused window-chrome verifier and screenshot pass.
 
