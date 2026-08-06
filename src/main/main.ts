@@ -55,6 +55,8 @@ import {
   getNoteImageUrl,
 } from './localServer';
 
+if (process.platform === 'win32') app.setAppUserModelId('com.atlas.desktop');
+
 const KIND_BY_EXTENSION: Record<string, string> = {
   '.pdf': 'pdf',
   '.ppt': 'pptx',

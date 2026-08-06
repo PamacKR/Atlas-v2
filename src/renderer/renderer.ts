@@ -5281,7 +5281,7 @@ function insertMention(textarea: HTMLTextAreaElement, atIndex: number, candidate
 // set) falls back to dark.
 function applyTheme(theme: 'light' | 'dark'): void {
   document.documentElement.setAttribute('data-theme', theme);
-  const logoSource = theme === 'light' ? 'assets/atlas-logo-light.svg' : 'assets/atlas-logo-dark.svg';
+  const logoSource = theme === 'light' ? 'assets/atlas-logo-reference-light-transparent.png' : 'assets/atlas-logo-reference-dark-transparent.png';
   document.querySelectorAll<HTMLImageElement>('[data-atlas-logo]').forEach((logo) => {
     logo.src = logoSource;
   });
