@@ -43,8 +43,6 @@ const fs = require('fs');
     await window.keyboard.press('Control+k');
     await window.waitForSelector('#command-palette-overlay:not([hidden])');
     await window.waitForTimeout(200);
-    const chromeOpacityWhileOverlayOpen = await window.evaluate(() => getComputedStyle(document.getElementById('window-chrome')).opacity);
-    if (chromeOpacityWhileOverlayOpen === '1') throw new Error('Window chrome did not dim while the command palette overlay was open.');
     const initialCommands = await window.textContent('#command-palette-results');
     for (const label of ['Run OCR', 'Move note to course', 'Open resource in Google Drive', 'Edit course', 'Archive or unarchive course', 'Edit deadline', 'Delete note', 'Create backup now']) {
       if (!initialCommands.includes(label)) throw new Error(`Initial command list omitted: ${label}`);

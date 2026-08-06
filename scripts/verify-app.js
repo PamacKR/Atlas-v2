@@ -246,12 +246,22 @@ const fs = require('fs');
   );
 
   // Click the row to open the full overlay preview modal.
+  const normalWindowControlsBackground = await window.evaluate(() => getComputedStyle(document.getElementById('window-controls')).backgroundColor);
+  if (normalWindowControlsBackground === 'rgba(0, 0, 0, 0)') {
+    throw new Error('FAIL: window controls lost their solid background during normal page browsing');
+  }
   await window.click('#all-resources-list .resource-name');
   await window.waitForTimeout(300);
 
   const previewVisible = !(await window.isHidden('#preview-overlay'));
   console.log('resources preview overlay visible:', previewVisible);
   if (!previewVisible) throw new Error('FAIL: preview overlay did not open on filename click');
+
+  const previewWindowControlsBackground = await window.evaluate(() => getComputedStyle(document.getElementById('window-controls')).backgroundColor);
+  console.log('window controls background while file preview is open:', previewWindowControlsBackground);
+  if (previewWindowControlsBackground !== 'rgba(0, 0, 0, 0)') {
+    throw new Error(`FAIL: window controls did not become transparent over the file preview backdrop, got "${previewWindowControlsBackground}"`);
+  }
 
   const previewHtml = await window.innerHTML('#preview-body');
   console.log('preview body contains "Sample lecture notes":', previewHtml.includes('Sample lecture notes'));
