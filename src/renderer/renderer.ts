@@ -284,6 +284,7 @@ interface AtlasApi {
   disconnectDrive: () => Promise<void>;
   clearDrivePreviewCache: () => Promise<{ ok: true } | { ok: false; error: string }>;
   getSyncStatus: () => Promise<SyncStatus>;
+  onSyncStatusChanged: (handler: (source: 'drive' | 'classroom') => void) => void;
   setSyncConfig: (source: 'drive' | 'classroom', value: string) => Promise<void>;
   syncNow: (source: 'drive' | 'classroom') => Promise<void>;
   syncAllNow: () => Promise<void>;
@@ -7012,6 +7013,11 @@ async function init(): Promise<void> {
   document.getElementById('drive-review-bulk-import')!.addEventListener('click', importSelectedDriveFiles);
   document.getElementById('drive-review-bulk-ignore')!.addEventListener('click', ignoreSelectedDriveFiles);
   atlasApi.onDriveChanged(() => void renderDrivePendingStatus());
+  atlasApi.onSyncStatusChanged((source) => {
+    void renderSyncStatus();
+    if (source === 'drive') void renderDriveStatus();
+    else void renderClassroomStatus();
+  });
 
   document.getElementById('classroom-connect-button')!.addEventListener('click', connectClassroom);
   document.getElementById('classroom-disconnect-button')!.addEventListener('click', disconnectClassroom);

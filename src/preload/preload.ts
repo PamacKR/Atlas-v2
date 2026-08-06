@@ -258,6 +258,9 @@ contextBridge.exposeInMainWorld('atlas', {
   clearDrivePreviewCache: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:clearDrivePreviewCache'),
   getSyncStatus: (): Promise<SyncStatus> => ipcRenderer.invoke('sync:getStatus'),
+  onSyncStatusChanged: (handler: (source: 'drive' | 'classroom') => void): void => {
+    ipcRenderer.on('sync:statusChanged', (_event, source: 'drive' | 'classroom') => handler(source));
+  },
   setSyncConfig: (source: 'drive' | 'classroom', value: string): Promise<void> =>
     ipcRenderer.invoke('sync:setConfig', source, value),
   syncNow: (source: 'drive' | 'classroom'): Promise<void> => ipcRenderer.invoke('sync:now', source),

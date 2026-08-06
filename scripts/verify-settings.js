@@ -57,6 +57,16 @@ const fs = require('fs');
     }
     if (!(await window.textContent('#drive-pending-status'))?.includes('Reconnect Google Drive')) throw new Error('Drive pending state did not request reconnect');
     if (!(await window.textContent('#classroom-pending-status'))?.includes('Reconnect Google Classroom')) throw new Error('Classroom pending state did not request reconnect');
+    await window.evaluate(async () => {
+      await window.atlas.setSetting('sync_config_drive', 'off');
+      await window.atlas.setSetting('sync_drive_last_error', 'Waiting for a live sync update.');
+    });
+    await window.click('.sidebar-nav-item[data-page="dashboard"]');
+    await window.click('.sidebar-nav-item[data-page="settings"]');
+    await window.click('[data-settings-tab="sources"]');
+    await window.evaluate(() => window.atlas.syncNow('drive'));
+    await window.waitForFunction(() => document.querySelector('#sync-status-drive')?.textContent?.includes('ENOENT'), null, { timeout: 2000 });
+    if ((await window.textContent('#sync-status-drive'))?.includes('Waiting for a live sync update.')) throw new Error('Sync status did not update in place after a completed sync');
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings-reconnect.png') });
     await window.waitForSelector('#sync-config-drive .dselect-trigger');
     await window.click('#sync-config-drive .dselect-trigger');

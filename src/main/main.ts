@@ -1488,7 +1488,7 @@ ipcMain.handle('google:connectDrive', async () => {
   try {
     await authorizeGoogleDrive();
     setSyncSetting('sync_drive_last_error', '');
-    void applySyncSchedule('drive');
+    await applySyncSchedule('drive', true);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1604,6 +1604,7 @@ function recordSyncFailure(source: SyncSource, error: unknown): boolean {
 function recordSyncResult(source: SyncSource, succeeded: boolean, errorMessage: string | null): void {
   if (succeeded) setSyncSetting(`sync_${source}_last_success`, new Date().toISOString());
   setSyncSetting(`sync_${source}_last_error`, errorMessage ?? '');
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:statusChanged', source);
 }
 
 const syncIntervalTimers: Partial<Record<SyncSource, ReturnType<typeof setInterval>>> = {};
@@ -1629,10 +1630,10 @@ function runSourceSync(source: SyncSource): Promise<void> {
 // launch — the user's explicit "Sync now"/per-course-connect actions still
 // work regardless of this setting, since those are deliberate user actions,
 // not the background schedule this setting controls.
-function applySyncSchedule(source: SyncSource): Promise<void> {
+function applySyncSchedule(source: SyncSource, forceImmediate = false): Promise<void> {
   clearSyncInterval(source);
   const { mode, intervalSeconds } = getSyncConfig(source);
-  if (mode === 'off') return Promise.resolve();
+  if (mode === 'off') return forceImmediate ? runSourceSync(source) : Promise.resolve();
 
   const initial = runSourceSync(source);
   if (mode === 'interval') {
@@ -1751,7 +1752,7 @@ ipcMain.handle('classroom:connect', async () => {
   try {
     await authorizeGoogleClassroom();
     setSyncSetting('sync_classroom_last_error', '');
-    void applySyncSchedule('classroom');
+    await applySyncSchedule('classroom', true);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
