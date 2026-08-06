@@ -869,10 +869,14 @@ Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
   const db = getDb(); // initializes DB + schema in Downloads/Atlas on first launch
+  // Create the window before waiting for the loopback browser server. The
+  // BrowserWindow icon and Atlas App User Model ID can then reach Windows
+  // immediately instead of leaving electron.exe's icon visible during the
+  // server's startup handshake.
+  createWindow();
   createScheduledBackupIfDue();
   setInterval(createScheduledBackupIfDue, 60 * 60 * 1000);
   await startLocalServer(); // backs "Open in browser" — see localServer.ts
-  createWindow();
 
   const watchedFolders = db.prepare('SELECT * FROM watched_folders').all() as {
     id: number;
