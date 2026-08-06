@@ -759,6 +759,12 @@ function stopWatchingCourseStorage(courseId: number): void {
 
 let mainWindow: BrowserWindow | null = null;
 
+function sendWindowMaximizedState(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('window:maximizedChanged', mainWindow.isMaximized());
+  }
+}
+
 // Remembers the window's size/position/maximized state across launches
 // (persisted in app_settings, same mechanism the renderer uses for its own
 // preferences) — per the user's request that the app either open maximized
@@ -807,6 +813,7 @@ function createWindow(): void {
     height: savedState?.height ?? 800,
     x: savedState?.x,
     y: savedState?.y,
+    frame: false,
     // Hidden by default to save screen space (per user request) — Alt still
     // reveals it temporarily, Electron/Chromium's standard behavior for an
     // auto-hidden menu bar on Windows/Linux. No effect on macOS, which never
@@ -834,6 +841,9 @@ function createWindow(): void {
   mainWindow.on('move', scheduleSave);
   mainWindow.on('maximize', scheduleSave);
   mainWindow.on('unmaximize', scheduleSave);
+  mainWindow.on('maximize', sendWindowMaximizedState);
+  mainWindow.on('unmaximize', sendWindowMaximizedState);
+  mainWindow.on('restore', sendWindowMaximizedState);
   mainWindow.on('close', () => {
     if (saveTimer) clearTimeout(saveTimer);
     if (mainWindow) saveWindowState(mainWindow);
@@ -1247,6 +1257,23 @@ if (process.env.ATLAS_TEST_DASHBOARD_V2 === '1') {
     return courseId;
   });
 }
+
+ipcMain.handle('window:minimize', () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle('window:toggleMaximize', () => {
+  if (!mainWindow) return false;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+  return mainWindow.isMaximized();
+});
+
+ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
+
+ipcMain.handle('window:close', () => {
+  mainWindow?.close();
+});
 
 if (process.env.ATLAS_TEST_RESOURCES_FILTERS === '1') {
   ipcMain.handle('test:seedResourcesFilterItems', () => {

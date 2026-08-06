@@ -235,6 +235,15 @@ contextBridge.exposeInMainWorld('atlas', {
   exportCourseContext: (courseId: number): Promise<{ ok: true; filePath: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('courses:exportContext', courseId),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  windowControls: {
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggleMaximize'),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+    onMaximizedChanged: (handler: (isMaximized: boolean) => void): void => {
+      ipcRenderer.on('window:maximizedChanged', (_event, isMaximized: boolean) => handler(isMaximized));
+    },
+  },
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
   getStorageStatus: (): Promise<unknown> => ipcRenderer.invoke('settings:getStorageStatus'),

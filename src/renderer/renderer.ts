@@ -265,6 +265,13 @@ interface AtlasApi {
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
   getAppVersion: () => Promise<string>;
+  windowControls: {
+    minimize: () => Promise<void>;
+    toggleMaximize: () => Promise<boolean>;
+    isMaximized: () => Promise<boolean>;
+    close: () => Promise<void>;
+    onMaximizedChanged: (handler: (isMaximized: boolean) => void) => void;
+  };
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
   getStorageStatus: () => Promise<StorageStatus>;
@@ -6688,7 +6695,36 @@ async function renderSettingsShortcuts(): Promise<void> {
 
 registerAppShortcuts();
 
+function renderWindowMaximizedState(isMaximized: boolean): void {
+  const button = document.getElementById('window-maximize') as HTMLButtonElement;
+  const maximizeIcon = button.querySelector<SVGElement>('[data-window-icon="maximize"]')!;
+  const restoreIcon = button.querySelector<SVGElement>('[data-window-icon="restore"]')!;
+  maximizeIcon.toggleAttribute('hidden', isMaximized);
+  restoreIcon.toggleAttribute('hidden', !isMaximized);
+  button.setAttribute('aria-label', isMaximized ? 'Restore window' : 'Maximize window');
+  button.setAttribute('aria-pressed', String(isMaximized));
+}
+
+function wireWindowControls(): void {
+  const dragRegion = document.getElementById('window-drag-region')!;
+  const minimizeButton = document.getElementById('window-minimize')!;
+  const maximizeButton = document.getElementById('window-maximize')!;
+  const closeButton = document.getElementById('window-close')!;
+
+  void atlasApi.windowControls.isMaximized().then(renderWindowMaximizedState);
+  atlasApi.windowControls.onMaximizedChanged(renderWindowMaximizedState);
+  minimizeButton.addEventListener('click', () => void atlasApi.windowControls.minimize());
+  maximizeButton.addEventListener('click', async () => {
+    renderWindowMaximizedState(await atlasApi.windowControls.toggleMaximize());
+  });
+  closeButton.addEventListener('click', () => void atlasApi.windowControls.close());
+  dragRegion.addEventListener('dblclick', async () => {
+    renderWindowMaximizedState(await atlasApi.windowControls.toggleMaximize());
+  });
+}
+
 async function init(): Promise<void> {
+  wireWindowControls();
   const savedTheme = await atlasApi.getSetting('theme');
   applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 

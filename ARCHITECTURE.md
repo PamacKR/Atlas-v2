@@ -35,6 +35,10 @@ Electron was chosen over Tauri and native Python/Qt because:
 
 `BrowserWindow`'s `autoHideMenuBar: true` option is set in `createWindow()` (`main.ts`) — the File/Edit/View/Window/Help bar is hidden by default (saves vertical space) and Alt still reveals it temporarily, standard Electron/Chromium behavior on Windows/Linux for an auto-hidden menu bar. No effect on macOS, which never renders an in-window menu bar to begin with. Per explicit user request.
 
+### Window frame: app-owned (built 2026-08-06)
+
+Atlas uses a frameless `BrowserWindow` so Windows' native title strip does not add a second Atlas title and a separate-looking set of controls above the application. The renderer owns three themed controls — minimize, maximize/restore, and close — in a fixed, background-matched layer at the top edge of the main content area. A narrow `-webkit-app-region: drag` surface moves the window; the controls and all app controls remain `no-drag` so search, dropdowns, and page actions cannot be intercepted. Window controls cross the context-isolated preload bridge through four narrow IPC operations, and maximize/unmaximize events are sent back to the renderer so the restore icon and accessible label stay current. Existing normal bounds/maximized-state persistence remains in the main process. The custom shell is verified through the real Electron window for drag-region CSS, maximize/restore, minimize, and restore behavior.
+
 ### Renderer build pipeline: esbuild, added for the notes editor
 
 The renderer (`src/renderer/renderer.ts`) originally had no bundler at all — it's loaded as a plain, non-module `<script>` tag (the window has `contextIsolation: true`, `nodeIntegration: false`, so there's no `require` and no module-level `exports` object either), and `tsc` alone was enough as long as the file avoided `import`/`export` syntax (which makes `tsc` emit CommonJS boilerplate that throws in that environment).
