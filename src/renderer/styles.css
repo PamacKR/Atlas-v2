@@ -101,7 +101,7 @@ body {
 #window-controls button { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 32px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-muted); cursor: pointer; -webkit-app-region: no-drag; transition: color var(--transition), background var(--transition); }
 #window-controls button:hover, #window-controls button:focus-visible { background: var(--bg-hover); color: var(--text); outline: none; }
 #window-controls #window-close:hover, #window-controls #window-close:focus-visible { background: var(--urgent); color: #fff; }
-#window-controls svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
+#window-controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
 #window-controls [hidden] { display: none; }
 
 /* Minimal scrollbars everywhere — thin, no track background, rounded thumb.
