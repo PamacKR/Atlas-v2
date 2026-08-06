@@ -7,6 +7,7 @@ export interface SyncSourceStatus {
   intervalSeconds: number;
   lastSuccess: string | null;
   lastError: string | null;
+  authRequired: boolean;
 }
 export type SyncStatus = Record<'drive' | 'classroom', SyncSourceStatus>;
 

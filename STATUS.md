@@ -2,17 +2,19 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-03 (personal-use UI overhaul complete on `ui-overhaul-v2`; the current-session section below supersedes historical notes.)
+**Last updated:** 2026-08-06 (personal-use UI overhaul complete on `ui-overhaul-v2`; the current-session section below supersedes historical notes.)
 
 ## Next session — start here
 
 Read `AGENTS.md`, this current-session section, `open-questions.md`, and `DESIGN.md` in that order. `DESIGN.md` is the cross-page implementation contract for the active UI overhaul; use the page mockup plus `controls-a.html` and `overlays-a.html` for every UI pass.
 
-## Current session — 2026-08-03
+## Current session — 2026-08-06
 
 The personal-use UI overhaul is complete on `ui-overhaul-v2`; the earlier statements below that no implementation exists or that the overhaul is still in progress are historical and superseded by this section. Public-release polish remains intentionally deferred.
 
 - **Roadmap direction, 2026-08-03:** the UI overhaul is marked complete for personal use. Packaging Atlas as a Windows app and building empty/first-run states are deferred until public-release preparation; design-style themes and the density setting are cancelled. The next implementation task is the per-course readiness view. A later polish item records incomplete accent-colour coverage in small tinted surfaces and other subtle accent-derived areas.
+
+- **Google OAuth recovery, 2026-08-06:** Drive and Classroom sync failures caused by an expired or revoked Google authorization are now recognized as a specific recoverable state instead of being shown as a raw library error. The affected source's background schedule stops until the user reconnects, Settings shows “Reconnect required” with a plain explanation and one-click “Reconnect Google Drive” or “Reconnect Google Classroom” action, and pending scans explain that reconnecting is needed. Reconnecting clears the stale error and restores the configured sync schedule; disconnecting also clears its schedule and status. The two connections remain independent because Drive and Classroom use different Google accounts. The focused Settings verifier covers both source states; live OAuth remains a manual check because test credentials must never be stored in the repository.
 
 - The second Command Palette milestone is implemented. `Ctrl+K` opens a shared Atlas overlay with deterministic local command matching, visible page context, keyboard/mouse navigation, Escape back-stepping, focus restoration, and current shortcut labels. It supports navigation, opening courses/notes/resources, new note, upload, scan import, source sync actions, shortcut help, sidebar toggling, Export for AI, Add deadline, OCR handoff for PDFs/handwritten notes, Move note to course, Open in Google Drive, course editing, and archive/unarchive confirmation. `export for ai` explicitly enters course selection when no current course is visible; `export for ai dev eco` resolves a unique Development Economics-style course match without an AI call. A stale selected course is not treated as current after leaving course detail, the empty palette now exposes the complete command catalog in grouped/scrollable sections, the search clear control uses Atlas theme colors and is hidden when empty, and course metadata refreshes after archive/edit changes so archived courses expose Unarchive correctly. `npm run build`, `npm run verify:command-palette`, and the adjacent `node scripts/verify-settings.js` check pass, and the focused screenshot was inspected. Remaining command-palette work is richer ambiguity/loading/error handling, target-aware deadline arguments, delete/review workflows, theme and edge-case polish, and final verification.
 

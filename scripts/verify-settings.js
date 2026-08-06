@@ -34,6 +34,30 @@ const fs = require('fs');
     await window.click('#settings-agent-access');
     await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings-ai.png') });
     await window.click('[data-settings-tab="sources"]');
+    await window.evaluate(async () => {
+      await window.atlas.setSetting('google_drive_refresh_token', 'verification-token');
+      await window.atlas.setSetting('google_drive_folder_id', 'verification-folder');
+      await window.atlas.setSetting('google_drive_folder_name', 'Verification folder');
+      await window.atlas.setSetting('sync_drive_last_error', 'Google authorization expired or was revoked. Reconnect this source in Settings to resume syncing.');
+      await window.atlas.setSetting('google_classroom_refresh_token', 'verification-token');
+      await window.atlas.setSetting('sync_classroom_last_error', 'Google authorization expired or was revoked. Reconnect this source in Settings to resume syncing.');
+    });
+    await window.click('.sidebar-nav-item[data-page="dashboard"]');
+    await window.click('.sidebar-nav-item[data-page="settings"]');
+    await window.click('[data-settings-tab="sources"]');
+    await window.waitForFunction(() => document.querySelector('#drive-status')?.textContent?.includes('Reconnect required'), null, { timeout: 2000 });
+    for (const source of ['drive', 'classroom']) {
+      const label = source === 'drive' ? 'Google Drive' : 'Google Classroom';
+      if (!(await window.textContent(`#${source}-status`))?.includes('Reconnect required')) throw new Error(`${label} did not show reconnect status`);
+      if (!(await window.textContent(`#${source}-connect-button`))?.includes(`Reconnect ${label}`)) throw new Error(`${label} did not show reconnect action`);
+      if (await window.isHidden(`#${source}-connect-button`)) throw new Error(`${label} reconnect action remained hidden`);
+      if (await window.isHidden(`#${source}-disconnect-button`)) throw new Error(`${label} disconnect action disappeared while a token exists`);
+      if (!(await window.textContent(`#${source}-status-hint`))?.includes('expired or was revoked')) throw new Error(`${label} did not explain why reconnect is needed`);
+      if (!(await window.getAttribute(`#${source}-status-hint`, 'class'))?.includes('is-auth-error')) throw new Error(`${label} reconnect hint did not receive the error state`);
+    }
+    if (!(await window.textContent('#drive-pending-status'))?.includes('Reconnect Google Drive')) throw new Error('Drive pending state did not request reconnect');
+    if (!(await window.textContent('#classroom-pending-status'))?.includes('Reconnect Google Classroom')) throw new Error('Classroom pending state did not request reconnect');
+    await window.screenshot({ path: path.join(__dirname, '..', 'verify-settings-reconnect.png') });
     await window.waitForSelector('#sync-config-drive .dselect-trigger');
     await window.click('#sync-config-drive .dselect-trigger');
     if (await window.isHidden('#sync-config-drive .dselect-menu')) throw new Error('Drive sync selector menu did not open');

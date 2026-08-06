@@ -15,8 +15,11 @@ interface SyncSourceStatus {
   intervalSeconds: number;
   lastSuccess: string | null;
   lastError: string | null;
+  authRequired: boolean;
 }
 type SyncStatus = Record<'drive' | 'classroom', SyncSourceStatus>;
+
+const GOOGLE_REAUTH_HINT = 'Google authorization expired or was revoked. Reconnect to resume syncing.';
 
 interface Resource {
   id: number;
@@ -656,7 +659,12 @@ async function renderSyncStatus(): Promise<void> {
 
     const statusEl = document.getElementById(`sync-status-${source}`)!;
     const lastSyncedText = `Last synced: ${formatRelativeTime(info.lastSuccess)}`;
-    statusEl.textContent = info.lastError ? `${lastSyncedText} — ${info.lastError}` : lastSyncedText;
+    statusEl.classList.toggle('is-auth-error', info.authRequired);
+    statusEl.textContent = info.authRequired
+      ? `Reconnect required — ${GOOGLE_REAUTH_HINT}`
+      : info.lastError
+        ? `${lastSyncedText} — ${info.lastError}`
+        : lastSyncedText;
   }
 }
 
@@ -1721,9 +1729,19 @@ async function renderDashboard(): Promise<void> {
 // something's tagged, Drive is just the inbox.
 async function renderDriveStatus(): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
-  document.getElementById('drive-status')!.innerHTML = `<span class="settings-status-dot${connected ? ' is-connected' : ''}"></span>${connected ? 'Connected' : 'Not connected'}.`;
-  (document.getElementById('drive-connect-button') as HTMLButtonElement).hidden = connected;
-  (document.getElementById('drive-disconnect-button') as HTMLButtonElement).hidden = !connected;
+  const syncStatus = await atlasApi.getSyncStatus();
+  const authRequired = syncStatus.drive.authRequired;
+  const status = document.getElementById('drive-status')!;
+  const connectButton = document.getElementById('drive-connect-button') as HTMLButtonElement;
+  const disconnectButton = document.getElementById('drive-disconnect-button') as HTMLButtonElement;
+  const hint = document.getElementById('drive-status-hint')!;
+  status.classList.toggle('is-auth-error', authRequired);
+  hint.classList.toggle('is-auth-error', authRequired);
+  status.innerHTML = `<span class="settings-status-dot${connected && !authRequired ? ' is-connected' : ''}${authRequired ? ' is-auth-error' : ''}"></span>${authRequired ? 'Reconnect required.' : connected ? 'Connected.' : 'Not connected.'}`;
+  connectButton.hidden = connected && !authRequired;
+  connectButton.textContent = authRequired ? 'Reconnect Google Drive' : 'Connect Google Drive';
+  disconnectButton.hidden = !connected;
+  hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Drive to watch a folder and open Office files in Drive.';
   (document.getElementById('drive-folder-form') as HTMLElement).hidden = !connected;
 
   if (connected) {
@@ -1737,12 +1755,20 @@ async function renderDriveStatus(): Promise<void> {
 
 async function renderDrivePendingStatus(): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
+  const authRequired = (await atlasApi.getSyncStatus()).drive.authRequired;
   const folder = connected ? await atlasApi.getDriveFolder() : null;
   const pendingStatus = document.getElementById('drive-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('drive-review-button') as HTMLButtonElement;
 
   if (!connected || !folder) {
     pendingStatus.hidden = true;
+    reviewButton.hidden = true;
+    return;
+  }
+
+  if (authRequired) {
+    pendingStatus.hidden = false;
+    pendingStatus.textContent = 'Reconnect Google Drive to scan this folder.';
     reviewButton.hidden = true;
     return;
   }
@@ -1768,11 +1794,13 @@ async function connectDrive(): Promise<void> {
     return;
   }
   await renderDriveStatus();
+  await renderSyncStatus();
 }
 
 async function disconnectDrive(): Promise<void> {
   await atlasApi.disconnectDrive();
   await renderDriveStatus();
+  await renderSyncStatus();
 }
 
 async function clearDrivePreviewCache(): Promise<void> {
@@ -1972,20 +2000,38 @@ function toggleDriveReviewSelectAll(): void {
 // syncs — only which course a Classroom course maps to is gated here.
 async function renderClassroomStatus(): Promise<void> {
   const connected = await atlasApi.isClassroomConnected();
-  document.getElementById('classroom-status')!.innerHTML = `<span class="settings-status-dot${connected ? ' is-connected' : ''}"></span>${connected ? 'Connected' : 'Not connected'}.`;
-  (document.getElementById('classroom-connect-button') as HTMLButtonElement).hidden = connected;
-  (document.getElementById('classroom-disconnect-button') as HTMLButtonElement).hidden = !connected;
+  const syncStatus = await atlasApi.getSyncStatus();
+  const authRequired = syncStatus.classroom.authRequired;
+  const status = document.getElementById('classroom-status')!;
+  const connectButton = document.getElementById('classroom-connect-button') as HTMLButtonElement;
+  const disconnectButton = document.getElementById('classroom-disconnect-button') as HTMLButtonElement;
+  const hint = document.getElementById('classroom-status-hint')!;
+  status.classList.toggle('is-auth-error', authRequired);
+  hint.classList.toggle('is-auth-error', authRequired);
+  status.innerHTML = `<span class="settings-status-dot${connected && !authRequired ? ' is-connected' : ''}${authRequired ? ' is-auth-error' : ''}"></span>${authRequired ? 'Reconnect required.' : connected ? 'Connected.' : 'Not connected.'}`;
+  connectButton.hidden = connected && !authRequired;
+  connectButton.textContent = authRequired ? 'Reconnect Google Classroom' : 'Connect Google Classroom';
+  disconnectButton.hidden = !connected;
+  hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Classroom to bring in courses, deadlines, and announcements.';
 
   await renderClassroomPendingStatus();
 }
 
 async function renderClassroomPendingStatus(): Promise<void> {
   const connected = await atlasApi.isClassroomConnected();
+  const authRequired = (await atlasApi.getSyncStatus()).classroom.authRequired;
   const pendingStatus = document.getElementById('classroom-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('classroom-review-button') as HTMLButtonElement;
 
   if (!connected) {
     pendingStatus.hidden = true;
+    reviewButton.hidden = true;
+    return;
+  }
+
+  if (authRequired) {
+    pendingStatus.hidden = false;
+    pendingStatus.textContent = 'Reconnect Google Classroom to scan for courses.';
     reviewButton.hidden = true;
     return;
   }
@@ -2011,11 +2057,13 @@ async function connectClassroom(): Promise<void> {
     return;
   }
   await renderClassroomStatus();
+  await renderSyncStatus();
 }
 
 async function disconnectClassroom(): Promise<void> {
   await atlasApi.disconnectClassroom();
   await renderClassroomStatus();
+  await renderSyncStatus();
 }
 
 // One row per pending Classroom course — a course picker (existing courses,

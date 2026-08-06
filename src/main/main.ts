@@ -1460,6 +1460,8 @@ ipcMain.handle('google:isDriveConnected', () => isGoogleDriveConnected());
 ipcMain.handle('google:connectDrive', async () => {
   try {
     await authorizeGoogleDrive();
+    setSyncSetting('sync_drive_last_error', '');
+    void applySyncSchedule('drive');
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1468,6 +1470,8 @@ ipcMain.handle('google:connectDrive', async () => {
 
 ipcMain.handle('google:disconnectDrive', () => {
   disconnectGoogleDrive();
+  clearSyncInterval('drive');
+  setSyncSetting('sync_drive_last_error', '');
 });
 
 // Deletes every resource's uploaded Drive preview copy (see
@@ -1529,6 +1533,40 @@ function getSyncSetting(key: string): string | null {
   return row?.value ?? null;
 }
 
+const GOOGLE_REAUTH_REQUIRED_MESSAGE =
+  'Google authorization expired or was revoked. Reconnect this source in Settings to resume syncing.';
+
+function isGoogleAuthorizationFailure(error: unknown): boolean {
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    response?: { data?: { error?: unknown; error_description?: unknown } };
+  } | null;
+  const responseData = candidate?.response?.data;
+  const searchable = [
+    candidate?.code,
+    candidate?.message,
+    responseData?.error,
+    responseData?.error_description,
+    error,
+  ]
+    .filter((value) => value !== undefined && value !== null)
+    .map(String)
+    .join(' ');
+  return /\binvalid_grant\b/i.test(searchable) || /token has been expired or revoked/i.test(searchable) || /authorization expired or was revoked/i.test(searchable);
+}
+
+function recordSyncFailure(source: SyncSource, error: unknown): boolean {
+  const requiresReauth = isGoogleAuthorizationFailure(error);
+  if (requiresReauth) clearSyncInterval(source);
+  recordSyncResult(
+    source,
+    false,
+    requiresReauth ? GOOGLE_REAUTH_REQUIRED_MESSAGE : error instanceof Error ? error.message : String(error)
+  );
+  return requiresReauth;
+}
+
 // Recorded on every automatic *and* manual sync attempt for a source — the
 // "last synced"/"last error" the Settings UI shows. lastSuccess is only
 // ever moved forward on an actual successful run; lastError is set on
@@ -1586,6 +1624,7 @@ ipcMain.handle('sync:getStatus', () => {
       intervalSeconds,
       lastSuccess: getSyncSetting(`sync_${source}_last_success`),
       lastError: getSyncSetting(`sync_${source}_last_error`) || null,
+      authRequired: isGoogleAuthorizationFailure(getSyncSetting(`sync_${source}_last_error`)),
     };
   }
   return status;
@@ -1624,8 +1663,11 @@ async function scanDriveAndNotify(): Promise<void> {
     if (foundNew && mainWindow) mainWindow.webContents.send('google:driveChanged');
     recordSyncResult('drive', true, null);
   } catch (err) {
-    console.error('Google Drive scan failed:', err);
-    recordSyncResult('drive', false, err instanceof Error ? err.message : String(err));
+    if (recordSyncFailure('drive', err)) {
+      console.warn('Google Drive authorization expired or was revoked. Reconnect in Settings.');
+    } else {
+      console.error('Google Drive scan failed:', err);
+    }
   }
 }
 
@@ -1681,7 +1723,8 @@ ipcMain.handle('classroom:isConnected', () => isGoogleClassroomConnected());
 ipcMain.handle('classroom:connect', async () => {
   try {
     await authorizeGoogleClassroom();
-    void scanClassroomAndNotify();
+    setSyncSetting('sync_classroom_last_error', '');
+    void applySyncSchedule('classroom');
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1690,6 +1733,8 @@ ipcMain.handle('classroom:connect', async () => {
 
 ipcMain.handle('classroom:disconnect', () => {
   disconnectGoogleClassroom();
+  clearSyncInterval('classroom');
+  setSyncSetting('sync_classroom_last_error', '');
 });
 
 // Runs a full scan (new/unmapped courses, plus coursework/announcements/
@@ -1718,9 +1763,13 @@ async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: Cla
     void runRemoteExtractionAndNotify();
     return { changed, errors };
   } catch (err) {
-    console.error('Google Classroom scan failed:', err);
-    const message = err instanceof Error ? err.message : String(err);
-    recordSyncResult('classroom', false, message);
+    const requiresReauth = recordSyncFailure('classroom', err);
+    if (requiresReauth) {
+      console.warn('Google Classroom authorization expired or was revoked. Reconnect in Settings.');
+    } else {
+      console.error('Google Classroom scan failed:', err);
+    }
+    const message = requiresReauth ? GOOGLE_REAUTH_REQUIRED_MESSAGE : err instanceof Error ? err.message : String(err);
     return { changed: false, errors: [{ courseId: -1, courseName: '', message }] };
   }
 }

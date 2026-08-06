@@ -386,3 +386,9 @@ Right now these 9 files are permanently unreadable to the AI agent: not a failur
 **Recommendation:** (a), but only if the user actually cares about those 9 files — worth checking what they are first. If they're a professor's scanned readings for a course that's already over, (b) is fine and honest.
 
 **Status:** Open — needs the user's call. Not blocking anything; logged so it isn't rediscovered later as a mystery.
+
+### 30. Google OAuth testing-mode recovery
+
+The user's Google Drive and Google Classroom refresh tokens were rejected with `invalid_grant` after the app had not been launched for several days. The app still opened, but background sync printed a long library error and the Settings page could continue to look connected because a refresh token was present.
+
+**Status:** Resolved/built (2026-08-06). Atlas now recognizes expired or revoked Google authorization separately from ordinary sync failures, stops that source's repeating schedule, and shows a plain-language “Reconnect required” state in Settings with a one-click reconnect action. Reconnecting clears the stale error and restores the configured schedule; Drive and Classroom remain independent. Moving the OAuth consent screen from Testing to Production is still a separate public-release decision, not required for this recovery flow.
