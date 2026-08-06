@@ -7,6 +7,7 @@ export interface SyncSourceStatus {
   intervalSeconds: number;
   lastSuccess: string | null;
   lastError: string | null;
+  authRequired: boolean;
 }
 export type SyncStatus = Record<'drive' | 'classroom', SyncSourceStatus>;
 
@@ -47,10 +48,11 @@ export interface WatchedFolder {
 }
 
 export type Preview =
-  | { type: 'pdf'; url: string }
+  | { type: 'pdf'; data: Uint8Array }
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
+  | { type: 'link'; url: string }
   | { type: 'unsupported'; reason?: string };
 
 export interface Note {
@@ -117,6 +119,14 @@ export interface DashboardActivityItem {
   title: string;
   timestamp: string;
   entity_type: 'resource' | 'note';
+  course_name: string;
+}
+
+export interface DashboardAnnouncement {
+  id: number;
+  course_id: number;
+  title: string;
+  posted_at: string;
   course_name: string;
 }
 
@@ -225,8 +235,22 @@ contextBridge.exposeInMainWorld('atlas', {
   exportCourseContext: (courseId: number): Promise<{ ok: true; filePath: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('courses:exportContext', courseId),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  windowControls: {
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggleMaximize'),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+    onMaximizedChanged: (handler: (isMaximized: boolean) => void): void => {
+      ipcRenderer.on('window:maximizedChanged', (_event, isMaximized: boolean) => handler(isMaximized));
+    },
+  },
   getSetting: (key: string): Promise<string | null> => ipcRenderer.invoke('app:getSetting', key),
   setSetting: (key: string, value: string): Promise<void> => ipcRenderer.invoke('app:setSetting', key, value),
+  getStorageStatus: (): Promise<unknown> => ipcRenderer.invoke('settings:getStorageStatus'),
+  createBackup: (): Promise<unknown> => ipcRenderer.invoke('settings:createBackup'),
+  deleteBackup: (name: string): Promise<void> => ipcRenderer.invoke('settings:deleteBackup', name),
+  deleteAllBackups: (): Promise<void> => ipcRenderer.invoke('settings:deleteAllBackups'),
+  setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off'): Promise<void> => ipcRenderer.invoke('settings:setBackupFrequency', frequency),
   isDriveConnected: (): Promise<boolean> => ipcRenderer.invoke('google:isDriveConnected'),
   connectDrive: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:connectDrive'),
@@ -234,6 +258,9 @@ contextBridge.exposeInMainWorld('atlas', {
   clearDrivePreviewCache: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:clearDrivePreviewCache'),
   getSyncStatus: (): Promise<SyncStatus> => ipcRenderer.invoke('sync:getStatus'),
+  onSyncStatusChanged: (handler: (source: 'drive' | 'classroom') => void): void => {
+    ipcRenderer.on('sync:statusChanged', (_event, source: 'drive' | 'classroom') => handler(source));
+  },
   setSyncConfig: (source: 'drive' | 'classroom', value: string): Promise<void> =>
     ipcRenderer.invoke('sync:setConfig', source, value),
   syncNow: (source: 'drive' | 'classroom'): Promise<void> => ipcRenderer.invoke('sync:now', source),
@@ -302,6 +329,7 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('resources:browserUrl', resourceId),
   listResources: (courseId: number): Promise<Resource[]> =>
     ipcRenderer.invoke('resources:listByCourse', courseId),
+  getCourseReadiness: (courseId: number): Promise<unknown> => ipcRenderer.invoke('courses:getReadiness', courseId),
   uploadResource: (courseId: number): Promise<Resource | null> =>
     ipcRenderer.invoke('resources:upload', courseId),
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer): Promise<Resource | null> =>
@@ -316,6 +344,11 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('resources:runOcr', resourceId),
   saveResourceOcrText: (resourceId: number, text: string): Promise<void> =>
     ipcRenderer.invoke('resources:saveOcrText', resourceId, text),
+  retryResourceExtraction: (resourceId: number): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('resources:retryExtraction', resourceId),
+  onExtractionUpdated: (handler: (resourceId: number) => void): void => {
+    ipcRenderer.on('resources:extractionUpdated', (_event, resourceId: number) => handler(resourceId));
+  },
   onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void): void => {
     ipcRenderer.on('resources:ocrProgress', (_event, progress: ResourceOcrProgress) => handler(progress));
   },
@@ -422,8 +455,24 @@ contextBridge.exposeInMainWorld('atlas', {
   getUpcomingDeadlines: (): Promise<DashboardDeadline[]> => ipcRenderer.invoke('dashboard:upcomingDeadlines'),
   listAllDeadlinesWithCourse: (): Promise<DashboardDeadline[]> =>
     ipcRenderer.invoke('deadlines:listAllWithCourse'),
+  listAllAnnouncementsWithCourse: (): Promise<DashboardAnnouncement[]> =>
+    ipcRenderer.invoke('announcements:listAllWithCourse'),
   getRecentResources: (): Promise<DashboardResource[]> => ipcRenderer.invoke('dashboard:recentResources'),
   getRecentActivity: (): Promise<DashboardActivityItem[]> => ipcRenderer.invoke('dashboard:recentActivity'),
+  getRecentAnnouncements: (): Promise<DashboardAnnouncement[]> => ipcRenderer.invoke('dashboard:recentAnnouncements'),
+  getNewClassroomItems: (courseId: number | null = null) =>
+    ipcRenderer.invoke('dashboard:newClassroomItems', courseId),
+  clearNewClassroomItem: (itemType: 'announcement' | 'assignment', itemId: number) =>
+    ipcRenderer.invoke('dashboard:clearNewClassroomItem', itemType, itemId),
+  clearAllNewClassroomItems: (courseId: number | null = null) =>
+    ipcRenderer.invoke('dashboard:clearAllNewClassroomItems', courseId),
+  pinDashboardAnnouncement: (announcementId: number) =>
+    ipcRenderer.invoke('dashboard:pinAnnouncement', announcementId),
+  unpinDashboardAnnouncement: (announcementId: number) =>
+    ipcRenderer.invoke('dashboard:unpinAnnouncement', announcementId),
+  seedDashboardV2TestItems: (): Promise<number> => ipcRenderer.invoke('test:seedDashboardV2Items'),
+  seedResourcesFilterTestItems: (): Promise<number> => ipcRenderer.invoke('test:seedResourcesFilterItems'),
+  seedCourseReadinessTestItems: (): Promise<number> => ipcRenderer.invoke('test:seedCourseReadinessItems'),
   getCourseSummaries: (archived = false): Promise<CourseSummary[]> =>
     ipcRenderer.invoke('dashboard:courseSummaries', archived),
   listAllResources: (): Promise<ResourceWithCourse[]> => ipcRenderer.invoke('resources:listAll'),

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { watch, FSWatcher } from 'chokidar';
 import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
-import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir } from './paths';
+import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir, getBackupsDir, getDbPath } from './paths';
 import { getPreview } from './preview';
 import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
 import { extractDocumentParts } from './textExtraction';
@@ -55,6 +55,8 @@ import {
   getNoteImageUrl,
 } from './localServer';
 
+if (process.platform === 'win32') app.setAppUserModelId('com.atlas.desktop');
+
 const KIND_BY_EXTENSION: Record<string, string> = {
   '.pdf': 'pdf',
   '.ppt': 'pptx',
@@ -71,6 +73,18 @@ const KIND_BY_EXTENSION: Record<string, string> = {
   '.txt': 'text',
   '.md': 'markdown',
   '.markdown': 'markdown',
+  '.csv': 'text',
+  '.tsv': 'text',
+  '.json': 'text',
+  '.xml': 'text',
+  '.html': 'text',
+  '.htm': 'text',
+  '.log': 'text',
+  '.rtf': 'text',
+  '.ini': 'text',
+  '.yaml': 'text',
+  '.yml': 'text',
+  '.tex': 'text',
   '.zip': 'zip',
 };
 
@@ -747,6 +761,12 @@ function stopWatchingCourseStorage(courseId: number): void {
 
 let mainWindow: BrowserWindow | null = null;
 
+function sendWindowMaximizedState(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('window:maximizedChanged', mainWindow.isMaximized());
+  }
+}
+
 // Remembers the window's size/position/maximized state across launches
 // (persisted in app_settings, same mechanism the renderer uses for its own
 // preferences) — per the user's request that the app either open maximized
@@ -795,6 +815,10 @@ function createWindow(): void {
     height: savedState?.height ?? 800,
     x: savedState?.x,
     y: savedState?.y,
+    frame: false,
+    // Keep the native taskbar icon aligned with the Atlas mark while the
+    // renderer uses the theme-specific SVG variant.
+    icon: path.join(__dirname, 'assets', 'icons', 'atlas.png'),
     // Hidden by default to save screen space (per user request) — Alt still
     // reveals it temporarily, Electron/Chromium's standard behavior for an
     // auto-hidden menu bar on Windows/Linux. No effect on macOS, which never
@@ -822,6 +846,9 @@ function createWindow(): void {
   mainWindow.on('move', scheduleSave);
   mainWindow.on('maximize', scheduleSave);
   mainWindow.on('unmaximize', scheduleSave);
+  mainWindow.on('maximize', sendWindowMaximizedState);
+  mainWindow.on('unmaximize', sendWindowMaximizedState);
+  mainWindow.on('restore', sendWindowMaximizedState);
   mainWindow.on('close', () => {
     if (saveTimer) clearTimeout(saveTimer);
     if (mainWindow) saveWindowState(mainWindow);
@@ -842,8 +869,14 @@ Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
   const db = getDb(); // initializes DB + schema in Downloads/Atlas on first launch
-  await startLocalServer(); // backs "Open in browser" — see localServer.ts
+  // Create the window before waiting for the loopback browser server. The
+  // BrowserWindow icon and Atlas App User Model ID can then reach Windows
+  // immediately instead of leaving electron.exe's icon visible during the
+  // server's startup handshake.
   createWindow();
+  createScheduledBackupIfDue();
+  setInterval(createScheduledBackupIfDue, 60 * 60 * 1000);
+  await startLocalServer(); // backs "Open in browser" — see localServer.ts
 
   const watchedFolders = db.prepare('SELECT * FROM watched_folders').all() as {
     id: number;
@@ -975,6 +1008,9 @@ ipcMain.handle('search:query', (_event, query: string) => {
     courseName: '',
     snippet: '',
     resourceId: null,
+    source: null,
+    parentTitle: null,
+    searchSection: 'courses',
   }));
 
   const searchIndexColumns = `search_index.entity_type AS entityType,
@@ -983,17 +1019,24 @@ ipcMain.handle('search:query', (_event, query: string) => {
               search_index.title AS title,
               courses.name AS courseName,
               snippet(search_index, 4, '<mark>', '</mark>', '…', 12) AS snippet,
-              document_parts.resource_id AS resourceId`;
+              document_parts.resource_id AS resourceId,
+              search_resource.source AS source,
+              search_resource.title AS parentTitle`;
   const searchIndexJoins = `FROM search_index
        JOIN courses ON courses.id = search_index.course_id
        LEFT JOIN document_parts
-         ON search_index.entity_type = 'document_part' AND document_parts.id = search_index.entity_id`;
+         ON search_index.entity_type = 'document_part' AND document_parts.id = search_index.entity_id
+       LEFT JOIN resources AS search_resource
+         ON search_resource.id = CASE
+           WHEN search_index.entity_type = 'resource' THEN search_index.entity_id
+           WHEN search_index.entity_type = 'document_part' THEN document_parts.resource_id
+         END`;
 
   // "Names" — a file's or note's own title, not anything found inside it.
   // FTS5's column-filter syntax (`title:`) restricts the match to that one
   // column, so a resource whose *body* happens to contain the query but
   // whose title doesn't never lands in this section.
-  const nameMatches = db
+  const nameMatches = (db
     .prepare(
       `SELECT ${searchIndexColumns}
        ${searchIndexJoins}
@@ -1001,7 +1044,7 @@ ipcMain.handle('search:query', (_event, query: string) => {
        ORDER BY rank
        LIMIT 20`
     )
-    .all(ftsQuery) as { entityType: string; entityId: number }[];
+    .all(ftsQuery) as { entityType: string; entityId: number }[]).map((result) => ({ ...result, searchSection: 'names' }));
   const namedIds = new Set(nameMatches.map((r) => `${r.entityType}:${r.entityId}`));
 
   // "Inside content" — everything else the query matches: page/slide/sheet
@@ -1018,11 +1061,11 @@ ipcMain.handle('search:query', (_event, query: string) => {
        LIMIT 40`
       )
       .all(ftsQuery) as { entityType: string; entityId: number }[]
-  ).filter((r) => !namedIds.has(`${r.entityType}:${r.entityId}`));
+  ).filter((r) => !namedIds.has(`${r.entityType}:${r.entityId}`)).map((result) => ({ ...result, searchSection: 'content' }));
 
   // "Classroom" — announcements and assignments, one section regardless of
   // whether the match was in the title or the body.
-  const classroomMatches = db
+  const classroomMatches = (db
     .prepare(
       `SELECT ${searchIndexColumns}
        ${searchIndexJoins}
@@ -1030,7 +1073,7 @@ ipcMain.handle('search:query', (_event, query: string) => {
        ORDER BY rank
        LIMIT 20`
     )
-    .all(ftsQuery);
+    .all(ftsQuery) as { entityType: string; entityId: number }[]).map((result) => ({ ...result, searchSection: 'classroom' }));
 
   return [...courseMatches, ...nameMatches, ...contentMatches, ...classroomMatches];
 });
@@ -1062,7 +1105,14 @@ ipcMain.handle('dashboard:stats', () => {
   const upcomingDeadlineCount = (
     db
       .prepare(
-        'SELECT COUNT(*) AS count FROM deadlines WHERE completed = 0 AND due_at IS NOT NULL AND stale_import = 0 AND classroom_removed = 0'
+        `SELECT COUNT(*) AS count
+         FROM deadlines
+         WHERE completed = 0
+           AND due_at IS NOT NULL
+           AND stale_import = 0
+           AND classroom_removed = 0
+           AND date(due_at) >= date('now', 'localtime')
+           AND date(due_at) <= date('now', 'localtime', '+7 days')`
       )
       .get() as { count: number }
   ).count;
@@ -1088,11 +1138,206 @@ ipcMain.handle('dashboard:upcomingDeadlines', () => {
        JOIN courses ON courses.id = deadlines.course_id
        WHERE deadlines.completed = 0 AND deadlines.due_at IS NOT NULL AND deadlines.stale_import = 0
          AND deadlines.classroom_removed = 0
+         AND date(deadlines.due_at) >= date('now', 'localtime')
        ORDER BY deadlines.due_at ASC
        LIMIT 8`
     )
     .all();
 });
+
+ipcMain.handle('dashboard:recentAnnouncements', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT announcements.id, announcements.course_id, announcements.title, announcements.posted_at,
+              courses.name AS course_name
+       FROM announcements
+       JOIN courses ON courses.id = announcements.course_id
+       WHERE courses.archived = 0
+       ORDER BY announcements.posted_at DESC
+       LIMIT 12`
+    )
+    .all();
+});
+
+// Dashboard v2 deliberately shows only Classroom content first observed
+// after the one-time baseline in database.ts. A cleared row is a user action,
+// not an inference from the item's timestamp, so re-syncing never makes an
+// old item look new again. Pinned announcements are a separate, explicitly
+// user-curated lane and do not participate in that cleared state.
+ipcMain.handle('dashboard:newClassroomItems', (_event, courseId: number | null = null) => {
+  const db = getDb();
+  const courseClause = courseId === null ? '' : ' AND course_id = ?';
+  const rows = db
+    .prepare(
+      `SELECT * FROM (
+         SELECT 'announcement' AS item_type, announcements.id, announcements.course_id,
+                announcements.title, announcements.posted_at AS occurred_at,
+                courses.name AS course_name
+         FROM announcements
+         JOIN courses ON courses.id = announcements.course_id
+         LEFT JOIN dashboard_cleared_items cleared
+           ON cleared.item_type = 'announcement' AND cleared.item_id = announcements.id
+         WHERE announcements.source = 'classroom' AND announcements.dashboard_pinned = 0
+           AND courses.archived = 0 AND cleared.item_id IS NULL${courseClause}
+         UNION ALL
+         SELECT 'assignment' AS item_type, assignments.id, assignments.course_id,
+                assignments.title, COALESCE(assignments.updated_at, assignments.posted_at) AS occurred_at,
+                courses.name AS course_name
+         FROM assignments
+         JOIN courses ON courses.id = assignments.course_id
+         LEFT JOIN dashboard_cleared_items cleared
+           ON cleared.item_type = 'assignment' AND cleared.item_id = assignments.id
+         WHERE assignments.source = 'classroom' AND assignments.classroom_removed = 0
+           AND courses.archived = 0 AND cleared.item_id IS NULL${courseClause}
+         UNION ALL
+         SELECT 'pinned_announcement' AS item_type, announcements.id, announcements.course_id,
+                announcements.title, announcements.posted_at AS occurred_at,
+                courses.name AS course_name
+         FROM announcements
+         JOIN courses ON courses.id = announcements.course_id
+         WHERE announcements.dashboard_pinned = 1 AND courses.archived = 0${courseClause}
+       ) ORDER BY occurred_at DESC, id DESC LIMIT 20`
+    )
+    .all(...(courseId === null ? [] : [courseId, courseId, courseId]));
+  return rows;
+});
+
+ipcMain.handle('dashboard:pinAnnouncement', (_event, announcementId: number) => {
+  if (!Number.isInteger(announcementId)) throw new Error('Invalid announcement.');
+  const db = getDb();
+  return db.prepare(
+    `UPDATE announcements SET dashboard_pinned = 1
+     WHERE id = ? AND course_id IN (SELECT id FROM courses WHERE archived = 0)`
+  ).run(announcementId).changes > 0;
+});
+
+ipcMain.handle('dashboard:unpinAnnouncement', (_event, announcementId: number) => {
+  const db = getDb();
+  return db.prepare('UPDATE announcements SET dashboard_pinned = 0 WHERE id = ? AND dashboard_pinned = 1').run(announcementId).changes > 0;
+});
+
+ipcMain.handle('dashboard:clearNewClassroomItem', (_event, itemType: 'announcement' | 'assignment', itemId: number) => {
+  if (itemType !== 'announcement' && itemType !== 'assignment') throw new Error('Invalid Dashboard item type.');
+  const db = getDb();
+  const table = itemType === 'announcement' ? 'announcements' : 'assignments';
+  const row = db.prepare(`SELECT id FROM ${table} WHERE id = ? AND source = 'classroom'`).get(itemId);
+  if (!row) return false;
+  db.prepare('INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id) VALUES (?, ?)').run(itemType, itemId);
+  return true;
+});
+
+ipcMain.handle('dashboard:clearAllNewClassroomItems', (_event, courseId: number | null = null) => {
+  const db = getDb();
+  const courseClause = courseId === null ? '' : ' AND course_id = ?';
+  const clearAll = db.transaction(() => {
+    const announcements = db.prepare(
+      `INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id)
+       SELECT 'announcement', id FROM announcements
+       WHERE source = 'classroom'${courseClause}`
+    ).run(...(courseId === null ? [] : [courseId])).changes;
+    const assignments = db.prepare(
+      `INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id)
+       SELECT 'assignment', id FROM assignments
+       WHERE source = 'classroom' AND classroom_removed = 0${courseClause}`
+    ).run(...(courseId === null ? [] : [courseId])).changes;
+    return announcements + assignments;
+  });
+  return clearAll();
+});
+
+// Kept behind an explicit verifier-only environment flag: creates records
+// after the database's first-launch Dashboard v2 baseline has run, allowing
+// the focused Electron check to exercise real new-item behavior without a
+// Google Classroom account or a separate native-SQLite runtime.
+if (process.env.ATLAS_TEST_DASHBOARD_V2 === '1') {
+  ipcMain.handle('test:seedDashboardV2Items', () => {
+    const db = getDb();
+    const courseId = Number(
+      db.prepare("INSERT INTO courses (name, folder_name) VALUES ('Dashboard v2 verification course', 'dashboard-v2-verify')").run()
+        .lastInsertRowid
+    );
+    db.prepare(
+      "INSERT INTO announcements (course_id, source, title, body, posted_at, classroom_announcement_id) VALUES (?, 'classroom', 'New announcement', '', datetime('now'), 'verify-announcement')"
+    ).run(courseId);
+    db.prepare(
+      "INSERT INTO assignments (course_id, title, description, due_at, source, classroom_coursework_id, posted_at, updated_at) VALUES (?, 'New assignment', '', NULL, 'classroom', 'verify-assignment', datetime('now'), datetime('now'))"
+    ).run(courseId);
+    return courseId;
+  });
+}
+
+ipcMain.handle('window:minimize', () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle('window:toggleMaximize', () => {
+  if (!mainWindow) return false;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+  return mainWindow.isMaximized();
+});
+
+ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
+
+ipcMain.handle('window:close', () => {
+  mainWindow?.close();
+});
+
+if (process.env.ATLAS_TEST_RESOURCES_FILTERS === '1') {
+  ipcMain.handle('test:seedResourcesFilterItems', () => {
+    const db = getDb();
+    const courseId = Number(
+      db.prepare("INSERT INTO courses (name, folder_name) VALUES ('Resources filter verification course', 'resources-filter-verify')").run()
+        .lastInsertRowid
+    );
+    const insert = db.prepare(
+      'INSERT INTO resources (course_id, title, kind, source, file_path, drive_file_id, classroom_attachment_id, extraction_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    insert.run(courseId, 'Local filter verification file', 'text', 'manual', '/verify/local.txt', null, null, 'done');
+    insert.run(courseId, 'Classroom filter verification file', 'link', 'classroom', 'https://classroom.google.com/c/verify', null, 'verify-classroom', 'unsupported');
+    insert.run(courseId, 'Drive filter verification file', 'pdf', 'drive', '/verify/drive.pdf', 'verify-drive', null, 'done');
+    return courseId;
+  });
+}
+
+if (process.env.ATLAS_TEST_COURSE_READINESS === '1') {
+  ipcMain.handle('test:seedCourseReadinessItems', () => {
+    const db = getDb();
+    const courseId = Number(
+      db.prepare("INSERT INTO courses (name, code, term, folder_name) VALUES ('Readiness verification course', 'VERIFY-READY', 'Test', 'readiness-verify')").run()
+        .lastInsertRowid
+    );
+    const fixtureDir = path.join(getDataDir(), 'readiness-fixtures');
+    fs.mkdirSync(fixtureDir, { recursive: true });
+    const readyPath = path.join(fixtureDir, 'ready.txt');
+    const failedPath = path.join(fixtureDir, 'failed.txt');
+    fs.writeFileSync(readyPath, 'Readable fixture text.');
+    fs.writeFileSync(failedPath, 'Retryable fixture text.');
+    const insertResource = db.prepare(
+      'INSERT INTO resources (course_id, title, kind, source, file_path, extraction_status, extraction_error, link_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    const readyId = Number(insertResource.run(courseId, 'Readable syllabus.txt', 'text', 'manual', readyPath, 'done', null, null).lastInsertRowid);
+    insertResource.run(courseId, 'Scanned reading.pdf', 'pdf', 'manual', path.join(fixtureDir, 'scanned.pdf'), 'empty', null, null);
+    insertResource.run(courseId, 'Broken handout.docx', 'docx', 'manual', failedPath, 'failed', 'The verification extractor failed.', null);
+    insertResource.run(courseId, 'Slides still processing.pptx', 'pptx', 'manual', path.join(fixtureDir, 'pending.pptx'), 'pending', null, null);
+    insertResource.run(courseId, 'Reference diagram.png', 'image', 'manual', path.join(fixtureDir, 'diagram.png'), 'unsupported', null, null);
+    insertResource.run(courseId, 'Professor video', 'link', 'classroom', 'https://example.com/video', 'unsupported', null, 'youTubeVideo');
+    db.prepare('INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, 1, ?, ?, ?)').run(
+      readyId,
+      'Part 1',
+      'Readable fixture text.',
+      'extracted'
+    );
+    db.prepare(
+      "INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path) VALUES (?, 'Typed lecture notes', 'Readable note text.', 0, NULL)"
+    ).run(courseId);
+    db.prepare(
+      "INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path) VALUES (?, 'Unreviewed handwritten scan', '', 1, ?)"
+    ).run(courseId, path.join(fixtureDir, 'handwritten.png'));
+    return courseId;
+  });
+}
 
 // `archived` param: false (default, and every existing caller that doesn't
 // pass one) returns only active courses, matching the behavior this handler
@@ -1177,7 +1422,10 @@ ipcMain.handle('courses:exportContext', (_event, courseId: number) => {
   fs.mkdirSync(exportsDir, { recursive: true });
   const filePath = path.join(exportsDir, `atlas-context-${sanitizeFolderName(briefing.course.name)}.md`);
   fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
-  shell.showItemInFolder(filePath);
+  // The real app reveals the export in File Explorer. Focused Electron tests
+  // still validate the written file but suppress this OS-level side effect so
+  // repeated verification runs do not open a new Explorer window each time.
+  if (process.env.ATLAS_TEST_NO_REVEAL !== '1') shell.showItemInFolder(filePath);
   return { ok: true as const, filePath };
 });
 
@@ -1286,6 +1534,8 @@ ipcMain.handle('google:isDriveConnected', () => isGoogleDriveConnected());
 ipcMain.handle('google:connectDrive', async () => {
   try {
     await authorizeGoogleDrive();
+    setSyncSetting('sync_drive_last_error', '');
+    await applySyncSchedule('drive', true);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1294,6 +1544,8 @@ ipcMain.handle('google:connectDrive', async () => {
 
 ipcMain.handle('google:disconnectDrive', () => {
   disconnectGoogleDrive();
+  clearSyncInterval('drive');
+  setSyncSetting('sync_drive_last_error', '');
 });
 
 // Deletes every resource's uploaded Drive preview copy (see
@@ -1355,6 +1607,40 @@ function getSyncSetting(key: string): string | null {
   return row?.value ?? null;
 }
 
+const GOOGLE_REAUTH_REQUIRED_MESSAGE =
+  'Google authorization expired or was revoked. Reconnect this source in Settings to resume syncing.';
+
+function isGoogleAuthorizationFailure(error: unknown): boolean {
+  const candidate = error as {
+    code?: unknown;
+    message?: unknown;
+    response?: { data?: { error?: unknown; error_description?: unknown } };
+  } | null;
+  const responseData = candidate?.response?.data;
+  const searchable = [
+    candidate?.code,
+    candidate?.message,
+    responseData?.error,
+    responseData?.error_description,
+    error,
+  ]
+    .filter((value) => value !== undefined && value !== null)
+    .map(String)
+    .join(' ');
+  return /\binvalid_grant\b/i.test(searchable) || /token has been expired or revoked/i.test(searchable) || /authorization expired or was revoked/i.test(searchable);
+}
+
+function recordSyncFailure(source: SyncSource, error: unknown): boolean {
+  const requiresReauth = isGoogleAuthorizationFailure(error);
+  if (requiresReauth) clearSyncInterval(source);
+  recordSyncResult(
+    source,
+    false,
+    requiresReauth ? GOOGLE_REAUTH_REQUIRED_MESSAGE : error instanceof Error ? error.message : String(error)
+  );
+  return requiresReauth;
+}
+
 // Recorded on every automatic *and* manual sync attempt for a source — the
 // "last synced"/"last error" the Settings UI shows. lastSuccess is only
 // ever moved forward on an actual successful run; lastError is set on
@@ -1365,6 +1651,7 @@ function getSyncSetting(key: string): string | null {
 function recordSyncResult(source: SyncSource, succeeded: boolean, errorMessage: string | null): void {
   if (succeeded) setSyncSetting(`sync_${source}_last_success`, new Date().toISOString());
   setSyncSetting(`sync_${source}_last_error`, errorMessage ?? '');
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:statusChanged', source);
 }
 
 const syncIntervalTimers: Partial<Record<SyncSource, ReturnType<typeof setInterval>>> = {};
@@ -1390,10 +1677,10 @@ function runSourceSync(source: SyncSource): Promise<void> {
 // launch — the user's explicit "Sync now"/per-course-connect actions still
 // work regardless of this setting, since those are deliberate user actions,
 // not the background schedule this setting controls.
-function applySyncSchedule(source: SyncSource): Promise<void> {
+function applySyncSchedule(source: SyncSource, forceImmediate = false): Promise<void> {
   clearSyncInterval(source);
   const { mode, intervalSeconds } = getSyncConfig(source);
-  if (mode === 'off') return Promise.resolve();
+  if (mode === 'off') return forceImmediate ? runSourceSync(source) : Promise.resolve();
 
   const initial = runSourceSync(source);
   if (mode === 'interval') {
@@ -1412,6 +1699,7 @@ ipcMain.handle('sync:getStatus', () => {
       intervalSeconds,
       lastSuccess: getSyncSetting(`sync_${source}_last_success`),
       lastError: getSyncSetting(`sync_${source}_last_error`) || null,
+      authRequired: isGoogleAuthorizationFailure(getSyncSetting(`sync_${source}_last_error`)),
     };
   }
   return status;
@@ -1450,8 +1738,11 @@ async function scanDriveAndNotify(): Promise<void> {
     if (foundNew && mainWindow) mainWindow.webContents.send('google:driveChanged');
     recordSyncResult('drive', true, null);
   } catch (err) {
-    console.error('Google Drive scan failed:', err);
-    recordSyncResult('drive', false, err instanceof Error ? err.message : String(err));
+    if (recordSyncFailure('drive', err)) {
+      console.warn('Google Drive authorization expired or was revoked. Reconnect in Settings.');
+    } else {
+      console.error('Google Drive scan failed:', err);
+    }
   }
 }
 
@@ -1507,7 +1798,8 @@ ipcMain.handle('classroom:isConnected', () => isGoogleClassroomConnected());
 ipcMain.handle('classroom:connect', async () => {
   try {
     await authorizeGoogleClassroom();
-    void scanClassroomAndNotify();
+    setSyncSetting('sync_classroom_last_error', '');
+    await applySyncSchedule('classroom', true);
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1516,6 +1808,8 @@ ipcMain.handle('classroom:connect', async () => {
 
 ipcMain.handle('classroom:disconnect', () => {
   disconnectGoogleClassroom();
+  clearSyncInterval('classroom');
+  setSyncSetting('sync_classroom_last_error', '');
 });
 
 // Runs a full scan (new/unmapped courses, plus coursework/announcements/
@@ -1544,9 +1838,13 @@ async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: Cla
     void runRemoteExtractionAndNotify();
     return { changed, errors };
   } catch (err) {
-    console.error('Google Classroom scan failed:', err);
-    const message = err instanceof Error ? err.message : String(err);
-    recordSyncResult('classroom', false, message);
+    const requiresReauth = recordSyncFailure('classroom', err);
+    if (requiresReauth) {
+      console.warn('Google Classroom authorization expired or was revoked. Reconnect in Settings.');
+    } else {
+      console.error('Google Classroom scan failed:', err);
+    }
+    const message = requiresReauth ? GOOGLE_REAUTH_REQUIRED_MESSAGE : err instanceof Error ? err.message : String(err);
     return { changed: false, errors: [{ courseId: -1, courseName: '', message }] };
   }
 }
@@ -1802,6 +2100,139 @@ ipcMain.handle('resources:listByCourse', (_event, courseId: number) => {
     .all(courseId);
 });
 
+// Course readiness is a deterministic report of whether Atlas has usable text
+// for the external agent. It deliberately does not judge academic coverage or
+// comprehension, and it does not call an AI service.
+ipcMain.handle('courses:getReadiness', (_event, courseId: number) => {
+  const db = getDb();
+  const resources = db
+    .prepare(
+      `SELECT resources.id, resources.title, resources.kind, resources.source,
+              resources.extraction_status AS extractionStatus,
+              resources.extraction_error AS extractionError,
+              resources.ocr_text AS ocrText,
+              resources.remote_source AS remoteSource,
+              resources.link_kind AS linkKind,
+              (SELECT COUNT(*) FROM document_parts
+               WHERE document_parts.resource_id = resources.id) AS partCount
+       FROM resources
+       WHERE resources.course_id = ?
+       ORDER BY resources.added_at DESC`
+    )
+    .all(courseId) as {
+    id: number;
+    title: string;
+    kind: string;
+    source: string;
+    extractionStatus: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
+    extractionError: string | null;
+    ocrText: string | null;
+    remoteSource: 'drive' | 'gmail' | null;
+    linkKind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
+    partCount: number;
+  }[];
+  const notes = db
+    .prepare(
+      `SELECT id, title, content_markdown AS contentMarkdown, is_handwritten AS isHandwritten,
+              image_path AS imagePath, ocr_text AS ocrText
+       FROM notes
+       WHERE course_id = ?
+       ORDER BY updated_at DESC`
+    )
+    .all(courseId) as {
+    id: number;
+    title: string;
+    contentMarkdown: string;
+    isHandwritten: number;
+    imagePath: string | null;
+    ocrText: string | null;
+  }[];
+
+  type ReadinessStatus = 'ready' | 'needs_ocr' | 'pending' | 'failed' | 'unsupported' | 'external';
+  type ReadinessItem = {
+    id: number;
+    type: 'resource' | 'note';
+    title: string;
+    status: ReadinessStatus;
+    detail: string;
+    kind?: string;
+    source?: string;
+    canRetry?: boolean;
+  };
+  const counts: Record<ReadinessStatus, number> = {
+    ready: 0,
+    needs_ocr: 0,
+    pending: 0,
+    failed: 0,
+    unsupported: 0,
+    external: 0,
+  };
+  const issues: ReadinessItem[] = [];
+  const add = (item: ReadinessItem): void => {
+    counts[item.status] += 1;
+    if (item.status !== 'ready') issues.push(item);
+  };
+
+  for (const resource of resources) {
+    let status: ReadinessStatus;
+    let detail: string;
+    let canRetry = false;
+    if (resource.extractionStatus === 'done' && (resource.partCount > 0 || !!resource.ocrText?.trim())) {
+      status = 'ready';
+      detail = 'Text is available to the agent.';
+    } else if (resource.extractionStatus === 'pending') {
+      status = 'pending';
+      detail = 'Atlas is still extracting this file.';
+    } else if (resource.extractionStatus === 'empty') {
+      status = resource.kind === 'pdf' ? 'needs_ocr' : 'unsupported';
+      detail = resource.kind === 'pdf' ? 'No text layer was found. Run OCR and review the result.' : 'No readable text was found.';
+    } else if (resource.extractionStatus === 'failed') {
+      status = 'failed';
+      detail = resource.extractionError || 'Atlas could not extract text from this file.';
+      canRetry = !resource.remoteSource && ['pdf', 'pptx', 'xlsx', 'docx', 'text', 'markdown'].includes(resource.kind);
+    } else if (resource.kind === 'link' && resource.linkKind !== 'driveFile') {
+      status = 'external';
+      detail = 'External material; Atlas does not extract this link into course text.';
+    } else {
+      status = 'unsupported';
+      detail = 'This file type is not included in Atlas text extraction.';
+    }
+    add({
+      id: resource.id,
+      type: 'resource',
+      title: resource.title,
+      status,
+      detail,
+      kind: resource.kind,
+      source: resource.source,
+      canRetry,
+    });
+  }
+
+  for (const note of notes) {
+    if (note.contentMarkdown.trim() || note.ocrText?.trim()) {
+      add({ id: note.id, type: 'note', title: note.title, status: 'ready', detail: 'Note text is available to the agent.' });
+    } else if (note.isHandwritten && note.imagePath) {
+      add({
+        id: note.id,
+        type: 'note',
+        title: note.title,
+        status: 'needs_ocr',
+        detail: 'This scan has no accepted text yet. Run OCR or ask the external agent to inspect the scan.',
+      });
+    } else {
+      add({ id: note.id, type: 'note', title: note.title, status: 'unsupported', detail: 'This note does not contain text yet.' });
+    }
+  }
+
+  return {
+    total: resources.length + notes.length,
+    readable: counts.ready,
+    counts,
+    issues,
+  };
+});
+
 ipcMain.handle('resources:upload', async (_event, courseId: number) => {
   // Test hook: native OS file pickers can't be driven by Playwright, so
   // scripts/verify-app.js supplies a fixed path via this env var instead of
@@ -1878,6 +2309,28 @@ ipcMain.handle('resources:saveOcrText', (_event, resourceId: number, text: strin
     );
   })();
   rebuildSearchIndex();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resources:extractionUpdated', resourceId);
+});
+
+ipcMain.handle('resources:retryExtraction', (_event, resourceId: number) => {
+  const db = getDb();
+  const resource = db
+    .prepare('SELECT kind, file_path, remote_source FROM resources WHERE id = ?')
+    .get(resourceId) as { kind: string; file_path: string; remote_source: string | null } | undefined;
+  if (!resource) return { ok: false as const, error: 'Resource not found.' };
+  if (resource.remote_source) return { ok: false as const, error: 'Remote resources are retried during their next sync.' };
+  if (!EXTRACTABLE_KINDS.has(resource.kind)) return { ok: false as const, error: 'This file type cannot be extracted.' };
+  if (!fs.existsSync(resource.file_path)) return { ok: false as const, error: 'The original file is missing from Atlas storage.' };
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resourceId);
+    db.prepare("UPDATE resources SET extraction_status = 'pending', extraction_error = NULL, extracted_at = NULL WHERE id = ?").run(
+      resourceId
+    );
+  })();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resources:extractionUpdated', resourceId);
+  scheduleExtraction(resourceId, resource.kind, resource.file_path);
+  return { ok: true as const };
 });
 
 ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) => {
@@ -1886,7 +2339,7 @@ ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) =
 });
 
 // --- Google Drive preview (open-questions.md #12, ARCHITECTURE.md §7) ---
-// Uploads a .pptx/.docx/.xlsx to Atlas's dedicated Drive preview folder (or
+// Uploads a PDF, image, or .pptx/.docx/.xlsx to Atlas's dedicated Drive preview folder (or
 // reuses the existing upload if the file hasn't changed) and opens Drive's
 // own viewer for it in the user's browser — real slide/document layout,
 // which the in-app preview deliberately can't render. Shared by both the
@@ -1897,7 +2350,7 @@ ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) =
 // so the renderer can show "Uploading…" immediately (there's no byte-level
 // progress to report — see the comment on uploadResourceForPreview), then
 // exactly one of 'driveOpenSuccess'/'driveOpenError'.
-const OFFICE_PREVIEW_KINDS = new Set(['pptx', 'docx', 'xlsx']);
+const DRIVE_PREVIEW_KINDS = new Set(['pdf', 'image', 'pptx', 'docx', 'xlsx']);
 
 async function openResourceInGoogleDrive(resourceId: number, sender: Electron.WebContents): Promise<void> {
   sender.send('resources:driveOpenStart', resourceId);
@@ -1940,10 +2393,9 @@ ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
       label: isLink ? 'Open link' : 'Open in browser',
       click: () => shell.openExternal(isLink ? resource.file_path : getResourceBrowserUrl(resourceId)),
     },
-    // Only for the file kinds where Drive's viewer actually offers something
-    // the in-app preview can't (real slide/document layout) — PDFs/images
-    // already render natively, and this would just be clutter there.
-    ...(OFFICE_PREVIEW_KINDS.has(resource.kind)
+    // Drive can open the same PDF/image files Atlas previews locally, along
+    // with Office files where Drive provides a richer native viewer.
+    ...(DRIVE_PREVIEW_KINDS.has(resource.kind)
       ? [
           {
             label: 'Open in Google Drive',
@@ -2561,6 +3013,116 @@ ipcMain.handle('deadlines:listAllWithCourse', () => {
     .all();
 });
 
+function pathSize(filePath: string): number {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.isFile()) return stat.size;
+    return fs.readdirSync(filePath).reduce((total, entry) => total + pathSize(path.join(filePath, entry)), 0);
+  } catch {
+    return 0;
+  }
+}
+
+function listBackups(): { name: string; size: number; createdAt: string }[] {
+  const dir = getBackupsDir();
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => name.endsWith('.db'))
+    .map((name) => {
+      const stat = fs.statSync(path.join(dir, name));
+      return { name, size: stat.size, createdAt: stat.mtime.toISOString() };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function createLocalBackup(): { name: string; size: number; createdAt: string } {
+  const db = getDb();
+  fs.mkdirSync(getBackupsDir(), { recursive: true });
+  db.pragma('wal_checkpoint(TRUNCATE)');
+  const name = `atlas-${new Date().toISOString().replace(/[:.]/g, '-')}.db`;
+  const destination = path.join(getBackupsDir(), name);
+  fs.copyFileSync(getDbPath(), destination);
+  listBackups().slice(5).forEach((backup) => fs.unlinkSync(path.join(getBackupsDir(), backup.name)));
+  const stat = fs.statSync(destination);
+  return { name, size: stat.size, createdAt: stat.mtime.toISOString() };
+}
+
+function deleteBackup(name: string): void {
+  // A backup name only ever originates from listBackups(), but validate the
+  // final path at the IPC boundary so this can never delete outside backups/.
+  if (name !== path.basename(name) || !name.startsWith('atlas-') || !name.endsWith('.db')) {
+    throw new Error('Invalid backup name');
+  }
+  const backupPath = path.join(getBackupsDir(), name);
+  if (!fs.existsSync(backupPath)) return;
+  fs.unlinkSync(backupPath);
+}
+
+function deleteAllBackups(): void {
+  for (const backup of listBackups()) deleteBackup(backup.name);
+}
+
+type BackupFrequency = 'daily' | 'weekly' | 'off';
+const BACKUP_INTERVAL_MS: Record<Exclude<BackupFrequency, 'off'>, number> = {
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+};
+
+function getBackupFrequency(): BackupFrequency {
+  const row = getDb().prepare("SELECT value FROM app_settings WHERE key = 'backup_frequency'").get() as { value: string } | undefined;
+  return row?.value === 'weekly' || row?.value === 'off' ? row.value : 'daily';
+}
+
+function setBackupFrequency(frequency: BackupFrequency): void {
+  getDb().prepare("INSERT INTO app_settings (key, value) VALUES ('backup_frequency', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(frequency);
+}
+
+// Atlas can only make scheduled copies while it is running. Checking on
+// startup and then hourly makes that boundary explicit and reliable.
+function createScheduledBackupIfDue(): void {
+  const frequency = getBackupFrequency();
+  if (frequency === 'off') return;
+  const latest = listBackups()[0];
+  if (latest && Date.now() - new Date(latest.createdAt).getTime() < BACKUP_INTERVAL_MS[frequency]) return;
+  createLocalBackup();
+}
+
+ipcMain.handle('settings:getStorageStatus', () => {
+  const db = getDb();
+  const courses = db.prepare('SELECT id, name, folder_name FROM courses WHERE archived = 0 ORDER BY name').all() as { id: number; name: string; folder_name: string }[];
+  const extraction = db.prepare("SELECT extraction_status AS status, COUNT(*) AS count FROM resources GROUP BY extraction_status").all() as { status: string; count: number }[];
+  const courseStorage = courses.map((course) => ({ ...course, size: pathSize(path.join(getFilesDir(), course.folder_name)) }));
+  const resourceBytes = courseStorage.reduce((total, course) => total + course.size, 0);
+  const databaseBytes = pathSize(getDbPath());
+  return { resourceBytes, databaseBytes, totalBytes: resourceBytes + databaseBytes, courseStorage, extraction, backups: listBackups(), backupFrequency: getBackupFrequency() };
+});
+
+ipcMain.handle('settings:createBackup', () => createLocalBackup());
+ipcMain.handle('settings:deleteBackup', (_event, name: string) => deleteBackup(name));
+ipcMain.handle('settings:deleteAllBackups', () => deleteAllBackups());
+ipcMain.handle('settings:setBackupFrequency', (_event, frequency: BackupFrequency) => {
+  if (!['daily', 'weekly', 'off'].includes(frequency)) throw new Error('Invalid backup frequency');
+  setBackupFrequency(frequency);
+  createScheduledBackupIfDue();
+});
+
+// Calendar uses the actual announcement posting date as an event date. This
+// is intentionally a complete, unbounded list: the page owns its view/date
+// filters instead of inheriting the Dashboard's small "recent" window.
+ipcMain.handle('announcements:listAllWithCourse', () => {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT announcements.id, announcements.course_id, announcements.title, announcements.posted_at, announcements.dashboard_pinned,
+              courses.name AS course_name
+       FROM announcements
+       JOIN courses ON courses.id = announcements.course_id
+       WHERE courses.archived = 0
+       ORDER BY announcements.posted_at DESC`
+    )
+    .all();
+});
+
 ipcMain.handle('deadlines:listByCourse', (_event, courseId: number) => {
   const db = getDb();
   // Incomplete first, then soonest due date first within each group; items
@@ -2654,9 +3216,29 @@ ipcMain.handle(
 ipcMain.handle('deadlines:resetClassroomOverrides', (_event, deadlineId: number) => {
   const db = getDb();
   const current = db
-    .prepare('SELECT classroom_title, classroom_due_at FROM deadlines WHERE id = ?')
-    .get(deadlineId) as { classroom_title: string | null; classroom_due_at: string | null } | undefined;
-  if (!current) return null;
+    .prepare(
+      `SELECT source, classroom_coursework_id, classroom_title, classroom_due_at, classroom_removed, local_overrides
+       FROM deadlines WHERE id = ?`
+    )
+    .get(deadlineId) as
+    | {
+        source: string;
+        classroom_coursework_id: string | null;
+        classroom_title: string | null;
+        classroom_due_at: string | null;
+        classroom_removed: number;
+        local_overrides: string | null;
+      }
+    | undefined;
+  // A manual deadline, a current unedited mirror, and a removed Classroom
+  // assignment each have no Classroom version that may safely be restored.
+  if (
+    !current ||
+    current.source !== 'classroom' ||
+    !current.classroom_coursework_id ||
+    current.classroom_removed === 1 ||
+    !current.local_overrides
+  ) return null;
 
   db.prepare(
     'UPDATE deadlines SET title = COALESCE(classroom_title, title), due_at = classroom_due_at, local_overrides = NULL WHERE id = ?'

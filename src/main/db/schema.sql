@@ -245,6 +245,9 @@ CREATE TABLE IF NOT EXISTS announcements (
   title TEXT NOT NULL,
   body TEXT,
   posted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- A user-created announcement deliberately kept on the Dashboard until
+  -- removed there. It remains part of the course record when unpinned.
+  dashboard_pinned INTEGER NOT NULL DEFAULT 0,
   -- External Classroom announcement ID, used to detect "already imported"
   -- across syncs. NULL for anything not sourced from Classroom.
   classroom_announcement_id TEXT
@@ -347,6 +350,16 @@ CREATE TABLE IF NOT EXISTS classwork_materials (
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- Classroom items the user has deliberately cleared from Dashboard v2.
+-- Absence is meaningful: a Classroom announcement/assignment first synced
+-- after the initial baseline is new until the user clears it.
+CREATE TABLE IF NOT EXISTS dashboard_cleared_items (
+  item_type TEXT NOT NULL CHECK (item_type IN ('announcement', 'assignment')),
+  item_id INTEGER NOT NULL,
+  cleared_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (item_type, item_id)
 );
 
 -- Full-text search across notes, resources, announcements (PRD §14).

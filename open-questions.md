@@ -11,19 +11,19 @@ Carried over from `prd.md`'s "Open Product Questions" section, plus decisions ma
 
 ## 2. Synchronization
 
-- How frequently should Classroom and Gmail sync?
+- How frequently should Classroom and Drive sync?
 - Should synchronization be manual, automatic, or configurable?
 
-**Status:** Partially resolved for Classroom (2026-07-26) — no background polling interval, unlike Drive's ~20s. Classroom syncs once on app launch plus an explicit "Sync now" button. Classroom content (new assignments, announcements, courses) changes far less often than a Drive inbox, so continuous polling against the college Workspace account isn't worth the extra API load — see `ARCHITECTURE.md` §4b. Gmail's half of this question is still open, deferred to when the Gmail adapter is built.
+**Status:** Resolved/built — Drive and Classroom each use the user-configurable per-source schedule delivered in Settings (Off / On launch only / Every N minutes where applicable), with explicit per-source and global sync actions. Classroom's default remains launch-only; Drive's default preserves its short automatic interval. Gmail is explicitly out of scope for Atlas as of 2026-07-29, so it is not an unresolved sync question.
 
-**Answered in principle (2026-07-28), to be built as the next piece of work.** The real answer to "manual, automatic, or configurable" is **configurable, per source** — every sync schedule in Atlas today is hardcoded and invisible (Drive polls every 20s, Classroom is launch + manual only), which also means the user has no way to tell when anything last ran. That invisibility is not a cosmetic gap: the Classroom adapter was silently failing on every single sync for weeks (#21) and nothing in the UI could have revealed it. Planned shape:
+**Implemented (2026-07-28).** The answer to "manual, automatic, or configurable" is **configurable, per source**. The Settings sync surface makes each active source's schedule and last-sync state visible, so a broken sync does not look identical to "nothing new":
 
-- A **Sync section in Settings**, one row per source (Drive / Classroom / Gmail once it exists): **Off / On launch only / Every N minutes**, chosen from a small set of sensible intervals rather than a free-text field.
+- A **Sync section in Settings**, one row per active source (Drive / Classroom): **Off / On launch only / Every N minutes**, chosen from a small set of sensible intervals rather than a free-text field.
 - A **"last synced" timestamp** per source, in plain relative language ("2 minutes ago"), plus the last error if the most recent attempt failed — so a broken sync looks broken instead of looking identical to "nothing new."
 - A per-source **"Sync now"**, plus one "Sync everything."
 - **Defaults exactly preserve today's behavior** (Drive 20s, Classroom launch-only), so nothing changes for the user unless they change it.
 
-This supersedes the per-adapter, hardcoded-and-undocumented approach; the existing `setInterval` in `main.ts` becomes driven by the stored setting. Gmail will plug into the same system rather than inventing a third convention (see #28).
+This supersedes the per-adapter, hardcoded-and-undocumented approach; the existing `setInterval` in `main.ts` becomes driven by the stored setting. The historical Gmail discussion below is superseded: Gmail is not an Atlas source.
 
 **Status: Resolved/built (2026-07-28), Phase 3 item 2 of 3 (after conflict handling, #3).**
 
@@ -120,11 +120,13 @@ The user has a Google One/Google AI Pro-type subscription on their personal acco
 
 ### 10. Remembering zoom for PDF previews
 
-The user asked (2026-07-23) whether Atlas can remember each file's preferred preview zoom, using PDFs as the example ("for one pdf 100% would work, for another maybe 150%"). Per-resource zoom memory is now implemented for **image** previews (`resources.zoom_level`, restored automatically on reopen). PDFs are different: they render inside an `<iframe>` using Chromium's own built-in PDF viewer, which is a separate document — there's no scripting API to read back whatever zoom level the user sets inside it, and Ctrl+scroll can't reach into it either (confirmed why the user's "doesn't work on other file types" observation is expected, not a bug).
+**2026-08-03 update:** Atlas-owned PDF previews now use the bundled local `pdfjs-dist` renderer rather than Chromium's iframe viewer. This removes the old scripting limitation, but PDF-specific zoom controls and remembered per-resource PDF zoom are still not implemented; the question is now whether that polish is worth adding.
 
-The only lever available is one-directional: appending `#zoom=N` to the PDF's `file://` URL sets its *initial* zoom on load (a Chromium PDF-viewer convention), but we'd have to build our own separate control (outside the iframe) for the user to pick/save a preferred value — we can't observe what they actually change it to inside the native viewer afterward.
+The user asked (2026-07-23) whether Atlas can remember each file's preferred preview zoom, using PDFs as the example ("for one pdf 100% would work, for another maybe 150%"). Per-resource zoom memory is now implemented for **image** previews (`resources.zoom_level`, restored automatically on reopen). PDFs now render with local `pdfjs-dist` canvases inside Atlas, so the old iframe limitation no longer applies; however, PDF-specific zoom controls and per-resource PDF zoom memory have not been built yet.
 
-**Status:** Open — needs a decision from the user on whether that one-way, "set an initial zoom via a separate small control, can't reflect live changes" approach is worth building for PDFs, given the real UX limitation. Not implemented yet.
+The remaining decision is whether PDF previews should gain their own zoom controls and saved per-resource zoom level, using the same Atlas-owned preview surface rather than Chromium's old built-in viewer.
+
+**Status:** Open — needs a decision from the user on whether PDF zoom controls and remembered PDF zoom are worth adding. The earlier native-viewer limitation is resolved by the local PDF.js preview, but the feature itself is still not implemented.
 
 ### 11. Folder→course mapping for local folder watching
 
@@ -158,9 +160,11 @@ The schema has two separate tables that both cover "things with a due date": `de
 
 ### 14. Multiple scrollbars visible at once in some views
 
+**2026-08-03 update:** the Atlas-owned in-app PDF preview no longer embeds Chromium's PDF viewer, so its preview scrollbar is now part of Atlas and receives the global rounded styling. This question remains open only for scrollbars in external browser windows, which Atlas cannot style.
+
 The user flagged (2026-07-26, with a screenshot) a case where several scrollbars render simultaneously and visually clash — looked like a "Open in browser" PDF view, where Chromium's own built-in PDF viewer toolbar/scrollbar can end up nested alongside the page's own scrollbar. Explicitly said not to fix now — just note it for later.
 
-**Status:** Open, deliberately deferred — this is a UI/layout pass item, not something to fix opportunistically mid-feature-work. Revisit when doing a dedicated UI/layout cleanup pass (per `AGENTS.md`, Atlas's own UI is currently functional-first, not yet polished). Worth checking both the resource preview overlay (`#preview-overlay`/`#preview-body`) and the local-server-backed "Open in browser" PDF route (`localServer.ts`) for nested scrollable containers when this is picked up.
+**Status:** Partially resolved — Atlas-owned in-app PDF preview nesting was removed on 2026-08-03. Any remaining scrollbar behavior in the local-server-backed "Open in browser" route (`localServer.ts`) belongs to the external browser and remains outside Atlas's styling control.
 
 ### 15. Importing finalized courses from `ashoka-planner`'s registration tracker
 
@@ -382,3 +386,9 @@ Right now these 9 files are permanently unreadable to the AI agent: not a failur
 **Recommendation:** (a), but only if the user actually cares about those 9 files — worth checking what they are first. If they're a professor's scanned readings for a course that's already over, (b) is fine and honest.
 
 **Status:** Open — needs the user's call. Not blocking anything; logged so it isn't rediscovered later as a mystery.
+
+### 30. Google OAuth testing-mode recovery
+
+The user's Google Drive and Google Classroom refresh tokens were rejected with `invalid_grant` after the app had not been launched for several days. The app still opened, but background sync printed a long library error and the Settings page could continue to look connected because a refresh token was present.
+
+**Status:** Resolved/built (2026-08-06). Atlas now recognizes expired or revoked Google authorization separately from ordinary sync failures, stops that source's repeating schedule, and shows a plain-language “Reconnect required” state in Settings with a one-click reconnect action. Reconnecting clears the stale error, waits for one immediate scan even when background syncing is Off, and restores the configured schedule; later background results update the open Settings page through a live status event. Drive and Classroom remain independent. Moving the OAuth consent screen from Testing to Production is still a separate public-release decision, not required for this recovery flow.

@@ -6,7 +6,7 @@ import AdmZip from 'adm-zip';
 import * as XLSX from 'xlsx';
 
 export type Preview =
-  | { type: 'pdf'; url: string }
+  | { type: 'pdf'; data: Uint8Array }
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
@@ -78,7 +78,7 @@ export async function getPreview(
 ): Promise<Preview> {
   switch (kind) {
     case 'pdf':
-      return { type: 'pdf', url: pathToFileURL(filePath).href };
+      return { type: 'pdf', data: fs.readFileSync(filePath) };
 
     case 'image':
       return { type: 'image', url: pathToFileURL(filePath).href, zoomLevel };

@@ -1,6 +1,6 @@
 # Phase 5 — Search, Dashboard v2, and shortcuts (specification)
 
-Status: **drafted 2026-07-29, nothing built yet.** Awaiting the user's go-ahead before any code is written.
+Status: **Implemented in the current app (2026-08-03).** This document remains the design record for the search, Dashboard v2, and shortcut work; `ROADMAP.md` is the live completion source.
 
 Covers the three pieces Phase 5 actually reduced to after the 2026-07-29 scoping conversation. Two previously-listed Phase 5 items (relationship editing, offline-mode audit) were **dropped by the user**, not deferred — see `ROADMAP.md`.
 
@@ -70,7 +70,7 @@ Implemented as a **hard partition into sections**, not a soft relevance weight �
 3. **Content** — page/slide/sheet hits (`document_part` rows always land here, they have nothing but body text to match on) plus any resource/note that matched by body but not title (excluded from Names above, so not lost — just moved here). De-duplicated against Names by `entityType:entityId` so nothing appears twice.
 4. **Classroom** — announcements and assignments, one section regardless of whether the match was in the title or body.
 
-**What this does *not* yet do** (still `phase5-spec.md` §2.4/§2.5, deferred): no visual section headers/labels in the results dropdown separating the four groups — the ordering is correct, but nothing in the UI marks where one section ends and the next begins, since adding that is a UI change and the standing rule (`AGENTS.md`) is not to patch the current UI ahead of the Phase 6 redesign. Also still flat, one row per page hit — the grouping/collapsing described in §2.4 below hasn't been built.
+The current app now also implements the formerly deferred UI work: visible section headers, source badges, course-filter chips that keep the dropdown open, and document-part hits collapsed beneath their parent resource with expandable page rows. The result-opening paths remain covered by the existing renderer behavior and focused Dashboard/search work.
 
 ### 2.4 Crowding: collapse page hits under their file
 
@@ -205,16 +205,16 @@ Two rules worth stating up front:
 | # | Piece | Size | Notes |
 |---|---|---|---|
 | 1 | Search: make every result clickable (§2.2) | Small | **Done 2026-07-29.** Pure bug fix, all handlers already existed. |
-| 2 | Search: sectioned results + collapse page hits (§2.3, §2.4) | **Large** | The real work. |
-| 3 | Search: source badges + course filter (§2.5) | Medium | |
-| 4 | Dashboard: schema + migration/backfill (§3.4) | Small | |
-| 5 | Dashboard: unread announcements widget (§3.1) | Medium | |
-| 6 | Dashboard: new assignments widget (§3.2) | Small | Same pattern as #5. |
-| 7 | Shortcuts: registry + rewire existing handlers (§4.1) | Medium | No user-visible change yet — pure refactor. |
-| 8 | Shortcuts: cheat-sheet overlay (§4.3) | Small | |
-| 9 | Shortcuts: Settings rebinding UI + conflicts (§4.4) | Medium | |
-| 10 | Shortcuts: global quick capture (§4.2) | Medium | Only genuinely global binding. |
-| 11 | Verification across all three | Medium | Extend `scripts/verify-app.js`. |
+| 2 | Search: sectioned results + collapse page hits (§2.3, §2.4) | **Large** | **Done 2026-08-03.** |
+| 3 | Search: source badges + course filter (§2.5) | Medium | **Done 2026-08-03.** |
+| 4 | Dashboard: schema + migration/backfill (§3.4) | Small | **Done 2026-08-03.** |
+| 5 | Dashboard: unread announcements widget (§3.1) | Medium | **Done 2026-08-03.** |
+| 6 | Dashboard: new assignments widget (§3.2) | Small | **Done 2026-08-03.** |
+| 7 | Shortcuts: registry + rewire existing handlers (§4.1) | Medium | **Done 2026-07-29.** |
+| 8 | Shortcuts: cheat-sheet overlay (§4.3) | Small | **Done 2026-07-29.** |
+| 9 | Shortcuts: Settings rebinding UI + conflicts (§4.4) | Medium | **Done 2026-07-29.** |
+| 10 | Shortcuts: global quick capture (§4.2) | Medium | **Done 2026-07-29.** |
+| 11 | Verification across all three | Medium | Focused Dashboard verification exists; dedicated search visual verification remains useful. |
 
 **#1 is independently valuable and low-risk** — it fixes a live bug in a few lines and can ship well before the rest.
 

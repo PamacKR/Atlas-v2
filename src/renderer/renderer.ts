@@ -15,8 +15,11 @@ interface SyncSourceStatus {
   intervalSeconds: number;
   lastSuccess: string | null;
   lastError: string | null;
+  authRequired: boolean;
 }
 type SyncStatus = Record<'drive' | 'classroom', SyncSourceStatus>;
+
+const GOOGLE_REAUTH_HINT = 'Google authorization expired or was revoked. Reconnect to resume syncing.';
 
 interface Resource {
   id: number;
@@ -35,6 +38,26 @@ interface Resource {
   // schema.sql for the full field-by-field reasoning.
   remote_source: 'drive' | 'gmail' | null;
   link_kind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
+}
+
+type CourseReadinessStatus = 'ready' | 'needs_ocr' | 'pending' | 'failed' | 'unsupported' | 'external';
+
+interface CourseReadinessItem {
+  id: number;
+  type: 'resource' | 'note';
+  title: string;
+  status: CourseReadinessStatus;
+  detail: string;
+  kind?: string;
+  source?: string;
+  canRetry?: boolean;
+}
+
+interface CourseReadiness {
+  total: number;
+  readable: number;
+  counts: Record<CourseReadinessStatus, number>;
+  issues: CourseReadinessItem[];
 }
 
 interface ExtractionBackfillProgress {
@@ -188,6 +211,9 @@ interface SearchResult {
   // slide/sheet hit belongs to, since a search hit resolves to one part but
   // there's nothing to open at the part level itself (see openSearchResult).
   resourceId: number | null;
+  source: 'local' | 'drive' | 'classroom' | null;
+  parentTitle: string | null;
+  searchSection: 'courses' | 'names' | 'content' | 'classroom';
 }
 
 interface DashboardDeadline extends Deadline {
@@ -204,6 +230,24 @@ interface DashboardActivityItem {
   title: string;
   timestamp: string;
   entity_type: 'resource' | 'note';
+  course_name: string;
+}
+
+interface DashboardAnnouncement {
+  id: number;
+  course_id: number;
+  title: string;
+  posted_at: string;
+  course_name: string;
+  dashboard_pinned: number;
+}
+
+interface DashboardClassroomUpdate {
+  item_type: 'announcement' | 'assignment' | 'pinned_announcement';
+  id: number;
+  course_id: number;
+  title: string;
+  occurred_at: string | null;
   course_name: string;
 }
 
@@ -229,7 +273,7 @@ interface NoteWithCourse extends Note {
 }
 
 type Preview =
-  | { type: 'pdf'; url: string }
+  | { type: 'pdf'; data: Uint8Array }
   | { type: 'image'; url: string; zoomLevel: number | null }
   | { type: 'html'; html: string; note?: string }
   | { type: 'text'; text: string }
@@ -241,13 +285,26 @@ interface AtlasApi {
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
   getAppVersion: () => Promise<string>;
+  windowControls: {
+    minimize: () => Promise<void>;
+    toggleMaximize: () => Promise<boolean>;
+    isMaximized: () => Promise<boolean>;
+    close: () => Promise<void>;
+    onMaximizedChanged: (handler: (isMaximized: boolean) => void) => void;
+  };
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
+  getStorageStatus: () => Promise<StorageStatus>;
+  createBackup: () => Promise<BackupInfo>;
+  deleteBackup: (name: string) => Promise<void>;
+  deleteAllBackups: () => Promise<void>;
+  setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off') => Promise<void>;
   isDriveConnected: () => Promise<boolean>;
   connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectDrive: () => Promise<void>;
   clearDrivePreviewCache: () => Promise<{ ok: true } | { ok: false; error: string }>;
   getSyncStatus: () => Promise<SyncStatus>;
+  onSyncStatusChanged: (handler: (source: 'drive' | 'classroom') => void) => void;
   setSyncConfig: (source: 'drive' | 'classroom', value: string) => Promise<void>;
   syncNow: (source: 'drive' | 'classroom') => Promise<void>;
   syncAllNow: () => Promise<void>;
@@ -295,6 +352,7 @@ interface AtlasApi {
     term: string
   ) => Promise<{ created: Course[]; skipped: number }>;
   listResources: (courseId: number) => Promise<Resource[]>;
+  getCourseReadiness: (courseId: number) => Promise<CourseReadiness>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
@@ -305,7 +363,9 @@ interface AtlasApi {
   setResourceZoom: (resourceId: number, zoom: number) => Promise<void>;
   runResourceOcr: (resourceId: number) => Promise<string | null>;
   saveResourceOcrText: (resourceId: number, text: string) => Promise<void>;
+  retryResourceExtraction: (resourceId: number) => Promise<{ ok: true } | { ok: false; error: string }>;
   onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void) => void;
+  onExtractionUpdated: (handler: (resourceId: number) => void) => void;
   openResourceInGoogleDrive: (resourceId: number) => Promise<void>;
   onExtractionBackfillProgress: (handler: (progress: ExtractionBackfillProgress) => void) => void;
   onResourceDriveOpenStart: (handler: (resourceId: number) => void) => void;
@@ -365,8 +425,17 @@ interface AtlasApi {
   getDashboardStats: () => Promise<DashboardStats>;
   getUpcomingDeadlines: () => Promise<DashboardDeadline[]>;
   listAllDeadlinesWithCourse: () => Promise<DashboardDeadline[]>;
+  listAllAnnouncementsWithCourse: () => Promise<DashboardAnnouncement[]>;
   getRecentResources: () => Promise<DashboardResource[]>;
   getRecentActivity: () => Promise<DashboardActivityItem[]>;
+  getRecentAnnouncements: () => Promise<DashboardAnnouncement[]>;
+  getNewClassroomItems: (courseId?: number | null) => Promise<DashboardClassroomUpdate[]>;
+  clearNewClassroomItem: (itemType: 'announcement' | 'assignment', itemId: number) => Promise<boolean>;
+  clearAllNewClassroomItems: (courseId?: number | null) => Promise<number>;
+  pinDashboardAnnouncement: (announcementId: number) => Promise<boolean>;
+  unpinDashboardAnnouncement: (announcementId: number) => Promise<boolean>;
+  seedDashboardV2TestItems: () => Promise<number>;
+  seedResourcesFilterTestItems: () => Promise<number>;
   getCourseSummaries: (archived?: boolean) => Promise<CourseSummary[]>;
   listAllResources: () => Promise<ResourceWithCourse[]>;
   listAllNotes: () => Promise<NoteWithCourse[]>;
@@ -390,9 +459,18 @@ interface AtlasApi {
 // working correctly in Crepe before switching. Crepe also bundles KaTeX math
 // rendering out of the box, which the user needs for academic notes.
 import { ShortcutRegistry, ShortcutAction, normalizeBinding, RESERVED_BINDINGS } from './shortcuts';
+import {
+  PaletteCommandDefinition,
+  PaletteCommandMatch,
+  matchPaletteCommandPrefix,
+  normalizePaletteText,
+  rankPaletteCommands,
+  scorePaletteText,
+} from './command-palette';
 import { Crepe } from '@milkdown/crepe';
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import '@milkdown/crepe/theme/common/style.css';
 // Crepe's frame/frame-dark theme files are just `--crepe-*` custom
 // properties on `.milkdown` — both variable sets are inlined directly in
@@ -401,19 +479,7 @@ import '@milkdown/crepe/theme/common/style.css';
 // imported, permanently-dark stylesheet.
 
 const atlasApi: AtlasApi = (window as any).atlas;
-
-const KIND_ICON: Record<string, string> = {
-  pdf: '📄',
-  pptx: '📊',
-  docx: '📝',
-  xlsx: '📈',
-  image: '🖼️',
-  text: '📃',
-  markdown: '📃',
-  zip: '🗜️',
-  link: '🔗',
-  other: '📁',
-};
+GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', document.baseURI).toString();
 
 const ICON_EXTENSION_MAP: Record<string, string> = {
   pdf: 'pdf',
@@ -423,7 +489,7 @@ const ICON_EXTENSION_MAP: Record<string, string> = {
   docx: 'docx',
   xls: 'xlsx',
   xlsx: 'xlsx',
-  csv: 'xlsx',
+  csv: 'text',
   png: 'image',
   jpg: 'image',
   jpeg: 'image',
@@ -441,13 +507,6 @@ const ICON_EXTENSION_MAP: Record<string, string> = {
 // 🔗, no matter what it actually links to. This guesses a more specific
 // icon from the linked file's own name/extension (still preserved in the
 // resource's title) purely for display; it never changes the stored kind.
-function resourceDisplayIcon(resource: { kind: string; title: string }): string {
-  if (resource.kind !== 'link') return KIND_ICON[resource.kind] ?? KIND_ICON.other;
-  const ext = resource.title.split('.').pop()?.toLowerCase() ?? '';
-  const mapped = ICON_EXTENSION_MAP[ext];
-  return mapped ? KIND_ICON[mapped] : KIND_ICON.link;
-}
-
 const DEADLINE_KIND_LABEL: Record<string, string> = {
   assignment: 'Assignment',
   reading: 'Reading',
@@ -498,9 +557,16 @@ let ashokaReviewCandidates: AshokaCourseCandidate[] = [];
 // isn't one of these and has no sidebar entry of its own.
 type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'calendar' | 'settings';
 let currentPage: AppPage = 'dashboard';
+let dashboardCourseFilterId: number | null = null;
 
 function showPage(page: AppPage): void {
   currentPage = page;
+  for (const name of ['courses', 'resources', 'notes', 'calendar', 'settings'] as const) {
+    document.getElementById(`${name}-topbar-title`)!.hidden = page !== name;
+    const actions = document.getElementById(`${name}-topbar-actions`);
+    if (actions) actions.hidden = page !== name;
+  }
+  document.getElementById('main-area')!.dataset.page = page;
   document.querySelectorAll<HTMLElement>('.app-page').forEach((el) => {
     el.hidden = el.id !== `page-${page}`;
   });
@@ -543,7 +609,58 @@ async function renderSettingsPage(): Promise<void> {
     renderClassroomStatus(),
     renderSettingsAbout(),
     renderSettingsShortcuts(),
+    renderSettingsStorage(),
+    renderAgentAccess(),
   ]);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(0, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+async function renderAgentAccess(): Promise<void> {
+  const enabled = (await atlasApi.getSetting('agentAccess')) !== '0';
+  const button = document.getElementById('settings-agent-access')!;
+  button.classList.toggle('on', enabled);
+  button.setAttribute('aria-checked', String(enabled));
+}
+
+async function renderSettingsStorage(): Promise<void> {
+  const status = await atlasApi.getStorageStatus();
+  document.getElementById('storage-total')!.textContent = `${formatBytes(status.totalBytes)} total`;
+  document.getElementById('storage-legend')!.innerHTML = `<span><b>${formatBytes(status.resourceBytes)}</b> resources</span><span><b>${formatBytes(status.databaseBytes)}</b> database & extracted text</span>`;
+  document.getElementById('storage-courses')!.innerHTML = status.courseStorage.map((course) => `<div class="storage-course-row"><span><i class="swatch" style="background:${courseAvatarColor(course.id)}"></i>${escapeHtml(course.name)}</span><span>${formatBytes(course.size)}</span></div>`).join('') || '<p class="settings-row-hint">No active courses.</p>';
+  const counts = new Map(status.extraction.map((entry) => [entry.status, entry.count]));
+  const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+  const done = counts.get('done') ?? 0;
+  const empty = counts.get('empty') ?? 0;
+  document.getElementById('storage-extraction-title')!.textContent = `${done} of ${total} files extracted`;
+  document.getElementById('storage-extraction-hint')!.textContent = empty ? `${empty} files have no readable text and may need OCR.` : 'Atlas can search inside extracted documents.';
+  (document.getElementById('settings-review-extraction') as HTMLButtonElement).hidden = empty === 0;
+  const latest = status.backups[0];
+  document.getElementById('storage-backup-hint')!.textContent = status.backupFrequency === 'off'
+    ? 'Scheduled backups are off. Existing backups are kept until Atlas makes a newer one.'
+    : `A ${status.backupFrequency} copy of atlas.db while Atlas is running — ${latest ? `last one ${formatRelativeTime(latest.createdAt)}` : 'none yet'}, keeping the last five.`;
+  renderBackupFrequencySelect(status.backupFrequency);
+  const backups = document.getElementById('storage-backups')!;
+  backups.innerHTML = status.backups.length
+    ? `<div class="storage-backups-heading"><span>${status.backups.length} saved backup${status.backups.length === 1 ? '' : 's'}</span><button id="settings-backup-delete-all" class="settings-button settings-button-danger" type="button">Delete all</button></div>${status.backups.map((backup) => `<div class="storage-backup-row"><span>${escapeHtml(formatRelativeTime(backup.createdAt))}</span><span>${formatBytes(backup.size)}</span><button class="settings-backup-delete settings-button settings-button-danger" type="button" data-backup-name="${escapeHtml(backup.name)}">Delete</button></div>`).join('')}`
+    : '<p class="settings-row-hint">No backups yet.</p>';
+  backups.querySelectorAll<HTMLButtonElement>('.settings-backup-delete').forEach((button) => button.addEventListener('click', () => void deleteBackup(button.dataset.backupName!)));
+  backups.querySelector<HTMLButtonElement>('#settings-backup-delete-all')?.addEventListener('click', () => void deleteAllBackups());
+}
+
+async function deleteBackup(name: string): Promise<void> {
+  if (!(await showConfirm('Delete this backup? This cannot be undone.'))) return;
+  await atlasApi.deleteBackup(name);
+  await renderSettingsStorage();
+}
+
+async function deleteAllBackups(): Promise<void> {
+  if (!(await showConfirm('Delete every local backup? This cannot be undone.'))) return;
+  await atlasApi.deleteAllBackups();
+  await renderSettingsStorage();
 }
 
 // Sync schedule (open-questions.md #2) — one dropdown + last-synced/error
@@ -569,11 +686,16 @@ async function renderSyncStatus(): Promise<void> {
   for (const source of ['drive', 'classroom'] as const) {
     const info = status[source];
     const value = info.mode === 'interval' ? `interval:${info.intervalSeconds}` : info.mode;
-    (document.getElementById(`sync-config-${source}`) as HTMLSelectElement).value = value;
+    renderSyncConfigSelect(source, value);
 
     const statusEl = document.getElementById(`sync-status-${source}`)!;
     const lastSyncedText = `Last synced: ${formatRelativeTime(info.lastSuccess)}`;
-    statusEl.textContent = info.lastError ? `${lastSyncedText} — ${info.lastError}` : lastSyncedText;
+    statusEl.classList.toggle('is-auth-error', info.authRequired);
+    statusEl.textContent = info.authRequired
+      ? `Reconnect required — ${GOOGLE_REAUTH_HINT}`
+      : info.lastError
+        ? `${lastSyncedText} — ${info.lastError}`
+        : lastSyncedText;
   }
 }
 
@@ -610,6 +732,13 @@ let confirmResolve: ((result: boolean) => void) | null = null;
 function showConfirm(message: string): Promise<boolean> {
   const overlay = document.getElementById('confirm-overlay')!;
   const messageEl = document.getElementById('confirm-message')!;
+  const titleEl = document.getElementById('confirm-title')!;
+  const confirmButton = document.getElementById('confirm-yes')!;
+  const firstWord = message.trim().split(/[\s?]/)[0] || 'Confirm';
+  const action = ['Delete', 'Disconnect', 'Archive', 'Unarchive', 'Reset'].includes(firstWord) ? firstWord : 'Confirm';
+  titleEl.textContent = action === 'Confirm' ? 'Confirm action' : `${action} this item?`;
+  confirmButton.textContent = action;
+  confirmButton.classList.toggle('danger', ['Delete', 'Disconnect', 'Archive', 'Reset'].includes(action));
   messageEl.textContent = message;
   overlay.hidden = false;
   return new Promise((resolve) => {
@@ -626,9 +755,9 @@ function resolveConfirm(result: boolean): void {
   }
 }
 
-let courseViewMode: 'grid' | 'list' = 'grid';
-type CourseSort = 'name' | 'resources' | 'deadlines' | 'notes';
-let courseSort: CourseSort = 'name';
+let courseViewMode: 'grid' | 'list' = 'list';
+type CourseSort = 'term' | 'name' | 'resources' | 'deadlines' | 'notes';
+let courseSort: CourseSort = 'term';
 // Shows either active courses (default) or archived ones, never both mixed
 // together — a plain either/or toggle rather than an "include archived"
 // checkbox, so there's no ambiguity about which state a course card on
@@ -639,80 +768,156 @@ function compareCourseSummaries(a: CourseSummary, b: CourseSummary, sort: Course
   if (sort === 'resources') return b.resource_count - a.resource_count;
   if (sort === 'deadlines') return b.deadline_count - a.deadline_count;
   if (sort === 'notes') return b.note_count - a.note_count;
+  if (sort === 'term') return (a.term ?? '').localeCompare(b.term ?? '') || a.name.localeCompare(b.name);
   return a.name.localeCompare(b.name);
 }
 
-// Card grid by default (matches the mockup the user provided), a flat list
-// as the alternative — same view-toggle convention used for resources/
-// deadlines elsewhere, just a separate mode since a course card carries
-// more information (counts, code) than a resource/deadline row does.
+function resourceIconKind(resource: { kind: string; title: string }): string {
+  if (resource.kind !== 'link') return resource.kind || 'other';
+  const ext = resource.title.split('.').pop()?.toLowerCase() ?? '';
+  return ICON_EXTENSION_MAP[ext] ?? 'link';
+}
+
+function makeMonoIcon(kind: string, className = 'mono-icon'): HTMLElement {
+  const paths: Record<string, string> = {
+    pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 15h8M8 18h5"/>',
+    pptx: '<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4M8 8h8M8 12h5"/>',
+    xlsx: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h8M12 6v12"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
+    zip: '<path d="M6 2h9l3 3v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"/><path d="M13 2v4h4M11 7v2m0 2v2m0 2v2m0 2v2"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.07.07l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15"/><path d="M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 12 20l1.15-1.15"/>',
+    reading: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>',
+    quiz: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.12 1.9c-.92.74-1.62 1.22-1.62 2.6M12 17h.01"/>',
+    lab: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.74 3h10.52A2 2 0 0 0 19 18l-5-9V3"/><path d="M8.5 15h7"/>',
+    project: '<path d="M4 7h16v13H4zM9 7V4h6v3"/>',
+    exam: '<path d="M4 10.5 12 4l8 6.5L12 17l-8-6.5Z"/><path d="M7 14v4.5c2.7 1.8 7.3 1.8 10 0V14"/>',
+    assignment: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/>',
+  };
+  const icon = document.createElement('span');
+  icon.className = className;
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[kind] ?? paths.assignment}</svg>`;
+  return icon;
+}
+
+function isCurrentOrFutureDeadline(deadline: Deadline): boolean {
+  if (deadline.completed === 1 || !deadline.due_at) return false;
+  const { year, month, day, hour, minute } = splitDueAt(deadline.due_at);
+  return new Date(year, month - 1, day, hour ?? 23, minute ?? 59).getTime() >= Date.now();
+}
+
+function updateCourseToolbar(courses: CourseSummary[]): void {
+  document.getElementById('courses-page-count')!.textContent = String(courses.length);
+  const termControls = document.getElementById('courses-term-controls')!;
+  const terms = [...new Set(courses.map((course) => course.term).filter((term): term is string => Boolean(term)))].sort();
+  termControls.innerHTML = '';
+  for (const filter of [{ label: 'All terms', value: '' }, ...terms.map((term) => ({ label: term, value: term }))]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'course-term-control';
+    button.textContent = filter.label;
+    button.dataset.term = filter.value;
+    const active = semesterFilter === filter.value;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.addEventListener('click', () => void setSemesterFilter(filter.value));
+    termControls.appendChild(button);
+  }
+}
+
 async function renderCourses(): Promise<void> {
   void renderDashboard();
   const list = document.getElementById('course-list')!;
   const emptyState = document.getElementById('course-list-empty')!;
   const allSummaries = await atlasApi.getCourseSummaries(showArchivedCourses);
-  let courses = semesterFilter ? allSummaries.filter((c) => c.term === semesterFilter) : allSummaries;
+  updateCourseToolbar(allSummaries);
+  let courses = semesterFilter ? allSummaries.filter((course) => course.term === semesterFilter) : allSummaries;
   courses = [...courses].sort((a, b) => compareCourseSummaries(a, b, courseSort));
-
   emptyState.hidden = courses.length > 0;
   emptyState.textContent = showArchivedCourses ? 'No archived courses.' : 'No courses yet.';
-
   list.className = courseViewMode === 'grid' ? 'view-grid' : 'view-list';
   list.innerHTML = '';
 
+  const deadlinesByCourse = new Map<number, Deadline[]>();
+  await Promise.all(courses.map(async (course) => deadlinesByCourse.set(course.id, await atlasApi.listDeadlines(course.id))));
+  const groupedCourses = new Map<string, CourseSummary[]>();
   for (const course of courses) {
-    const li = document.createElement('li');
-    li.className = 'course-card';
-    li.dataset.courseId = String(course.id);
-    if (selectedCourse && selectedCourse.id === course.id) li.classList.add('selected');
+    const term = course.term || 'No term';
+    const group = groupedCourses.get(term) ?? [];
+    group.push(course);
+    groupedCourses.set(term, group);
+  }
 
-    const top = document.createElement('div');
-    top.className = 'course-card-top';
-    top.appendChild(makeCourseAvatar(course));
+  for (const [term, termCourses] of groupedCourses) {
+    const group = document.createElement('section');
+    group.className = 'course-termgroup';
+    const head = document.createElement('div');
+    head.className = 'course-term-head';
+    const heading = document.createElement('h2');
+    heading.textContent = term;
+    const termCount = document.createElement('span');
+    termCount.className = 'course-term-count';
+    termCount.textContent = `${termCourses.length} course${termCourses.length === 1 ? '' : 's'}`;
+    head.append(heading, termCount);
+    group.appendChild(head);
+    const entries = document.createElement('div');
+    entries.className = courseViewMode === 'grid' ? 'course-grid' : 'course-rows';
 
-    const titleBlock = document.createElement('div');
-    titleBlock.className = 'course-card-title-block';
-    const name = document.createElement('div');
-    name.className = 'course-card-name';
-    name.textContent = course.name;
-    titleBlock.appendChild(name);
-    if (course.code) {
+    for (const course of termCourses) {
+      const entry = document.createElement('div');
+      entry.className = courseViewMode === 'grid' ? 'course-tile' : 'course-row';
+      entry.dataset.courseId = String(course.id);
+      entry.tabIndex = 0;
+      entry.setAttribute('role', 'button');
+      entry.setAttribute('aria-label', `Open ${course.name}`);
+      const main = document.createElement('div');
+      main.className = 'course-main';
+      const name = document.createElement('div');
+      name.className = 'course-name';
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(course.id);
+      const nameText = document.createElement('span');
+      nameText.textContent = course.name;
+      name.append(swatch, nameText);
       const code = document.createElement('div');
-      code.className = 'course-card-code';
-      code.textContent = course.code;
-      titleBlock.appendChild(code);
+      code.className = 'course-code';
+      code.textContent = course.code || 'No course code';
+      main.append(name, code);
+      const nextDeadline = (deadlinesByCourse.get(course.id) ?? [])
+        .filter(isCurrentOrFutureDeadline)
+        .sort((a, b) => (a.due_at ?? '').localeCompare(b.due_at ?? ''))[0];
+      const next = document.createElement('div');
+      next.className = 'course-next';
+      next.textContent = nextDeadline ? `Next: ${nextDeadline.title} - due ${formatDueDate(nextDeadline.due_at)}` : 'No upcoming deadlines';
+      main.appendChild(next);
+      entry.appendChild(main);
+      const stats = document.createElement('div');
+      stats.className = courseViewMode === 'grid' ? 'tile-stats' : 'course-stats';
+      for (const stat of [
+        { value: course.resource_count, label: 'files', urgent: false },
+        { value: course.deadline_count, label: 'due', urgent: course.deadline_count > 0 },
+      ]) {
+        const item = document.createElement('div');
+        item.innerHTML = `<span class="stat-n${stat.urgent ? ' is-urgent' : ''}">${stat.value}</span><span class="stat-label">${stat.label}</span>`;
+        stats.appendChild(item);
+      }
+      entry.appendChild(stats);
+      entry.addEventListener('click', () => void selectCourse(course));
+      entry.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          void selectCourse(course);
+        }
+      });
+      entry.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        atlasApi.showCourseContextMenu(course.id);
+      });
+      entries.appendChild(entry);
     }
-    top.appendChild(titleBlock);
-
-    const menuButton = document.createElement('button');
-    menuButton.type = 'button';
-    menuButton.className = 'course-card-menu';
-    menuButton.textContent = '⋯';
-    menuButton.title = 'Course options';
-    menuButton.setAttribute('aria-label', 'Course options');
-    menuButton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      atlasApi.showCourseContextMenu(course.id);
-    });
-    top.appendChild(menuButton);
-    li.appendChild(top);
-
-    const counts = document.createElement('div');
-    counts.className = 'course-card-counts';
-    const resourceCount = document.createElement('span');
-    resourceCount.textContent = `📄 ${course.resource_count} Resources`;
-    counts.appendChild(resourceCount);
-    const deadlineCount = document.createElement('span');
-    deadlineCount.textContent = `📌 ${course.deadline_count} Deadlines`;
-    counts.appendChild(deadlineCount);
-    li.appendChild(counts);
-
-    li.addEventListener('click', () => selectCourse(course));
-    li.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      atlasApi.showCourseContextMenu(course.id);
-    });
-    list.appendChild(li);
+    group.appendChild(entries);
+    list.appendChild(group);
   }
 }
 
@@ -726,7 +931,7 @@ function setCourseViewMode(mode: 'grid' | 'list'): void {
 function setShowArchivedCourses(value: boolean): void {
   showArchivedCourses = value;
   const button = document.getElementById('toggle-archived-courses')!;
-  button.textContent = value ? 'Show active courses' : 'Show archived courses';
+  button.textContent = value ? 'Show active' : 'Show archived';
   button.classList.toggle('active', value);
   void renderCourses();
 }
@@ -737,129 +942,16 @@ function setShowArchivedCourses(value: boolean): void {
 // (openPreview() below) — a docked pane was tried first but left too little
 // width for the list next to it for what the content actually needed.
 
+type ResourcesSourceFilter = '' | 'local' | 'classroom' | 'drive';
+
 let resourcesKindFilter = ''; // '' = all; otherwise a comma-separated list of kinds
+let resourcesSourceFilter: ResourcesSourceFilter = '';
 let resourcesCourseFilterId: number | null = null; // null = all courses
+let resourcesExtractionReview = false; // true only when entered from Settings → Storage → Review
 let notesCourseFilterId: number | null = null; // null = all courses
+let notesViewMode: 'list' | 'grid' = 'list';
+let notesSort: 'recent' | 'name' | 'course' = 'recent';
 let showOnlyAgentNotes = false; // Phase 4 Part B filter — agent-generated notes only
-
-// A plain-language readability label for a Classroom/Drive link resource —
-// null for anything else (a local file's readability is implicit; it's
-// either extracted or not, same as before this feature). See
-// remote-attachments-spec.md §7 for the status meanings.
-function remoteReadabilityLabel(resource: Resource): string | null {
-  if (resource.kind !== 'link') return null;
-  if (resource.link_kind && resource.link_kind !== 'driveFile') return null; // YouTube/Form/plain link — never fetchable
-  if (!resource.remote_source) return null;
-  switch (resource.extraction_status) {
-    case 'done':
-      return 'readable by agent';
-    case 'empty':
-      return 'no readable text found';
-    case 'failed':
-      return resource.extraction_error ? `not readable — ${resource.extraction_error}` : 'not readable';
-    case 'unsupported':
-      return null;
-    case 'pending':
-    default:
-      return 'not fetched yet';
-  }
-}
-
-function resourceListItem(resource: ResourceWithCourse, iconView: boolean): HTMLLIElement {
-  const li = document.createElement('li');
-  li.dataset.resourceId = String(resource.id);
-
-  if (iconView) {
-    li.className = 'icon-tile';
-    const icon = document.createElement('div');
-    icon.className = 'icon-glyph';
-    icon.textContent = resourceDisplayIcon(resource);
-    li.appendChild(icon);
-    const name = document.createElement('div');
-    name.className = 'icon-name';
-    name.textContent = resource.title;
-    li.appendChild(name);
-    const course = document.createElement('div');
-    course.className = 'icon-course';
-    course.textContent = resource.course_name;
-    li.appendChild(course);
-  } else {
-    const name = document.createElement('span');
-    name.className = 'resource-name';
-    name.textContent = resource.title;
-    li.appendChild(name);
-    const course = document.createElement('span');
-    course.className = 'code';
-    course.textContent = resource.course_name;
-    li.appendChild(course);
-    const kind = document.createElement('span');
-    kind.className = 'code resource-kind';
-    kind.textContent = resource.kind;
-    li.appendChild(kind);
-
-    // A Classroom/Drive link resource has no local file — whether the AI
-    // agent can actually read it (vs. just see a title) isn't obvious from
-    // the row otherwise, so "the agent didn't find it" doesn't become a
-    // silent mystery (remote-attachments-spec.md §8).
-    const remoteLabel = remoteReadabilityLabel(resource);
-    if (remoteLabel) {
-      const status = document.createElement('span');
-      status.className = 'code resource-remote-status';
-      status.textContent = remoteLabel;
-      li.appendChild(status);
-    }
-  }
-
-  li.addEventListener('click', () => openPreview(resource));
-  li.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    atlasApi.showResourceContextMenu(resource.id);
-  });
-  return li;
-}
-
-function renderAllResourcesList(resources: ResourceWithCourse[]): void {
-  const list = document.getElementById('all-resources-list')!;
-  list.className = viewMode === 'list' ? 'view-list' : 'view-grid';
-  list.innerHTML = '';
-
-  if (resources.length === 0) {
-    const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = 'No resources match this filter.';
-    list.appendChild(li);
-    return;
-  }
-
-  for (const resource of resources) {
-    list.appendChild(resourceListItem(resource, viewMode === 'grid'));
-  }
-}
-
-// Shared by the Resources and Notes pages' course rails — both filter a
-// global list down to one course (or show everything) the same way.
-function renderCourseRail(
-  railId: string,
-  courses: Course[],
-  allLabel: string,
-  selectedCourseId: number | null,
-  onSelect: (courseId: number | null) => void
-): void {
-  const rail = document.getElementById(railId)!;
-  rail.innerHTML = '';
-  const allLi = document.createElement('li');
-  allLi.textContent = allLabel;
-  allLi.classList.toggle('selected', selectedCourseId === null);
-  allLi.addEventListener('click', () => onSelect(null));
-  rail.appendChild(allLi);
-  for (const course of courses) {
-    const li = document.createElement('li');
-    li.textContent = course.name;
-    li.classList.toggle('selected', selectedCourseId === course.id);
-    li.addEventListener('click', () => onSelect(course.id));
-    rail.appendChild(li);
-  }
-}
 
 // --- Course picker modal: choose a target course for an action that isn't
 // scoped to any one course already visible on screen (uploading a resource,
@@ -868,7 +960,7 @@ function renderCourseRail(
 // were more than a couple of courses. Shared between the Upload and New Note
 // flows via `mode`; Upload additionally carries a drag-and-drop zone.
 
-type CoursePickerMode = 'upload' | 'note' | 'scan' | 'assign';
+type CoursePickerMode = 'upload' | 'note' | 'scan' | 'assign' | 'deadline';
 
 let coursePickerMode: CoursePickerMode = 'upload';
 let coursePickerCourses: Course[] = [];
@@ -927,6 +1019,15 @@ function closeCoursePicker(): void {
   document.getElementById('course-picker-progress')!.hidden = true;
   coursePickerSelectedId = null;
   coursePickerPendingFile = null;
+  (document.getElementById('course-picker-file-input') as HTMLInputElement).value = '';
+}
+
+function setUploadPickerFile(file: File): void {
+  coursePickerPendingFile = file;
+  document.getElementById('course-picker-panel')!.classList.add('has-upload-file');
+  document.getElementById('course-picker-dropzone-hint')!.textContent = `Selected: ${file.name}. Choose a course below.`;
+  document.getElementById('course-picker-browse')!.textContent = 'Choose a different file';
+  renderCoursePickerList('');
 }
 
 function renderCoursePickerList(filterText: string): void {
@@ -947,8 +1048,20 @@ function renderCoursePickerList(filterText: string): void {
 
   for (const course of filtered) {
     const li = document.createElement('li');
-    li.textContent = course.name;
-    li.classList.toggle('selected', coursePickerSelectedId === course.id);
+    const selected = coursePickerSelectedId === course.id;
+    li.classList.toggle('selected', selected);
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = courseAvatarColor(course.id);
+    const label = document.createElement('span');
+    label.textContent = course.name;
+    li.append(swatch, label);
+    if (selected) {
+      const check = document.createElement('span');
+      check.className = 'course-picker-check';
+      check.textContent = '✓';
+      li.appendChild(check);
+    }
     li.addEventListener('click', () => selectCoursePickerCourse(course.id));
     list.appendChild(li);
   }
@@ -976,6 +1089,15 @@ async function selectCoursePickerCourse(courseId: number): Promise<void> {
     // next reload.
     if (currentNoteId === updated.id) await openNoteEditor(updated);
     if (currentPage === 'notes') await renderNotesPage();
+    return;
+  }
+
+  if (coursePickerMode === 'deadline') {
+    const course = coursePickerCourses.find((item) => item.id === courseId);
+    closeCoursePicker();
+    if (!course) return;
+    selectedCourse = course;
+    await openDeadlineEditForm(null);
     return;
   }
 
@@ -1009,7 +1131,14 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
   const title = document.getElementById('course-picker-title')!;
   const searchInput = document.getElementById('course-picker-search') as HTMLInputElement;
   const dropzone = document.getElementById('course-picker-dropzone')!;
+  const panel = document.getElementById('course-picker-panel')!;
+  const listLabel = document.getElementById('course-picker-list-label')!;
   searchInput.value = '';
+
+  panel.classList.toggle('upload-picker', mode === 'upload');
+  panel.classList.toggle('has-upload-file', Boolean(file));
+  searchInput.hidden = mode === 'upload';
+  listLabel.hidden = mode !== 'upload';
 
   document.getElementById('course-picker-progress')!.hidden = true;
 
@@ -1019,9 +1148,15 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
   } else if (mode === 'assign') {
     title.textContent = 'Move note to course';
     dropzone.hidden = true;
-  } else if (file) {
-    title.textContent = `Upload "${file.name}" to…`;
+  } else if (mode === 'deadline') {
+    title.textContent = 'Add deadline';
     dropzone.hidden = true;
+  } else if (file) {
+    title.textContent = 'Upload file';
+    dropzone.hidden = false;
+    dropzone.classList.remove('disabled');
+    document.getElementById('course-picker-dropzone-hint')!.textContent = `Selected: ${file.name}. Choose a course below.`;
+    document.getElementById('course-picker-browse')!.textContent = 'Choose a different file';
   } else if (mode === 'scan') {
     title.textContent = 'Import scan';
     dropzone.hidden = false;
@@ -1033,7 +1168,8 @@ async function openCoursePicker(mode: CoursePickerMode, file?: File): Promise<vo
     dropzone.hidden = false;
     dropzone.classList.add('disabled');
     document.getElementById('course-picker-dropzone-hint')!.textContent =
-      'Select a course above, then drop a file here';
+      'Drop a file here, or click to browse';
+    document.getElementById('course-picker-browse')!.textContent = 'Browse files…';
   }
 
   renderCoursePickerList('');
@@ -1061,25 +1197,166 @@ function sortResources(resources: ResourceWithCourse[], sort: ResourcesSort): Re
   return sorted;
 }
 
+function resourceSourceFilterKey(resource: ResourceWithCourse): Exclude<ResourcesSourceFilter, ''> {
+  if (resource.source === 'classroom') return 'classroom';
+  if (resource.source === 'drive') return 'drive';
+  return 'local';
+}
+
+const RESOURCE_SOURCE_OPTIONS: Array<{ value: ResourcesSourceFilter; label: string }> = [
+  { value: '', label: 'All sources' },
+  { value: 'local', label: 'Local' },
+  { value: 'classroom', label: 'Classroom' },
+];
+
+function renderResourcesSourceFilter(): void {
+  const root = document.getElementById('resources-source-filter');
+  if (!root) return;
+  const selected = RESOURCE_SOURCE_OPTIONS.find((option) => option.value === resourcesSourceFilter) ?? RESOURCE_SOURCE_OPTIONS[0];
+  root.dataset.value = selected.value;
+  root.innerHTML = `
+    <button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter resources by source">
+      <span>${selected.label}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="dselect-menu" role="listbox" hidden>${RESOURCE_SOURCE_OPTIONS.map((option) => `<button type="button" class="dselect-option${option.value === selected.value ? ' selected' : ''}" data-value="${option.value}">${option.label}</button>`).join('')}</div>`;
+
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    root.classList.toggle('open', !menu.hidden);
+    trigger.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    resourcesExtractionReview = false;
+    resourcesSourceFilter = (option.dataset.value ?? '') as ResourcesSourceFilter;
+    void renderResourcesPage();
+  }));
+}
+
 async function renderResourcesPage(): Promise<void> {
   void renderDashboard();
   const courses = await atlasApi.listCourses();
-
-  renderCourseRail('resources-course-rail', courses, 'All Resources', resourcesCourseFilterId, (id) => {
-    resourcesCourseFilterId = id;
-    void renderResourcesPage();
-  });
-
   const allResources = await atlasApi.listAllResources();
+  renderResourcesRail(courses, allResources);
+  renderResourcesSourceFilter();
+  document.getElementById('resources-page-count')!.textContent = String(allResources.length);
   let filtered = allResources;
   if (resourcesCourseFilterId !== null) {
     filtered = filtered.filter((r) => r.course_id === resourcesCourseFilterId);
+  }
+  if (resourcesSourceFilter) {
+    filtered = filtered.filter((resource) => resourceSourceFilterKey(resource) === resourcesSourceFilter);
   }
   if (resourcesKindFilter) {
     const kinds = resourcesKindFilter.split(',');
     filtered = filtered.filter((r) => kinds.includes(r.kind));
   }
+  if (resourcesExtractionReview) filtered = filtered.filter((resource) => resource.extraction_status === 'empty');
   renderAllResourcesList(sortResources(filtered, resourcesSort));
+}
+
+function resourceGroupLabel(resource: ResourceWithCourse): 'This week' | 'Earlier' {
+  const added = new Date(resource.added_at.replace(' ', 'T') + 'Z').getTime();
+  return Date.now() - added < 7 * 24 * 60 * 60 * 1000 ? 'This week' : 'Earlier';
+}
+
+function resourceSourceLabel(resource: ResourceWithCourse): string {
+  if (resource.source === 'classroom') return 'Classroom';
+  if (resource.source === 'drive') return 'Drive';
+  if (resource.source === 'local_folder') return 'Folder';
+  return 'Local';
+}
+
+function renderResourcesRail(courses: Course[], resources: ResourceWithCourse[]): void {
+  const rail = document.getElementById('resources-course-rail')!;
+  rail.innerHTML = '';
+  const entries: { id: number | null; name: string; count: number }[] = [
+    { id: null, name: 'All courses', count: resources.length },
+    ...courses.map((course) => ({ id: course.id, name: course.name, count: resources.filter((resource) => resource.course_id === course.id).length })),
+  ];
+  for (const entry of entries) {
+    const item = document.createElement('li');
+    item.className = 'resource-rail-item';
+    const active = resourcesCourseFilterId === entry.id;
+    item.classList.toggle('active', active);
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    const name = document.createElement('span');
+    name.className = 'resource-rail-name';
+    if (entry.id !== null) {
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(entry.id);
+      name.appendChild(swatch);
+    }
+    name.appendChild(document.createTextNode(entry.name));
+    const count = document.createElement('span');
+    count.className = 'resource-rail-count';
+    count.textContent = String(entry.count);
+    item.append(name, count);
+    const choose = () => { resourcesExtractionReview = false; resourcesCourseFilterId = entry.id; void renderResourcesPage(); };
+    item.addEventListener('click', choose);
+    item.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(); } });
+    rail.appendChild(item);
+  }
+}
+
+function renderAllResourcesList(resources: ResourceWithCourse[]): void {
+  const list = document.getElementById('all-resources-list')!;
+  list.className = viewMode === 'grid' ? 'view-grid' : 'view-list';
+  list.innerHTML = '';
+  if (resources.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = 'No resources match this filter.';
+    list.appendChild(empty);
+    return;
+  }
+  const groups: Record<'This week' | 'Earlier', ResourceWithCourse[]> = { 'This week': [], Earlier: [] };
+  for (const resource of resources) groups[resourceGroupLabel(resource)].push(resource);
+  for (const groupName of ['This week', 'Earlier'] as const) {
+    const items = groups[groupName];
+    if (items.length === 0) continue;
+    const heading = document.createElement('div');
+    heading.className = 'resource-groupmeta';
+    heading.textContent = groupName;
+    list.appendChild(heading);
+    const container = document.createElement('div');
+    container.className = viewMode === 'grid' ? 'resource-file-grid' : 'resource-file-list';
+    for (const resource of items) {
+      const item = document.createElement('div');
+      item.className = viewMode === 'grid' ? 'resource-file-tile' : 'resource-file-row';
+      item.dataset.resourceId = String(resource.id);
+      const icon = makeMonoIcon(resourceIconKind(resource), 'resource-file-icon');
+      const title = document.createElement('span');
+      title.className = 'resource-file-name resource-name';
+      title.textContent = resource.title;
+      const course = document.createElement('span');
+      course.className = 'resource-file-course';
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(resource.course_id);
+      course.append(swatch, document.createTextNode(resource.course_name));
+      const source = document.createElement('span');
+      source.className = 'resource-file-source';
+      source.textContent = resourceSourceLabel(resource);
+      const added = document.createElement('span');
+      added.className = 'resource-file-added';
+      added.textContent = formatRelativeTime(resource.added_at.replace(' ', 'T') + 'Z');
+      if (viewMode === 'grid') {
+        const foot = document.createElement('div');
+        foot.className = 'resource-file-foot';
+        foot.append(course, added);
+        item.append(icon, title, foot);
+      } else item.append(icon, title, course, source, added);
+      item.addEventListener('click', () => void openPreview(resource));
+      item.addEventListener('contextmenu', (event) => { event.preventDefault(); atlasApi.showResourceContextMenu(resource.id); });
+      container.appendChild(item);
+    }
+    list.appendChild(container);
+  }
 }
 
 async function renderWatchedFolders(): Promise<void> {
@@ -1100,13 +1377,6 @@ async function renderWatchedFolders(): Promise<void> {
   }
 }
 
-
-function formatNoteTimestamp(sqliteDatetime: string): string {
-  // SQLite's datetime('now') is UTC with no 'Z' suffix — append it so
-  // Date parses it as UTC instead of assuming local time.
-  const date = new Date(sqliteDatetime.replace(' ', 'T') + 'Z');
-  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
 
 // --- Global Notes page: every note across every course, grouped by
 // recency (Today / This week / Older), with an inline docked editor
@@ -1137,6 +1407,7 @@ function noteTitlePrefix(note: Note): string {
 
 function renderAllNotesList(notes: NoteWithCourse[]): void {
   const container = document.getElementById('all-notes-list')!;
+  container.className = notesViewMode === 'grid' ? 'view-grid' : 'view-list';
   container.innerHTML = '';
 
   if (notes.length === 0) {
@@ -1158,27 +1429,42 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
     const items = groups[groupName];
     if (items.length === 0) continue;
 
-    const header = document.createElement('h4');
+    const header = document.createElement('div');
     header.className = 'notes-group-header';
-    header.textContent = `${groupName} (${items.length})`;
+    header.textContent = groupName;
     container.appendChild(header);
 
-    const ul = document.createElement('ul');
-    ul.className = 'notes-group-list';
+    const ul = document.createElement('div');
+    ul.className = notesViewMode === 'grid' ? 'note-grid' : 'notes-group-list';
     for (const note of items) {
-      const li = document.createElement('li');
+      const li = document.createElement('div');
       li.dataset.noteId = String(note.id);
+      li.className = notesViewMode === 'grid' ? 'note-tile' : 'note-row';
       if (currentNoteId === note.id) li.classList.add('selected');
 
-      const title = document.createElement('div');
+      const title = document.createElement('span');
       title.className = 'note-item-title';
       title.textContent = `${noteTitlePrefix(note)}${note.title}`;
       li.appendChild(title);
 
-      const meta = document.createElement('div');
+      const meta = document.createElement('span');
       meta.className = 'note-item-meta';
-      meta.textContent = `${note.course_name} · ${formatNoteTimestamp(note.updated_at)}`;
-      li.appendChild(meta);
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = courseAvatarColor(note.course_id ?? 0);
+      const course = document.createElement('span');
+      course.className = 'note-course-name';
+      course.textContent = note.course_name;
+      const time = document.createElement('span');
+      time.className = 'note-time';
+      time.textContent = ` · ${formatRelativeTime(note.updated_at.replace(' ', 'T') + 'Z')}`;
+      meta.append(swatch, course, time);
+      if (notesViewMode === 'grid') {
+        const excerpt = document.createElement('span');
+        excerpt.className = 'note-excerpt';
+        excerpt.textContent = note.content_markdown.replace(/[#*_`>-]/g, ' ').replace(/\s+/g, ' ').trim();
+        li.append(title, excerpt, meta);
+      } else li.append(title, meta);
 
       li.addEventListener('click', () => openNoteEditor(note));
       li.addEventListener('contextmenu', (e) => {
@@ -1195,15 +1481,30 @@ async function renderNotesPage(): Promise<void> {
   void renderDashboard();
   const courses = await atlasApi.listCourses();
 
-  renderCourseRail('notes-course-rail', courses, 'All Notes', notesCourseFilterId, (id) => {
-    notesCourseFilterId = id;
-    void renderNotesPage();
-  });
-
   const allNotes = await atlasApi.listAllNotes();
+  const rail = document.getElementById('notes-course-rail')!;
+  rail.innerHTML = '';
+  const options = [{ id: null, name: 'All notes', count: allNotes.length }, ...courses.map((course) => ({ id: course.id, name: course.name, count: allNotes.filter((note) => note.course_id === course.id).length }))];
+  for (const option of options) {
+    const item = document.createElement('li');
+    item.className = 'note-rail-item';
+    item.classList.toggle('active', notesCourseFilterId === option.id);
+    const name = document.createElement('span'); name.className = 'rail-name';
+    if (option.id !== null) { const swatch = document.createElement('span'); swatch.className = 'swatch'; swatch.style.background = courseAvatarColor(option.id); name.appendChild(swatch); }
+    const label = document.createElement('span');
+    label.className = 'rail-course-label';
+    label.textContent = option.name;
+    name.appendChild(label);
+    const count = document.createElement('span'); count.className = 'rail-count'; count.textContent = String(option.count);
+    item.append(name, count);
+    item.addEventListener('click', () => { notesCourseFilterId = option.id; void renderNotesPage(); });
+    rail.appendChild(item);
+  }
+  document.getElementById('notes-page-count')!.textContent = String(allNotes.length);
   let notes =
     notesCourseFilterId === null ? allNotes : allNotes.filter((n) => n.course_id === notesCourseFilterId);
   if (showOnlyAgentNotes) notes = notes.filter((n) => n.generated_by_agent);
+  notes = [...notes].sort((a, b) => notesSort === 'name' ? a.title.localeCompare(b.title) : notesSort === 'course' ? a.course_name.localeCompare(b.course_name) || b.updated_at.localeCompare(a.updated_at) : b.updated_at.localeCompare(a.updated_at));
   renderAllNotesList(notes);
 }
 
@@ -1286,6 +1587,8 @@ function renderDeadlineListView(deadlines: Deadline[]): void {
 
     const icon = document.createElement('span');
     icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
+    icon.innerHTML = '';
+    icon.appendChild(makeMonoIcon(deadline.kind, 'deadline-kind-icon'));
     li.appendChild(icon);
 
     const title = document.createElement('span');
@@ -1338,7 +1641,11 @@ function renderDeadlineIconView(deadlines: Deadline[]): void {
 
     const icon = document.createElement('div');
     icon.className = 'icon-glyph';
+    icon.innerHTML = '';
+    icon.appendChild(makeMonoIcon(deadline.kind));
     icon.textContent = DEADLINE_KIND_ICON[deadline.kind] ?? '📌';
+    icon.innerHTML = '';
+    icon.appendChild(makeMonoIcon(deadline.kind));
     li.appendChild(icon);
 
     const name = document.createElement('div');
@@ -1439,6 +1746,7 @@ async function renderDashboard(): Promise<void> {
     renderDashboardStats(),
     renderDashboardCourses(),
     renderDashboardDeadlines(),
+    renderDashboardAnnouncements(),
     renderDashboardResources(),
     renderDashboardActivity(),
   ]);
@@ -1452,9 +1760,19 @@ async function renderDashboard(): Promise<void> {
 // something's tagged, Drive is just the inbox.
 async function renderDriveStatus(): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
-  document.getElementById('drive-status')!.textContent = connected ? 'Connected.' : 'Not connected.';
-  (document.getElementById('drive-connect-button') as HTMLButtonElement).hidden = connected;
-  (document.getElementById('drive-disconnect-button') as HTMLButtonElement).hidden = !connected;
+  const syncStatus = await atlasApi.getSyncStatus();
+  const authRequired = syncStatus.drive.authRequired;
+  const status = document.getElementById('drive-status')!;
+  const connectButton = document.getElementById('drive-connect-button') as HTMLButtonElement;
+  const disconnectButton = document.getElementById('drive-disconnect-button') as HTMLButtonElement;
+  const hint = document.getElementById('drive-status-hint')!;
+  status.classList.toggle('is-auth-error', authRequired);
+  hint.classList.toggle('is-auth-error', authRequired);
+  status.innerHTML = `<span class="settings-status-dot${connected && !authRequired ? ' is-connected' : ''}${authRequired ? ' is-auth-error' : ''}"></span>${authRequired ? 'Reconnect required.' : connected ? 'Connected.' : 'Not connected.'}`;
+  connectButton.hidden = connected && !authRequired;
+  connectButton.textContent = authRequired ? 'Reconnect Google Drive' : 'Connect Google Drive';
+  disconnectButton.hidden = !connected;
+  hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Drive to watch a folder and open Office files in Drive.';
   (document.getElementById('drive-folder-form') as HTMLElement).hidden = !connected;
 
   if (connected) {
@@ -1468,12 +1786,20 @@ async function renderDriveStatus(): Promise<void> {
 
 async function renderDrivePendingStatus(): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
+  const authRequired = (await atlasApi.getSyncStatus()).drive.authRequired;
   const folder = connected ? await atlasApi.getDriveFolder() : null;
   const pendingStatus = document.getElementById('drive-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('drive-review-button') as HTMLButtonElement;
 
   if (!connected || !folder) {
     pendingStatus.hidden = true;
+    reviewButton.hidden = true;
+    return;
+  }
+
+  if (authRequired) {
+    pendingStatus.hidden = false;
+    pendingStatus.textContent = 'Reconnect Google Drive to scan this folder.';
     reviewButton.hidden = true;
     return;
   }
@@ -1499,11 +1825,13 @@ async function connectDrive(): Promise<void> {
     return;
   }
   await renderDriveStatus();
+  await renderSyncStatus();
 }
 
 async function disconnectDrive(): Promise<void> {
   await atlasApi.disconnectDrive();
   await renderDriveStatus();
+  await renderSyncStatus();
 }
 
 async function clearDrivePreviewCache(): Promise<void> {
@@ -1539,24 +1867,67 @@ async function saveDriveFolder(): Promise<void> {
 // pending list is exactly what a fresh scan would find again.
 async function openDriveReviewPanel(): Promise<void> {
   const overlay = document.getElementById('drive-review-overlay')!;
-  const bulkCourseSelect = document.getElementById('drive-review-bulk-course') as HTMLSelectElement;
-
   const courses = await atlasApi.listCourses();
-  const courseOptionsHtml = courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-  bulkCourseSelect.innerHTML = courseOptionsHtml;
+  const courseOptions = courses.map((course) => ({ value: String(course.id), label: course.name }));
+  renderDriveReviewSelect(document.getElementById('drive-review-bulk-course')!, courseOptions, courseOptions[0]?.value ?? '');
+  renderDriveReviewSelect(document.getElementById('drive-review-bulk-type')!, [
+    { value: 'resource', label: 'Resource' },
+    { value: 'note', label: 'Note' },
+  ], 'resource');
 
   overlay.hidden = false;
-  await renderDriveReviewList(courseOptionsHtml);
+  await renderDriveReviewList(courseOptions);
 }
 
 function closeDriveReviewPanel(): void {
   document.getElementById('drive-review-overlay')!.hidden = true;
 }
 
-async function renderDriveReviewList(courseOptionsHtml: string): Promise<void> {
+type DriveReviewOption = { value: string; label: string };
+
+const DRIVE_REVIEW_TYPES: DriveReviewOption[] = [
+  { value: 'resource', label: 'Resource' },
+  { value: 'note', label: 'Note' },
+];
+
+function renderDriveReviewSelect(root: HTMLElement, options: DriveReviewOption[], selectedValue: string): void {
+  const selected = options.find((option) => option.value === selectedValue) ?? options[0];
+  root.dataset.value = selected?.value ?? '';
+  root.innerHTML = `
+    <button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <span>${escapeHtml(selected?.label ?? 'Choose a course')}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="dselect-menu" role="listbox" hidden>${options.map((option) => `<button type="button" class="dselect-option${option.value === selected?.value ? ' selected' : ''}" data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`).join('')}</div>`;
+
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    root.classList.toggle('open', !menu.hidden);
+    trigger.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    root.dataset.value = option.dataset.value ?? '';
+    trigger.querySelector('span')!.textContent = option.textContent;
+    root.querySelectorAll('.dselect-option').forEach((item) => item.classList.toggle('selected', item === option));
+    menu.hidden = true;
+    root.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+  }));
+}
+
+function driveReviewSelectValue(root: Element): string {
+  return (root as HTMLElement).dataset.value ?? '';
+}
+
+async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promise<void> {
   const list = document.getElementById('drive-review-list')!;
   const pending = await atlasApi.listPendingDriveFiles();
   list.innerHTML = '';
+  document.getElementById('drive-review-subtitle')!.textContent = pending.length === 1
+    ? '1 new file found since the last sync.'
+    : `${pending.length} new files found since the last sync.`;
 
   for (const file of pending) {
     const li = document.createElement('li');
@@ -1565,15 +1936,13 @@ async function renderDriveReviewList(courseOptionsHtml: string): Promise<void> {
     li.dataset.fileName = file.name;
     li.innerHTML = `
       <input type="checkbox" class="drive-review-row-check" />
-      <span class="drive-review-row-name">${escapeHtml(file.name)}</span>
-      <select class="drive-review-row-course">${courseOptionsHtml}</select>
-      <select class="drive-review-row-type">
-        <option value="resource">Resource</option>
-        <option value="note">Note</option>
-      </select>
-      <button type="button" class="drive-review-row-import">Import</button>
-      <button type="button" class="drive-review-row-ignore">Ignore</button>
+      <div class="r-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>
+      <div class="r-main"><div class="r-title drive-review-row-name">${escapeHtml(file.name)}</div><div class="r-sub">Choose where to add this file.</div></div>
+      <div class="drive-review-row-controls"><div class="dselect drive-review-select"></div><div class="dselect drive-review-select drive-review-type-select"></div></div>
+      <div class="drive-review-row-actions"><button type="button" class="drive-review-row-import btn">Import</button><button type="button" class="drive-review-row-ignore btn">Ignore</button></div>
     `;
+    renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-select')!, courseOptions, courseOptions[0]?.value ?? '');
+    renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-type-select')!, DRIVE_REVIEW_TYPES, 'resource');
     li.querySelector('.drive-review-row-import')!.addEventListener('click', () => importOneDriveFile(li));
     li.querySelector('.drive-review-row-ignore')!.addEventListener('click', () => ignoreOneDriveFile(li));
     list.appendChild(li);
@@ -1601,8 +1970,8 @@ async function afterDriveRowResolved(): Promise<void> {
 async function importOneDriveFile(row: HTMLElement): Promise<void> {
   const driveFileId = row.dataset.driveFileId!;
   const name = row.dataset.fileName!;
-  const courseId = Number((row.querySelector('.drive-review-row-course') as HTMLSelectElement).value);
-  const importAs = (row.querySelector('.drive-review-row-type') as HTMLSelectElement).value as 'resource' | 'note';
+  const courseId = Number(driveReviewSelectValue(row.querySelector('.drive-review-select')!));
+  const importAs = driveReviewSelectValue(row.querySelector('.drive-review-type-select')!) as 'resource' | 'note';
   const button = row.querySelector('.drive-review-row-import') as HTMLButtonElement;
 
   button.disabled = true;
@@ -1625,15 +1994,15 @@ async function ignoreOneDriveFile(row: HTMLElement): Promise<void> {
 }
 
 async function importSelectedDriveFiles(): Promise<void> {
-  const bulkCourseSelect = document.getElementById('drive-review-bulk-course') as HTMLSelectElement;
-  const bulkTypeSelect = document.getElementById('drive-review-bulk-type') as HTMLSelectElement;
+  const bulkCourseId = driveReviewSelectValue(document.getElementById('drive-review-bulk-course')!);
+  const bulkType = driveReviewSelectValue(document.getElementById('drive-review-bulk-type')!);
   const rows = Array.from(document.querySelectorAll('.drive-review-row')) as HTMLElement[];
 
   for (const row of rows) {
     const checkbox = row.querySelector('.drive-review-row-check') as HTMLInputElement;
     if (!checkbox.checked) continue;
-    (row.querySelector('.drive-review-row-course') as HTMLSelectElement).value = bulkCourseSelect.value;
-    (row.querySelector('.drive-review-row-type') as HTMLSelectElement).value = bulkTypeSelect.value;
+    (row.querySelector('.drive-review-select') as HTMLElement).dataset.value = bulkCourseId;
+    (row.querySelector('.drive-review-type-select') as HTMLElement).dataset.value = bulkType;
     await importOneDriveFile(row);
   }
 }
@@ -1662,20 +2031,38 @@ function toggleDriveReviewSelectAll(): void {
 // syncs — only which course a Classroom course maps to is gated here.
 async function renderClassroomStatus(): Promise<void> {
   const connected = await atlasApi.isClassroomConnected();
-  document.getElementById('classroom-status')!.textContent = connected ? 'Connected.' : 'Not connected.';
-  (document.getElementById('classroom-connect-button') as HTMLButtonElement).hidden = connected;
-  (document.getElementById('classroom-disconnect-button') as HTMLButtonElement).hidden = !connected;
+  const syncStatus = await atlasApi.getSyncStatus();
+  const authRequired = syncStatus.classroom.authRequired;
+  const status = document.getElementById('classroom-status')!;
+  const connectButton = document.getElementById('classroom-connect-button') as HTMLButtonElement;
+  const disconnectButton = document.getElementById('classroom-disconnect-button') as HTMLButtonElement;
+  const hint = document.getElementById('classroom-status-hint')!;
+  status.classList.toggle('is-auth-error', authRequired);
+  hint.classList.toggle('is-auth-error', authRequired);
+  status.innerHTML = `<span class="settings-status-dot${connected && !authRequired ? ' is-connected' : ''}${authRequired ? ' is-auth-error' : ''}"></span>${authRequired ? 'Reconnect required.' : connected ? 'Connected.' : 'Not connected.'}`;
+  connectButton.hidden = connected && !authRequired;
+  connectButton.textContent = authRequired ? 'Reconnect Google Classroom' : 'Connect Google Classroom';
+  disconnectButton.hidden = !connected;
+  hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Classroom to bring in courses, deadlines, and announcements.';
 
   await renderClassroomPendingStatus();
 }
 
 async function renderClassroomPendingStatus(): Promise<void> {
   const connected = await atlasApi.isClassroomConnected();
+  const authRequired = (await atlasApi.getSyncStatus()).classroom.authRequired;
   const pendingStatus = document.getElementById('classroom-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('classroom-review-button') as HTMLButtonElement;
 
   if (!connected) {
     pendingStatus.hidden = true;
+    reviewButton.hidden = true;
+    return;
+  }
+
+  if (authRequired) {
+    pendingStatus.hidden = false;
+    pendingStatus.textContent = 'Reconnect Google Classroom to scan for courses.';
     reviewButton.hidden = true;
     return;
   }
@@ -1701,11 +2088,13 @@ async function connectClassroom(): Promise<void> {
     return;
   }
   await renderClassroomStatus();
+  await renderSyncStatus();
 }
 
 async function disconnectClassroom(): Promise<void> {
   await atlasApi.disconnectClassroom();
   await renderClassroomStatus();
+  await renderSyncStatus();
 }
 
 // One row per pending Classroom course — a course picker (existing courses,
@@ -1715,26 +2104,28 @@ async function disconnectClassroom(): Promise<void> {
 // is exactly what a fresh scan would find again.
 async function openClassroomReviewPanel(): Promise<void> {
   const overlay = document.getElementById('classroom-review-overlay')!;
-  const bulkCourseSelect = document.getElementById('classroom-review-bulk-course') as HTMLSelectElement;
-
   const courses = await atlasApi.listCourses();
-  const courseOptionsHtml =
-    '<option value="__new__">Create new course</option>' +
-    courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-  bulkCourseSelect.innerHTML = courseOptionsHtml;
+  const courseOptions: DriveReviewOption[] = [
+    { value: '__new__', label: 'Create new course' },
+    ...courses.map((course) => ({ value: String(course.id), label: course.name })),
+  ];
+  renderDriveReviewSelect(document.getElementById('classroom-review-bulk-course')!, courseOptions, '__new__');
 
   overlay.hidden = false;
-  await renderClassroomReviewList(courseOptionsHtml);
+  await renderClassroomReviewList(courseOptions);
 }
 
 function closeClassroomReviewPanel(): void {
   document.getElementById('classroom-review-overlay')!.hidden = true;
 }
 
-async function renderClassroomReviewList(courseOptionsHtml: string): Promise<void> {
+async function renderClassroomReviewList(courseOptions: DriveReviewOption[]): Promise<void> {
   const list = document.getElementById('classroom-review-list')!;
   const pending = await atlasApi.listPendingClassroomCourses();
   list.innerHTML = '';
+  document.getElementById('classroom-review-subtitle')!.textContent = pending.length === 1
+    ? '1 new course found since the last sync.'
+    : `${pending.length} new courses found since the last sync.`;
 
   for (const course of pending) {
     const li = document.createElement('li');
@@ -1743,16 +2134,12 @@ async function renderClassroomReviewList(courseOptionsHtml: string): Promise<voi
     li.dataset.courseName = course.name;
     li.innerHTML = `
       <input type="checkbox" class="classroom-review-row-check" />
-      <span class="classroom-review-row-name">
-        <span class="classroom-review-row-title">${escapeHtml(course.name)}</span>
-        ${course.section ? `<span class="classroom-review-row-section">${escapeHtml(course.section)}</span>` : ''}
-      </span>
-      <select class="classroom-review-row-course">${courseOptionsHtml}</select>
-      <button type="button" class="classroom-review-row-confirm">Confirm</button>
-      <button type="button" class="classroom-review-row-ignore">Ignore</button>
+      <div class="r-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></svg></div>
+      <div class="r-main"><div class="r-title classroom-review-row-title">${escapeHtml(course.name)}</div>${course.section ? `<div class="r-sub classroom-review-row-section">${escapeHtml(course.section)}</div>` : '<div class="r-sub">Choose an existing Atlas course or create one.</div>'}</div>
+      <div class="classroom-review-row-controls"><div class="dselect classroom-review-select"></div></div>
+      <div class="classroom-review-row-actions"><button type="button" class="classroom-review-row-confirm btn">Confirm</button><button type="button" class="classroom-review-row-ignore btn">Ignore</button></div>
     `;
-    const select = li.querySelector('.classroom-review-row-course') as HTMLSelectElement;
-    if (course.suggested_course_id !== null) select.value = String(course.suggested_course_id);
+    renderDriveReviewSelect(li.querySelector<HTMLElement>('.classroom-review-select')!, courseOptions, course.suggested_course_id === null ? '__new__' : String(course.suggested_course_id));
     li.querySelector('.classroom-review-row-confirm')!.addEventListener('click', () => confirmOneClassroomCourse(li));
     li.querySelector('.classroom-review-row-ignore')!.addEventListener('click', () => ignoreOneClassroomCourse(li));
     list.appendChild(li);
@@ -1779,15 +2166,15 @@ async function afterClassroomRowResolved(): Promise<void> {
 async function confirmOneClassroomCourse(row: HTMLElement): Promise<void> {
   const classroomCourseId = row.dataset.classroomCourseId!;
   const name = row.dataset.courseName!;
-  const select = row.querySelector('.classroom-review-row-course') as HTMLSelectElement;
+  const selectValue = driveReviewSelectValue(row.querySelector('.classroom-review-select')!);
   const button = row.querySelector('.classroom-review-row-confirm') as HTMLButtonElement;
 
   button.disabled = true;
   button.textContent = 'Confirming…';
   const result =
-    select.value === '__new__'
+    selectValue === '__new__'
       ? await atlasApi.mapClassroomCourseToNew(classroomCourseId, name, null, null)
-      : await atlasApi.mapClassroomCourseToExisting(classroomCourseId, Number(select.value));
+      : await atlasApi.mapClassroomCourseToExisting(classroomCourseId, Number(selectValue));
   row.remove();
   await afterClassroomRowResolved();
   if (result.errors.length > 0) {
@@ -1810,13 +2197,13 @@ async function ignoreOneClassroomCourse(row: HTMLElement): Promise<void> {
 }
 
 async function confirmSelectedClassroomCourses(): Promise<void> {
-  const bulkCourseSelect = document.getElementById('classroom-review-bulk-course') as HTMLSelectElement;
+  const bulkCourseValue = driveReviewSelectValue(document.getElementById('classroom-review-bulk-course')!);
   const rows = Array.from(document.querySelectorAll('.classroom-review-row')) as HTMLElement[];
 
   for (const row of rows) {
     const checkbox = row.querySelector('.classroom-review-row-check') as HTMLInputElement;
     if (!checkbox.checked) continue;
-    (row.querySelector('.classroom-review-row-course') as HTMLSelectElement).value = bulkCourseSelect.value;
+    (row.querySelector('.classroom-review-select') as HTMLElement).dataset.value = bulkCourseValue;
     await confirmOneClassroomCourse(row);
   }
 }
@@ -1950,6 +2337,16 @@ async function importSelectedAshokaCourses(): Promise<void> {
 
 async function renderDashboardStats(): Promise<void> {
   const stats = await atlasApi.getDashboardStats();
+  const now = new Date();
+  const heading = document.getElementById('dashboard-heading')!;
+  heading.innerHTML = '';
+  const weekday = document.createElement('span');
+  weekday.className = 'dashboard-weekday';
+  weekday.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(now);
+  const date = document.createElement('span');
+  date.className = 'dashboard-date';
+  date.textContent = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long' }).format(now);
+  heading.append(weekday, document.createTextNode(' '), date);
   document.getElementById('stat-courses')!.textContent = String(stats.courseCount);
   document.getElementById('stat-resources')!.textContent = String(stats.resourceCount);
   document.getElementById('stat-notes')!.textContent = String(stats.noteCount);
@@ -1959,9 +2356,12 @@ async function renderDashboardStats(): Promise<void> {
 async function renderDashboardCourses(): Promise<void> {
   const list = document.getElementById('dashboard-course-list')!;
   const courses = await atlasApi.getCourseSummaries();
+  renderDashboardCourseFilter(courses);
   list.innerHTML = '';
 
-  if (courses.length === 0) {
+  const visibleCourses = dashboardCourseFilterId === null ? courses : courses.filter((course) => course.id === dashboardCourseFilterId);
+
+  if (visibleCourses.length === 0) {
     const li = document.createElement('li');
     li.className = 'muted';
     li.textContent = 'No courses yet.';
@@ -1969,28 +2369,23 @@ async function renderDashboardCourses(): Promise<void> {
     return;
   }
 
-  for (const course of courses) {
+  for (const course of visibleCourses) {
     const li = document.createElement('li');
-    li.appendChild(makeCourseAvatar(course));
-
-    const info = document.createElement('div');
-    info.className = 'dashboard-course-info';
+    li.className = 'dashboard-course-cell';
     const name = document.createElement('div');
     name.className = 'dashboard-course-name';
-    name.textContent = course.name;
-    info.appendChild(name);
-    if (course.code) {
-      const code = document.createElement('div');
-      code.className = 'dashboard-course-code';
-      code.textContent = course.code;
-      info.appendChild(code);
-    }
-    li.appendChild(info);
+    const swatch = document.createElement('span');
+    swatch.className = 'dashboard-course-swatch';
+    swatch.style.backgroundColor = courseAvatarColor(course.id);
+    name.append(swatch, document.createTextNode(course.name));
 
-    const count = document.createElement('span');
-    count.className = 'dashboard-course-count';
-    count.textContent = `${course.resource_count}`;
-    li.appendChild(count);
+    const code = document.createElement('div');
+    code.className = 'dashboard-course-code';
+    code.textContent = course.code || '—';
+    const meta = document.createElement('div');
+    meta.className = 'dashboard-course-meta';
+    meta.textContent = `${course.resource_count} files · ${course.deadline_count} due`;
+    li.append(name, code, meta);
 
     li.addEventListener('click', () => openDashboardCourse(course));
     list.appendChild(li);
@@ -2073,195 +2468,507 @@ function formatDueInLabel(dueAt: string | null): string {
   return `${diffDays} days`;
 }
 
-// --- Calendar page (v1 — month grid + Upcoming sidebar only) ---
-// Day/Week view toggle, a mini date-picker, and per-kind/course filter
-// checkboxes (all present in the shared screenshot's "Filters" panel) are
-// deliberate fast-follows, not silently cut — see open-questions.md.
-let calendarViewDate = new Date();
+// --- Calendar page — copied from calendar-a.html's month/week/day model. ---
+type CalendarView = 'month' | 'week' | 'day';
+type CalendarEventKind = 'deadline' | 'assignment' | 'announcement';
+interface CalendarEvent {
+  kind: CalendarEventKind;
+  date: Date;
+  courseId: number;
+  courseName: string;
+  title: string;
+  deadline?: DashboardDeadline;
+}
+
+interface BackupInfo { name: string; size: number; createdAt: string; }
+interface StorageStatus {
+  resourceBytes: number;
+  databaseBytes: number;
+  totalBytes: number;
+  courseStorage: { id: number; name: string; folder_name: string; size: number }[];
+  extraction: { status: string; count: number }[];
+  backups: BackupInfo[];
+  backupFrequency: 'daily' | 'weekly' | 'off';
+}
+
+let calendarViewDate = startOfDay(new Date());
+let calendarView: CalendarView = 'month';
+let calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
+let calendarEnabledKinds = new Set<CalendarEventKind>(['deadline', 'assignment']);
+let calendarEnabledCourses = new Set<number>();
+let calendarCourseFiltersInitialized = false;
+let calendarFiltersLoaded = false;
+
+function persistCalendarFilters(): void {
+  void atlasApi.setSetting('calendarFilters', JSON.stringify({
+    kinds: [...calendarEnabledKinds],
+    courseIds: [...calendarEnabledCourses],
+  }));
+}
+
+async function initializeCalendarFilters(events: CalendarEvent[]): Promise<void> {
+  if (calendarFiltersLoaded) return;
+  calendarFiltersLoaded = true;
+  const saved = await atlasApi.getSetting('calendarFilters');
+  if (saved) {
+    try {
+      const state = JSON.parse(saved) as { kinds?: unknown; courseIds?: unknown };
+      if (Array.isArray(state.kinds) && Array.isArray(state.courseIds)) {
+        const validKinds = state.kinds.filter((kind): kind is CalendarEventKind =>
+          kind === 'deadline' || kind === 'assignment' || kind === 'announcement'
+        );
+        const validCourseIds = state.courseIds.filter((id): id is number => Number.isInteger(id));
+        calendarEnabledKinds = new Set(validKinds);
+        calendarEnabledCourses = new Set(validCourseIds);
+        calendarCourseFiltersInitialized = true;
+        return;
+      }
+    } catch {
+      // A malformed old preference is safely replaced by the default below.
+    }
+  }
+  events.forEach((event) => calendarEnabledCourses.add(event.courseId));
+  calendarCourseFiltersInitialized = true;
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function calendarDateFromTimestamp(value: string): Date {
+  const { year, month, day } = splitDueAt(value);
+  return new Date(year, month - 1, day);
+}
+
+function formatDueTime(value: string): string {
+  const { hour, minute } = splitDueAt(value);
+  if (hour === null || minute === null) return '—';
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
 
 async function renderCalendarPage(): Promise<void> {
-  const deadlines = await atlasApi.listAllDeadlinesWithCourse();
+  const [deadlines, announcements] = await Promise.all([
+    atlasApi.listAllDeadlinesWithCourse(),
+    atlasApi.listAllAnnouncementsWithCourse(),
+  ]);
+  const events: CalendarEvent[] = [
+    ...deadlines.filter((deadline) => deadline.due_at).map((deadline) => ({
+      kind: deadline.kind.toLowerCase() === 'assignment' ? 'assignment' : 'deadline' as CalendarEventKind,
+      date: calendarDateFromTimestamp(deadline.due_at!),
+      courseId: deadline.course_id,
+      courseName: deadline.course_name,
+      title: deadline.title,
+      deadline,
+    })),
+    ...announcements.filter((announcement) => announcement.posted_at).map((announcement) => ({
+      kind: 'announcement' as const,
+      date: calendarDateFromTimestamp(announcement.posted_at),
+      courseId: announcement.course_id,
+      courseName: announcement.course_name,
+      title: announcement.title,
+    })),
+  ];
+  // Populate the initial all-courses state once. An empty set after that is
+  // a meaningful user choice (all course filters unchecked), not a signal to
+  // silently turn every course back on during the next render.
+  if (!calendarCourseFiltersInitialized) await initializeCalendarFilters(events);
+  const visibleEvents = events.filter((event) => calendarEnabledKinds.has(event.kind) && calendarEnabledCourses.has(event.courseId));
   renderCalendarMonthLabel();
-  renderCalendarGrid(deadlines);
-  renderCalendarUpcomingList(deadlines);
-  renderCalendarLegend(deadlines);
+  renderCalendarViews(visibleEvents);
+  renderCalendarMiniDatePicker(visibleEvents);
+  renderCalendarFilters(events);
+  renderCalendarUpcomingList(visibleEvents);
 }
 
 function renderCalendarMonthLabel(): void {
-  document.getElementById('calendar-month-label')!.textContent = calendarViewDate.toLocaleDateString(undefined, {
-    month: 'long',
-    year: 'numeric',
-  });
+  const label = calendarViewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  document.getElementById('calendar-month-label')!.textContent = label;
+  document.getElementById('calendar-mini-label')!.textContent = calendarMiniDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
 function changeCalendarMonth(delta: number): void {
-  calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + delta, 1);
+  const base = calendarViewDate;
+  calendarViewDate = new Date(base.getFullYear(), base.getMonth() + delta, 1);
+  calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
   void renderCalendarPage();
 }
 
 function goToCalendarToday(): void {
-  calendarViewDate = new Date();
+  calendarViewDate = startOfDay(new Date());
+  calendarMiniDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
   void renderCalendarPage();
 }
 
-// Deadlines grouped by their calendar date (YYYY-MM-DD, local) — both the
-// month grid's day cells and the Upcoming sidebar list key off this.
-function groupDeadlinesByDate(deadlines: DashboardDeadline[]): Map<string, DashboardDeadline[]> {
-  const byDate = new Map<string, DashboardDeadline[]>();
-  for (const deadline of deadlines) {
-    if (!deadline.due_at) continue;
-    const { year, month, day } = splitDueAt(deadline.due_at);
-    const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const list = byDate.get(key) ?? [];
-    list.push(deadline);
-    byDate.set(key, list);
-  }
-  return byDate;
+function setCalendarView(view: CalendarView): void {
+  calendarView = view;
+  void renderCalendarPage();
 }
 
-// Lowered from 3 to 2 when the chips became two-line (title + course name)
-// and visually bigger, per the user's request to make them more legible —
-// 3 of the taller chips no longer fit a day cell without overflowing.
-const CALENDAR_MAX_CHIPS_PER_DAY = 2;
+function getCalendarEventsByDate(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
+  const result = new Map<string, CalendarEvent[]>();
+  for (const event of events) {
+    const items = result.get(isoDate(event.date)) ?? [];
+    items.push(event);
+    result.set(isoDate(event.date), items);
+  }
+  result.forEach((items) => items.sort((a, b) => a.title.localeCompare(b.title)));
+  return result;
+}
 
-function renderCalendarGrid(deadlines: DashboardDeadline[]): void {
+function renderCalendarViews(events: CalendarEvent[]): void {
+  const byDate = getCalendarEventsByDate(events);
+  const views: Record<CalendarView, HTMLElement> = {
+    month: document.getElementById('calendar-month-view')!,
+    week: document.getElementById('calendar-week-view')!,
+    day: document.getElementById('calendar-day-view')!,
+  };
+  for (const [view, element] of Object.entries(views) as [CalendarView, HTMLElement][]) element.hidden = view !== calendarView;
+  for (const view of ['month', 'week', 'day'] as CalendarView[]) {
+    const button = document.getElementById(`calendar-view-${view}`)!;
+    button.classList.toggle('active', view === calendarView);
+    button.setAttribute('aria-pressed', String(view === calendarView));
+  }
+  renderCalendarGrid(byDate);
+  renderCalendarWeek(byDate);
+  renderCalendarDay(byDate);
+}
+
+function renderCalendarGrid(byDate: Map<string, CalendarEvent[]>): void {
   const grid = document.getElementById('calendar-grid')!;
   grid.innerHTML = '';
-  const byDate = groupDeadlinesByDate(deadlines);
-
-  const year = calendarViewDate.getFullYear();
-  const month = calendarViewDate.getMonth();
-  const firstOfMonth = new Date(year, month, 1);
-  const startOffset = firstOfMonth.getDay(); // 0 = Sunday, matches the weekday row
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
-  for (let i = 0; i < totalCells; i++) {
-    const dayNum = i - startOffset + 1;
-    const cell = document.createElement('div');
-    cell.className = 'calendar-day-cell';
-
-    if (dayNum < 1 || dayNum > daysInMonth) {
-      cell.classList.add('outside-month');
-      grid.appendChild(cell);
-      continue;
+  const monthStart = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1);
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+  const todayKey = isoDate(startOfDay(new Date()));
+  for (let offset = 0; offset < 42; offset++) {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + offset);
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'cal-cell';
+    cell.setAttribute('aria-label', date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }));
+    if (date.getMonth() !== calendarViewDate.getMonth()) cell.classList.add('is-outside');
+    if (isoDate(date) === todayKey) cell.classList.add('is-today');
+    const number = document.createElement('span');
+    number.className = 'cal-daynum';
+    number.textContent = String(date.getDate());
+    cell.appendChild(number);
+    const events = byDate.get(isoDate(date)) ?? [];
+    if (events.length) {
+      const list = document.createElement('div');
+      list.className = 'cal-events';
+      for (const event of events.slice(0, 3)) list.appendChild(makeCalendarEventLine(event));
+      if (events.length > 3) {
+        const more = document.createElement('span');
+        more.className = 'cal-more';
+        more.textContent = `+${events.length - 3} more`;
+        list.appendChild(more);
+      }
+      cell.appendChild(list);
     }
-
-    const cellDate = new Date(year, month, dayNum);
-    if (cellDate.getTime() === today.getTime()) cell.classList.add('today');
-
-    const dayLabel = document.createElement('span');
-    dayLabel.className = 'calendar-day-number';
-    dayLabel.textContent = String(dayNum);
-    cell.appendChild(dayLabel);
-
-    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-    const dayDeadlines = byDate.get(key) ?? [];
-    for (const deadline of dayDeadlines.slice(0, CALENDAR_MAX_CHIPS_PER_DAY)) {
-      const color = courseAvatarColor(deadline.course_id);
-      const chip = document.createElement('div');
-      chip.className = 'calendar-deadline-chip';
-      chip.style.borderLeftColor = color;
-      chip.style.backgroundColor = `${color}26`; // ~15% opacity tint, so the block itself reads as "this course's color", not just a thin accent line
-      // Compact "✎" prefix rather than a full text badge — a month-grid chip
-      // is small and already two lines; a full "Edited" badge (used in the
-      // roomier list/icon/dashboard views) would overflow it.
-      const editedPrefix = deadline.local_overrides ? '✎ ' : '';
-      chip.title = `${editedPrefix}${deadline.course_name}: ${deadline.title}${
-        deadline.local_overrides ? " (you've edited this)" : ''
-      }`;
-      chip.innerHTML = `
-        <span class="calendar-deadline-chip-title">${editedPrefix}${escapeHtml(deadline.title)}</span>
-        <span class="calendar-deadline-chip-course">${escapeHtml(deadline.course_name)}</span>
-      `;
-      chip.addEventListener('click', () => void openDashboardDeadline(deadline));
-      cell.appendChild(chip);
-    }
-    if (dayDeadlines.length > CALENDAR_MAX_CHIPS_PER_DAY) {
-      const more = document.createElement('div');
-      more.className = 'calendar-more-chip';
-      more.textContent = `+${dayDeadlines.length - CALENDAR_MAX_CHIPS_PER_DAY} more`;
-      cell.appendChild(more);
-    }
-
+    cell.addEventListener('click', () => {
+      calendarViewDate = startOfDay(date);
+      calendarMiniDate = new Date(date.getFullYear(), date.getMonth(), 1);
+      setCalendarView('day');
+    });
     grid.appendChild(cell);
   }
 }
 
-function renderCalendarUpcomingList(deadlines: DashboardDeadline[]): void {
-  const container = document.getElementById('calendar-upcoming-list')!;
-  container.innerHTML = '';
+const SYNC_CONFIG_OPTIONS: Record<'drive' | 'classroom', { value: string; label: string }[]> = {
+  drive: [{ value: 'off', label: 'Off' }, { value: 'launch', label: 'On launch only' }, { value: 'interval:20', label: 'Every 20 seconds' }, { value: 'interval:60', label: 'Every 1 minute' }, { value: 'interval:300', label: 'Every 5 minutes' }, { value: 'interval:900', label: 'Every 15 minutes' }, { value: 'interval:1800', label: 'Every 30 minutes' }, { value: 'interval:3600', label: 'Every 60 minutes' }],
+  classroom: [{ value: 'off', label: 'Off' }, { value: 'launch', label: 'On launch only' }, { value: 'interval:300', label: 'Every 5 minutes' }, { value: 'interval:900', label: 'Every 15 minutes' }, { value: 'interval:1800', label: 'Every 30 minutes' }, { value: 'interval:3600', label: 'Every 60 minutes' }],
+};
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const upcoming = deadlines
-    .filter((d) => {
-      if (!d.due_at) return false;
-      const { year, month, day } = splitDueAt(d.due_at);
-      return new Date(year, month - 1, day).getTime() >= today.getTime();
-    })
-    .sort((a, b) => (a.due_at! < b.due_at! ? -1 : a.due_at! > b.due_at! ? 1 : 0));
+const BACKUP_FREQUENCY_OPTIONS = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'off', label: 'Off' },
+] as const;
 
-  const byDate = groupDeadlinesByDate(upcoming);
-  if (byDate.size === 0) {
-    const p = document.createElement('p');
-    p.className = 'muted';
-    p.textContent = 'Nothing upcoming.';
-    container.appendChild(p);
+function renderBackupFrequencySelect(value: 'daily' | 'weekly' | 'off'): void {
+  const root = document.getElementById('settings-backup-frequency')!;
+  root.innerHTML = `<button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span>${BACKUP_FREQUENCY_OPTIONS.find((option) => option.value === value)!.label}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button><div class="dselect-menu" role="listbox" hidden>${BACKUP_FREQUENCY_OPTIONS.map((option) => `<button type="button" class="dselect-option${option.value === value ? ' selected' : ''}" data-value="${option.value}">${option.label}</button>`).join('')}</div>`;
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => { menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', String(!menu.hidden)); });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    void atlasApi.setBackupFrequency(option.dataset.value as 'daily' | 'weekly' | 'off').then(renderSettingsStorage);
+  }));
+}
+
+function renderSyncConfigSelect(source: 'drive' | 'classroom', value: string): void {
+  const root = document.getElementById(`sync-config-${source}`)!;
+  const options = SYNC_CONFIG_OPTIONS[source];
+  root.innerHTML = `<button class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span>${escapeHtml(options.find((option) => option.value === value)?.label ?? 'Off')}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button><div class="dselect-menu" role="listbox" hidden>${options.map((option) => `<button type="button" class="dselect-option${option.value === value ? ' selected' : ''}" data-value="${option.value}">${escapeHtml(option.label)}</button>`).join('')}</div>`;
+  const trigger = root.querySelector<HTMLButtonElement>('.dselect-trigger')!;
+  const menu = root.querySelector<HTMLElement>('.dselect-menu')!;
+  trigger.addEventListener('click', () => { menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', String(!menu.hidden)); });
+  root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    void atlasApi.setSyncConfig(source, option.dataset.value!).then(renderSyncStatus);
+  }));
+}
+
+function makeCalendarEventLine(event: CalendarEvent): HTMLElement {
+  const line = document.createElement('button');
+  line.type = 'button';
+  line.className = `cal-event${isCalendarUrgent(event) ? ' is-urgent' : ''}`;
+  line.innerHTML = `<span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.title)}</span>`;
+  line.addEventListener('click', (click) => {
+    click.stopPropagation();
+    void openCalendarEvent(event);
+  });
+  return line;
+}
+
+function isCalendarUrgent(event: CalendarEvent): boolean {
+  return event.kind !== 'announcement' && event.date.getTime() < startOfDay(new Date()).getTime();
+}
+
+function renderCalendarWeek(byDate: Map<string, CalendarEvent[]>): void {
+  const view = document.getElementById('calendar-week-view')!;
+  view.innerHTML = '';
+  const start = new Date(calendarViewDate);
+  start.setDate(start.getDate() - start.getDay());
+  const grid = document.createElement('div');
+  grid.className = 'week-grid';
+  const todayKey = isoDate(startOfDay(new Date()));
+  for (let offset = 0; offset < 7; offset++) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    const column = document.createElement('div');
+    column.className = 'week-col';
+    if (isoDate(date) === todayKey) column.classList.add('is-today');
+    column.innerHTML = `<div class="wk-head">${escapeHtml(date.toLocaleDateString(undefined, { weekday: 'short' }))} <span class="wk-daynum">${date.getDate()}</span></div>`;
+    for (const event of byDate.get(isoDate(date)) ?? []) column.appendChild(makeCalendarWeekItem(event));
+    grid.appendChild(column);
+  }
+  view.appendChild(grid);
+}
+
+function makeCalendarWeekItem(event: CalendarEvent): HTMLElement {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = 'week-item';
+  const time = event.kind === 'announcement' ? 'Posted' : event.deadline?.due_at ? formatDueTime(event.deadline.due_at) : '—';
+  item.innerHTML = `<span class="wi-time">${escapeHtml(time)}</span><span class="wi-title">${escapeHtml(event.title)}</span><span class="wi-course"><span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.courseName)}</span></span>`;
+  item.addEventListener('click', () => void openCalendarEvent(event));
+  return item;
+}
+
+function renderCalendarDay(byDate: Map<string, CalendarEvent[]>): void {
+  const view = document.getElementById('calendar-day-view')!;
+  view.innerHTML = '';
+  const events = byDate.get(isoDate(calendarViewDate)) ?? [];
+  const header = document.createElement('div');
+  header.className = 'day-header';
+  header.innerHTML = `<div class="day-big">${escapeHtml(calendarViewDate.toLocaleDateString(undefined, { weekday: 'long' }))}</div><div class="day-sub">${escapeHtml(calendarViewDate.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }))} · ${events.length} ${events.length === 1 ? 'item' : 'items'}</div>`;
+  view.appendChild(header);
+  if (!events.length) {
+    const empty = document.createElement('p');
+    empty.className = 'calendar-empty';
+    empty.textContent = 'Nothing scheduled.';
+    view.appendChild(empty);
     return;
   }
 
-  for (const [dateKey, items] of byDate) {
-    const heading = document.createElement('div');
-    heading.className = 'calendar-upcoming-date';
-    const [y, m, d] = dateKey.split('-').map(Number);
-    heading.textContent = new Date(y, m - 1, d).toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-    container.appendChild(heading);
+  events.forEach((event) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'calendar-day-row';
+    const time = event.kind === 'announcement' ? 'Posted' : event.deadline?.due_at ? formatDueTime(event.deadline.due_at) : '—';
+    row.innerHTML = `<span class="time">${escapeHtml(time)}</span><span class="title">${escapeHtml(event.title)}</span><span class="course"><span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.courseName)}</span></span>`;
+    row.addEventListener('click', () => void openCalendarEvent(event));
+    view.appendChild(row);
+  });
+}
 
-    for (const deadline of items) {
-      const row = document.createElement('div');
-      row.className = 'calendar-upcoming-row';
-      row.style.borderLeftColor = courseAvatarColor(deadline.course_id);
-      row.innerHTML = `
-        <span class="calendar-upcoming-title">${escapeHtml(deadline.title)}</span>
-        <span class="calendar-upcoming-course">${escapeHtml(deadline.course_name)}</span>
-      `;
-      const editedBadge = makeDeadlineEditedBadge(deadline);
-      if (editedBadge) row.appendChild(editedBadge);
-      row.addEventListener('click', () => void openDashboardDeadline(deadline));
-      container.appendChild(row);
-    }
+function renderCalendarMiniDatePicker(events: CalendarEvent[]): void {
+  const grid = document.getElementById('calendar-mini-grid')!;
+  grid.innerHTML = '<span class="mc-wd">S</span><span class="mc-wd">M</span><span class="mc-wd">T</span><span class="mc-wd">W</span><span class="mc-wd">T</span><span class="mc-wd">F</span><span class="mc-wd">S</span>';
+  const monthStart = new Date(calendarMiniDate.getFullYear(), calendarMiniDate.getMonth(), 1);
+  const start = new Date(monthStart);
+  start.setDate(start.getDate() - start.getDay());
+  const eventDates = new Set(events.map((event) => isoDate(event.date)));
+  const todayKey = isoDate(startOfDay(new Date()));
+  for (let offset = 0; offset < 42; offset++) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    const day = document.createElement('button');
+    day.type = 'button';
+    day.className = 'mc-day';
+    day.textContent = String(date.getDate());
+    if (date.getMonth() !== calendarMiniDate.getMonth()) day.classList.add('is-outside');
+    if (isoDate(date) === todayKey) day.classList.add('is-today');
+    if (eventDates.has(isoDate(date))) day.classList.add('has-event');
+    day.addEventListener('click', () => {
+      calendarViewDate = startOfDay(date);
+      calendarMiniDate = new Date(date.getFullYear(), date.getMonth(), 1);
+      void renderCalendarPage();
+    });
+    grid.appendChild(day);
   }
 }
 
-function renderCalendarLegend(deadlines: DashboardDeadline[]): void {
-  const legend = document.getElementById('calendar-legend')!;
-  legend.innerHTML = '';
-  const seen = new Map<number, string>();
-  for (const deadline of deadlines) {
-    if (!seen.has(deadline.course_id)) seen.set(deadline.course_id, deadline.course_name);
-  }
-  for (const [courseId, courseName] of seen) {
-    const item = document.createElement('span');
-    item.className = 'calendar-legend-item';
+function renderCalendarFilters(events: CalendarEvent[]): void {
+  const availableCourses = new Map<number, string>();
+  events.forEach((event) => availableCourses.set(event.courseId, event.courseName));
+  const typeContainer = document.getElementById('calendar-type-filters')!;
+  typeContainer.innerHTML = '';
+  const types: [CalendarEventKind, string][] = [['deadline', 'Deadlines'], ['assignment', 'Assignments'], ['announcement', 'Announcements']];
+  types.forEach(([kind, label]) => typeContainer.appendChild(makeCalendarFilter(label, calendarEnabledKinds.has(kind), () => {
+    calendarEnabledKinds.has(kind) ? calendarEnabledKinds.delete(kind) : calendarEnabledKinds.add(kind);
+    persistCalendarFilters();
+    void renderCalendarPage();
+  })));
+  const courseContainer = document.getElementById('calendar-course-filters')!;
+  courseContainer.innerHTML = '';
+  [...availableCourses.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([courseId, name]) => {
+    const filter = makeCalendarFilter(name, calendarEnabledCourses.has(courseId), () => {
+      calendarEnabledCourses.has(courseId) ? calendarEnabledCourses.delete(courseId) : calendarEnabledCourses.add(courseId);
+      persistCalendarFilters();
+      void renderCalendarPage();
+    });
     const swatch = document.createElement('span');
-    swatch.className = 'calendar-legend-swatch';
+    swatch.className = 'swatch';
     swatch.style.background = courseAvatarColor(courseId);
-    item.append(swatch, document.createTextNode(courseName));
-    legend.appendChild(item);
+    filter.insertBefore(swatch, filter.lastElementChild);
+    courseContainer.appendChild(filter);
+  });
+}
+
+function makeCalendarFilter(label: string, checked: boolean, onChange: () => void): HTMLLabelElement {
+  const row = document.createElement('label');
+  row.className = 'filter-row';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = checked;
+  input.addEventListener('change', onChange);
+  const text = document.createElement('span');
+  text.textContent = label;
+  row.append(input, text);
+  return row;
+}
+
+function renderCalendarUpcomingList(events: CalendarEvent[]): void {
+  const container = document.getElementById('calendar-upcoming-list')!;
+  container.innerHTML = '';
+  const today = startOfDay(new Date());
+  const upcoming = events.filter((event) => event.date.getTime() >= today.getTime()).sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, 8);
+  if (!upcoming.length) {
+    container.innerHTML = '<p class="calendar-empty">Nothing upcoming.</p>';
+    return;
+  }
+  upcoming.forEach((event) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'upcoming-row';
+    const day = Math.round((event.date.getTime() - today.getTime()) / 86400000);
+    const label = day === 0 ? 'Today' : day === 1 ? 'Tomorrow' : event.date.toLocaleDateString(undefined, { weekday: 'short' });
+    const time = event.kind === 'announcement' ? 'Posted' : event.deadline?.due_at ? ` · ${formatDueTime(event.deadline.due_at)}` : '';
+    row.innerHTML = `<span class="up-day">${escapeHtml(label)}</span><span><span class="up-title">${escapeHtml(event.title)}</span><span class="up-course"><span class="swatch" style="background:${courseAvatarColor(event.courseId)}"></span><span>${escapeHtml(event.courseName)}${escapeHtml(time)}</span></span></span>`;
+    row.addEventListener('click', () => void openCalendarEvent(event));
+    container.appendChild(row);
+  });
+}
+
+async function openCalendarEvent(event: CalendarEvent): Promise<void> {
+  if (event.deadline) {
+    await openDashboardDeadline(event.deadline);
+    return;
+  }
+  const course = (await atlasApi.listCourses()).find((item) => item.id === event.courseId);
+  if (course) {
+    await selectCourse(course);
+    setCourseDetailTab('announcements');
   }
 }
 
 async function renderDashboardDeadlines(): Promise<void> {
   dashboardDeadlinesCache = await atlasApi.getUpcomingDeadlines();
-  renderDashboardDeadlineRows();
+  if (dashboardCourseFilterId !== null) {
+    dashboardDeadlinesCache = dashboardDeadlinesCache.filter((deadline) => deadline.course_id === dashboardCourseFilterId);
+  }
+  renderDashboardCompactDeadlineRows();
+}
+
+function renderDashboardCourseFilter(courses: CourseSummary[]): void {
+  const label = document.getElementById('dashboard-course-filter-label')!;
+  const menu = document.getElementById('dashboard-course-filter-menu')!;
+  const selectedCourse = courses.find((course) => course.id === dashboardCourseFilterId);
+  label.textContent = selectedCourse?.name ?? 'All courses';
+  menu.innerHTML = '';
+  for (const course of [{ id: null, name: 'All courses' }, ...courses]) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'dselect-option';
+    option.dataset.courseId = course.id === null ? '' : String(course.id);
+    option.textContent = course.name;
+    option.classList.toggle('selected', course.id === dashboardCourseFilterId);
+    menu.appendChild(option);
+  }
+}
+
+function renderDashboardCompactDeadlineRows(): void {
+  const list = document.getElementById('dashboard-deadlines')!;
+  list.innerHTML = '';
+
+  if (dashboardDeadlinesCache.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'Nothing upcoming.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const deadline of dashboardDeadlinesCache.slice(0, 5)) {
+    const li = document.createElement('li');
+    li.className = 'dashboard-compact-row';
+    const leading = document.createElement('span');
+    leading.className = 'dashboard-row-leading';
+    const title = document.createElement('span');
+    title.className = 'dashboard-row-title';
+    title.textContent = deadline.title;
+    const course = document.createElement('span');
+    course.className = 'dashboard-row-course';
+    const swatch = document.createElement('span');
+    swatch.className = 'dashboard-course-swatch';
+    swatch.style.backgroundColor = courseAvatarColor(deadline.course_id);
+    course.append(swatch, document.createTextNode(deadline.course_name));
+    const trailing = document.createElement('span');
+    trailing.className = 'dashboard-row-trailing';
+
+    if (deadline.due_at) {
+      const { year, month, day } = splitDueAt(deadline.due_at);
+      const date = new Date(year, month - 1, day);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const difference = Math.round((date.getTime() - today.getTime()) / 86400000);
+      leading.textContent = difference === 0 ? 'Today' : date.toLocaleDateString(undefined, { weekday: 'short' });
+      if (difference === 0) li.classList.add('is-today');
+      const time = deadline.due_at.match(/(?:T|\s)(\d{2}):(\d{2})/);
+      trailing.textContent = time ? `${time[1]}:${time[2]}` : '—';
+    } else {
+      leading.textContent = '—';
+      trailing.textContent = '—';
+    }
+
+    li.append(leading, title, course, trailing);
+    li.addEventListener('click', () => openDashboardDeadline(deadline));
+    li.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      showGoToMenu(event.clientX, event.clientY, () => goToDashboardDeadline(deadline));
+    });
+    list.appendChild(li);
+  }
 }
 
 function renderDashboardDeadlineRows(): void {
@@ -2359,9 +3066,12 @@ function renderDashboardDeadlineRows(): void {
 async function renderDashboardResources(): Promise<void> {
   const list = document.getElementById('dashboard-resources')!;
   const resources = await atlasApi.getRecentResources();
+  const visibleResources = dashboardCourseFilterId === null
+    ? resources
+    : resources.filter((resource) => resource.course_id === dashboardCourseFilterId);
   list.innerHTML = '';
 
-  if (resources.length === 0) {
+  if (visibleResources.length === 0) {
     const li = document.createElement('li');
     li.className = 'muted';
     li.textContent = 'No resources yet.';
@@ -2369,9 +3079,8 @@ async function renderDashboardResources(): Promise<void> {
     return;
   }
 
-  for (const resource of resources) {
-    const li = document.createElement('li');
-    li.appendChild(buildDashboardItemRows(resourceDisplayIcon(resource), resource.title, resource.course_name));
+  for (const resource of visibleResources) {
+    const li = makeDashboardListingRow(resource.title, resource.course_name, resource.course_id, relativeTime(resource.added_at));
     li.addEventListener('click', () => openDashboardResource(resource));
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -2381,10 +3090,147 @@ async function renderDashboardResources(): Promise<void> {
   }
 }
 
+function relativeTime(sqliteDatetime: string): string {
+  const date = new Date(sqliteDatetime.replace(' ', 'T') + 'Z');
+  const hours = Math.max(0, Math.round((Date.now() - date.getTime()) / 3600000));
+  if (hours < 1) return 'now';
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  return days < 7 ? `${days}d` : `${Math.round(days / 7)}w`;
+}
+
+function makeDashboardListingRow(title: string, courseName: string, courseId: number, age: string): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'dashboard-compact-row dashboard-listing-row';
+  const ageEl = document.createElement('span');
+  ageEl.className = 'dashboard-row-leading';
+  ageEl.textContent = age;
+  const titleEl = document.createElement('span');
+  titleEl.className = 'dashboard-row-title';
+  titleEl.textContent = title;
+  const courseEl = document.createElement('span');
+  courseEl.className = 'dashboard-row-course';
+  const swatch = document.createElement('span');
+  swatch.className = 'dashboard-course-swatch';
+  swatch.style.backgroundColor = courseAvatarColor(courseId);
+  courseEl.append(swatch, document.createTextNode(courseName));
+  li.append(ageEl, titleEl, courseEl);
+  return li;
+}
+
+async function renderDashboardAnnouncements(): Promise<void> {
+  const list = document.getElementById('dashboard-announcements')!;
+  const markAllButton = document.getElementById('dashboard-mark-all-updates') as HTMLButtonElement;
+  const updates = await atlasApi.getNewClassroomItems(dashboardCourseFilterId);
+  const classroomUpdates = updates.filter((update) => update.item_type !== 'pinned_announcement');
+  list.innerHTML = '';
+  markAllButton.hidden = classroomUpdates.length === 0;
+
+  markAllButton.onclick = async () => {
+    await atlasApi.clearAllNewClassroomItems(dashboardCourseFilterId);
+    await renderDashboardAnnouncements();
+  };
+
+  if (updates.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.textContent = 'No new Classroom updates.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const update of updates.slice(0, 5)) {
+    const li = document.createElement('li');
+    const isPinned = update.item_type === 'pinned_announcement';
+    li.className = `dashboard-compact-row dashboard-listing-row dashboard-update-row${isPinned ? ' is-pinned' : ' is-unread'}`;
+    const unread = document.createElement('span');
+    unread.className = `dashboard-update-unread${isPinned ? ' is-pinned' : ''}`;
+    unread.setAttribute('aria-label', isPinned ? 'Important' : 'New');
+    const title = document.createElement('span');
+    title.className = 'dashboard-row-title dashboard-update-title';
+    const titleText = document.createElement('span');
+    titleText.className = 'dashboard-update-title-text';
+    titleText.textContent = update.title;
+    const kind = document.createElement('span');
+    kind.className = 'dashboard-update-kind';
+    kind.textContent = update.item_type === 'assignment' ? 'Assignment' : isPinned ? 'Important' : 'Announcement';
+    title.append(titleText, kind);
+    const course = document.createElement('span');
+    course.className = 'dashboard-row-course';
+    const swatch = document.createElement('span');
+    swatch.className = 'dashboard-course-swatch';
+    swatch.style.backgroundColor = courseAvatarColor(update.course_id);
+    course.append(swatch, document.createTextNode(update.course_name));
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'dashboard-update-clear';
+    clear.setAttribute('aria-label', isPinned ? `Remove ${update.title} from Dashboard` : `Mark ${update.title} as read`);
+    clear.title = isPinned ? 'Remove from Dashboard' : 'Mark as read';
+    clear.innerHTML = isPinned
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';
+    clear.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (update.item_type === 'pinned_announcement') await atlasApi.unpinDashboardAnnouncement(update.id);
+      else await atlasApi.clearNewClassroomItem(update.item_type, update.id);
+      await renderDashboardAnnouncements();
+    });
+    li.append(unread, title, course, clear);
+    li.addEventListener('click', () => void openDashboardClassroomUpdate(update));
+    list.appendChild(li);
+  }
+}
+
+async function openDashboardClassroomUpdate(update: DashboardClassroomUpdate): Promise<void> {
+  const content = await atlasApi.getClassroomCourseContent(update.course_id);
+  if (update.item_type === 'announcement' || update.item_type === 'pinned_announcement') {
+    const announcement = content.announcements.find((item) => item.id === update.id);
+    if (announcement) openClassroomItemDetail('Announcement', announcement.title, formatIsoTimestamp(announcement.posted_at), announcement.body, announcement.links);
+  } else {
+    const assignment = content.assignments.find((item) => item.id === update.id);
+    if (assignment) await openAssignmentDetail(assignment, update.course_id);
+  }
+}
+
+async function openDashboardImportantAnnouncementForm(): Promise<void> {
+  const announcements = await atlasApi.listAllAnnouncementsWithCourse();
+  const available = announcements.filter((announcement) => !announcement.dashboard_pinned);
+  const list = document.getElementById('dashboard-important-list')!;
+  list.innerHTML = '';
+  if (available.length === 0) {
+    list.innerHTML = '<li class="muted">No unpinned announcements.</li>';
+  } else {
+    for (const announcement of available) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'dashboard-important-item';
+      row.innerHTML = `<span class="dashboard-important-item-title">${escapeHtml(announcement.title)}</span><span class="dashboard-important-item-course"><span class="dashboard-course-swatch" style="background:${courseAvatarColor(announcement.course_id)}"></span>${escapeHtml(announcement.course_name)}</span>`;
+      row.addEventListener('click', async () => {
+        await atlasApi.pinDashboardAnnouncement(announcement.id);
+        closeDashboardImportantAnnouncementForm();
+        await renderDashboardAnnouncements();
+      });
+      list.appendChild(row);
+    }
+  }
+  (document.getElementById('dashboard-important-search') as HTMLInputElement).value = '';
+  document.getElementById('dashboard-important-overlay')!.hidden = false;
+  (document.getElementById('dashboard-important-search') as HTMLInputElement).focus();
+}
+
+function closeDashboardImportantAnnouncementForm(): void {
+  document.getElementById('dashboard-important-overlay')!.hidden = true;
+}
+
 async function renderDashboardActivity(): Promise<void> {
   const list = document.getElementById('dashboard-activity')!;
-  const activity = await atlasApi.getRecentActivity();
-  const todayItems = activity.filter((item) => isTodayLocal(item.timestamp));
+  const notes = await atlasApi.listAllNotes();
+  const todayItems = notes.filter((note): note is NoteWithCourse & { course_id: number } => note.course_id !== null)
+    .filter((note) => dashboardCourseFilterId === null || note.course_id === dashboardCourseFilterId).slice(0, 5).map((note) => ({
+    ...note,
+    timestamp: note.updated_at,
+    entity_type: 'note' as const,
+  }));
   list.innerHTML = '';
 
   if (todayItems.length === 0) {
@@ -2397,6 +3243,14 @@ async function renderDashboardActivity(): Promise<void> {
 
   for (const item of todayItems) {
     const li = document.createElement('li');
+    const compact = makeDashboardListingRow(item.title, item.course_name, item.course_id, relativeTime(item.timestamp));
+    compact.addEventListener('click', () => openDashboardActivityItem(item));
+    compact.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showGoToMenu(e.clientX, e.clientY, () => goToDashboardActivityItem(item));
+    });
+    list.appendChild(compact);
+    continue;
     const timeText = new Date(item.timestamp.replace(' ', 'T') + 'Z').toLocaleTimeString(undefined, {
       hour: 'numeric',
       minute: '2-digit',
@@ -2491,6 +3345,7 @@ async function goToDashboardDeadline(deadline: DashboardDeadline): Promise<void>
 
 async function goToDashboardResource(resource: DashboardResource): Promise<void> {
   resourcesCourseFilterId = resource.course_id;
+  resourcesSourceFilter = '';
   showPage('resources');
   await openPreview(resource);
 }
@@ -2516,7 +3371,6 @@ let currentNoteId: number | null = null;
 // Tracks whether the currently-open note has a course yet — drives the
 // "Assign to course" button's visibility (see openNoteEditor). NULL means
 // unsorted (a quick-capture note, createUnsortedNote in main.ts).
-let currentNoteCourseId: number | null = null;
 let noteSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let noteTitleBeforeEdit = '';
 // The note's markdown right after it finished opening (post-Crepe-mount, not
@@ -2708,14 +3562,20 @@ async function openNoteEditor(note: Note): Promise<void> {
   const statusEl = document.getElementById('note-save-status')!;
 
   currentNoteId = note.id;
-  currentNoteCourseId = note.course_id;
   // Reset here, not just at the two creation call sites — opening any other
   // note (including navigating straight from one fresh note to another)
   // must never inherit a stale "discard if untouched" flag from whatever
   // was open before.
   currentNoteIsFreshCreation = false;
   titleInput.value = note.title;
-  statusEl.textContent = '';
+  const courses = await atlasApi.listCourses();
+  const course = courses.find((item) => item.id === note.course_id);
+  const courseName = course?.name ?? 'Unsorted';
+  document.getElementById('note-overlay-course')!.textContent = courseName;
+  document.getElementById('note-overlay-origin')!.textContent = note.generated_by_agent ? 'Agent-written' : 'Not agent-written';
+  const swatch = document.getElementById('note-overlay-course-swatch')!;
+  swatch.style.background = course ? courseAvatarColor(course.id) : 'var(--text-faint)';
+  statusEl.textContent = `Saved ${formatRelativeTime(note.updated_at.replace(' ', 'T') + 'Z')}`;
   overlay.hidden = false;
 
   // Only an unsorted (quick-capture) note needs this — a note already in a
@@ -2815,17 +3675,62 @@ function toggleNoteTrueFullscreen(): void {
   button.setAttribute('aria-label', button.title);
 }
 
+async function renderPdfInto(container: HTMLElement, data: Uint8Array): Promise<void> {
+  container.classList.add('pdf-preview-body');
+  container.innerHTML = '<p class="pdf-preview-status muted">Loading PDF…</p>';
+
+  try {
+    const pdf = await getDocument({ data: new Uint8Array(data) }).promise;
+    const pages = document.createElement('div');
+    pages.className = 'pdf-preview-pages';
+    const availableWidth = Math.max(320, container.clientWidth - 2 * 26);
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(1.35, availableWidth / baseViewport.width);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not create a PDF canvas.');
+
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.ceil(viewport.width * pixelRatio);
+      canvas.height = Math.ceil(viewport.height * pixelRatio);
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+      canvas.setAttribute('aria-label', `PDF page ${pageNumber} of ${pdf.numPages}`);
+
+      const pageSurface = document.createElement('div');
+      pageSurface.className = 'pdf-preview-page';
+      pageSurface.appendChild(canvas);
+      pages.appendChild(pageSurface);
+
+      await page.render({
+        canvas,
+        canvasContext: context,
+        viewport,
+        transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
+      }).promise;
+    }
+
+    container.replaceChildren(pages);
+  } catch (error) {
+    console.error('PDF preview render failed:', error);
+    container.innerHTML = '<p class="muted pdf-preview-status">Could not render this PDF in Atlas. Use Open in browser for the original file.</p>';
+  }
+}
+
 // Renders a scan preview (image or PDF) into a plain container — same two
 // branches openPreview() has for resources, since a handwritten note's scan
 // is just a file on disk with no different rendering needs. Only image/pdf
 // are possible here (see SCAN_EXTENSIONS in main.ts), so the html/text/
 // unsupported branches openPreview() also handles don't apply.
-function renderScanInto(container: HTMLElement, preview: Preview): void {
+async function renderScanInto(container: HTMLElement, preview: Preview): Promise<void> {
   container.innerHTML = '';
+  container.classList.remove('pdf-preview-body');
   if (preview.type === 'pdf') {
-    const iframe = document.createElement('iframe');
-    iframe.src = preview.url;
-    container.appendChild(iframe);
+    await renderPdfInto(container, preview.data);
   } else if (preview.type === 'image') {
     const img = document.createElement('img');
     img.src = preview.url;
@@ -2867,7 +3772,7 @@ async function showNoteScanPanel(noteId: number): Promise<void> {
   editorRoot.hidden = true;
   updateScanToggleLabel(true);
   const preview = await atlasApi.getNoteScanPreview(noteId);
-  if (preview) renderScanInto(panel, preview);
+  if (preview) await renderScanInto(panel, preview);
 }
 
 async function toggleNoteScanPanel(): Promise<void> {
@@ -2994,7 +3899,7 @@ function openCourseEditModal(course: Course): void {
   const nameInput = document.getElementById('course-edit-name') as HTMLInputElement;
   nameInput.value = course.name;
   (document.getElementById('course-edit-code') as HTMLInputElement).value = course.code ?? '';
-  (document.getElementById('course-edit-term') as HTMLSelectElement).value = course.term ?? '';
+  (document.getElementById('course-edit-term') as HTMLInputElement).value = course.term ?? '';
   document.getElementById('course-edit-overlay')!.hidden = false;
   nameInput.focus();
 }
@@ -3008,6 +3913,150 @@ async function openCourseEditModalById(courseId: number): Promise<void> {
 function closeCourseEditModal(): void {
   editingCourseId = null;
   document.getElementById('course-edit-overlay')!.hidden = true;
+}
+
+const READINESS_STATUS_LABELS: Record<CourseReadinessStatus, string> = {
+  ready: 'Readable',
+  needs_ocr: 'Needs OCR',
+  pending: 'Pending',
+  failed: 'Failed',
+  unsupported: 'Not text-extracted',
+  external: 'External',
+};
+
+function readinessSourceLabel(source: string | undefined): string {
+  if (source === 'classroom') return 'Classroom';
+  if (source === 'drive') return 'Drive';
+  if (source === 'local_folder') return 'Watched folder';
+  return 'Local';
+}
+
+function readinessKindLabel(kind: string | undefined): string {
+  if (!kind) return 'Item';
+  return kind === 'pptx' ? 'PPTX' : kind.toUpperCase();
+}
+
+async function renderCourseReadiness(courseId: number): Promise<void> {
+  const [readiness, resources, notes] = await Promise.all([
+    atlasApi.getCourseReadiness(courseId),
+    atlasApi.listResources(courseId),
+    atlasApi.listNotes(courseId),
+  ]);
+  if (!selectedCourse || selectedCourse.id !== courseId) return;
+
+  const summary = document.getElementById('course-readiness-summary')!;
+  summary.textContent = readiness.total
+    ? `${readiness.readable} of ${readiness.total} course materials have readable text for the agent.`
+    : 'No course materials have been added yet.';
+
+  const metrics = document.getElementById('course-readiness-metrics')!;
+  const otherCount = readiness.counts.unsupported + readiness.counts.external;
+  const metricDefinitions: Array<{ status: CourseReadinessStatus; label: string; count: number }> = [
+    { status: 'ready', label: 'Readable', count: readiness.counts.ready },
+    { status: 'needs_ocr', label: 'Needs OCR', count: readiness.counts.needs_ocr },
+    { status: 'pending', label: 'Pending', count: readiness.counts.pending },
+    { status: 'failed', label: 'Failed', count: readiness.counts.failed },
+    { status: 'unsupported', label: 'Other', count: otherCount },
+  ];
+  metrics.innerHTML = '';
+  for (const metric of metricDefinitions) {
+    const item = document.createElement('div');
+    item.className = `course-readiness-metric is-${metric.status}`;
+    item.innerHTML = `<span class="course-readiness-metric-count"></span><span class="course-readiness-metric-label"></span>`;
+    item.querySelector('.course-readiness-metric-count')!.textContent = String(metric.count);
+    item.querySelector('.course-readiness-metric-label')!.textContent = metric.label;
+    metrics.appendChild(item);
+  }
+
+  const issueList = document.getElementById('course-readiness-issues')!;
+  const empty = document.getElementById('course-readiness-empty')!;
+  issueList.innerHTML = '';
+  if (readiness.issues.length === 0) {
+    empty.hidden = false;
+    empty.textContent = readiness.total ? 'Everything in this course is currently readable by the agent.' : 'No course materials to check yet.';
+    return;
+  }
+  empty.hidden = true;
+
+  const resourceById = new Map(resources.map((resource) => [resource.id, resource]));
+  const noteById = new Map(notes.map((note) => [note.id, note]));
+  for (const issue of readiness.issues) {
+    const row = document.createElement('div');
+    row.className = 'course-readiness-item';
+
+    const indicator = document.createElement('span');
+    indicator.className = `course-readiness-indicator is-${issue.status}`;
+    indicator.setAttribute('aria-hidden', 'true');
+
+    const content = document.createElement('div');
+    content.className = 'course-readiness-item-content';
+    const canOpenReadinessTarget = (issue.type === 'resource' && !['failed', 'pending'].includes(issue.status)) || issue.type === 'note';
+    const title = document.createElement(canOpenReadinessTarget ? 'button' : 'strong');
+    title.className = canOpenReadinessTarget
+      ? 'course-readiness-item-title course-readiness-item-title-action'
+      : 'course-readiness-item-title';
+    title.textContent = issue.title;
+    const meta = document.createElement('span');
+    meta.className = 'course-readiness-item-meta';
+    meta.textContent = `${issue.type === 'note' ? 'Note' : readinessKindLabel(issue.kind)} · ${readinessSourceLabel(issue.source)} · ${READINESS_STATUS_LABELS[issue.status]}`;
+    const detail = document.createElement('span');
+    detail.className = 'course-readiness-item-detail';
+    detail.textContent = issue.detail;
+    content.append(title, meta, detail);
+
+    if (title instanceof HTMLButtonElement) {
+      title.type = 'button';
+      title.addEventListener('click', () => {
+        if (issue.type === 'resource') {
+          const resource = resourceById.get(issue.id);
+          if (resource) void openPreview(resource);
+        } else {
+          const note = noteById.get(issue.id);
+          if (note) void openNoteEditor(note);
+        }
+      });
+    }
+
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'link-button course-readiness-action';
+    if (issue.status === 'pending') {
+      action.hidden = true;
+    } else if (issue.type === 'resource' && issue.status === 'failed' && issue.canRetry) {
+      action.textContent = 'Retry extraction';
+      action.addEventListener('click', async () => {
+        action.disabled = true;
+        action.textContent = 'Retrying…';
+        const result = await atlasApi.retryResourceExtraction(issue.id);
+        if (!result.ok) {
+          action.disabled = false;
+          action.textContent = 'Retry extraction';
+          detail.textContent = result.error;
+          return;
+        }
+        await renderCourseReadiness(courseId);
+      });
+    } else if (issue.type === 'resource') {
+      action.textContent = issue.status === 'external'
+        ? 'Open link'
+        : issue.status === 'needs_ocr'
+          ? 'Open to run OCR'
+          : 'Open resource';
+      action.addEventListener('click', () => {
+        const resource = resourceById.get(issue.id);
+        if (resource) void openPreview(resource);
+      });
+    } else {
+      action.textContent = 'Open note';
+      action.addEventListener('click', () => {
+        const note = noteById.get(issue.id);
+        if (note) void openNoteEditor(note);
+      });
+    }
+
+    row.append(indicator, content, action);
+    issueList.appendChild(row);
+  }
 }
 
 // Phase 4 Part E fallback (phase4-spec.md §7) — for pasting into an AI tool
@@ -3025,7 +4074,10 @@ async function exportSelectedCourseContext(): Promise<void> {
 
 async function toggleSelectedCourseArchived(): Promise<void> {
   if (!selectedCourse) return;
+  const action = selectedCourse.archived === 1 ? 'Unarchive' : 'Archive';
+  if (!(await showConfirm(`${action} "${selectedCourse.name}"? You can change this again later.`))) return;
   const updated = await atlasApi.setCourseArchived(selectedCourse.id, selectedCourse.archived !== 1);
+  invalidateCommandPaletteData();
   // Archiving the course currently open removes it from the active list (or
   // vice versa for unarchiving) — going back to the grid avoids leaving the
   // user stranded on a detail page for a course that no longer matches
@@ -3066,6 +4118,8 @@ async function selectCourse(course: Course): Promise<void> {
   document.getElementById('course-detail-note-count')!.textContent = String(summary?.note_count ?? 0);
 
   await renderCourseDetailPreviews(course.id);
+  await renderCourseReadiness(course.id);
+  await renderCourseDetailUpNext(course.id);
   await renderDeadlines();
   await renderWatchedFolders();
   await renderCourseClassroomSection(course);
@@ -3201,8 +4255,8 @@ function renderClassroomLinkList<T>(
       for (const link of row.links) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'link-button';
-        button.textContent = `${resourceDisplayIcon({ kind: 'link', title: link.title })} ${link.title}`;
+        button.className = 'classroom-attachment-chip';
+        button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg><span>${escapeHtml(link.title)}</span>`;
         // Stops the click from also bubbling up to the row's own click
         // handler (which would open the detail overlay right behind the
         // link the user actually meant to open).
@@ -3242,8 +4296,8 @@ function openClassroomItemDetail(
   for (const link of links) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'link-button';
-    button.textContent = `${resourceDisplayIcon({ kind: 'link', title: link.title })} ${link.title}`;
+    button.className = 'classroom-attachment-chip';
+    button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg><span>${escapeHtml(link.title)}</span>`;
     button.addEventListener('click', () => void atlasApi.openExternalUrl(link.file_path));
     linksDiv.appendChild(button);
   }
@@ -3436,12 +4490,20 @@ function setImageZoom(zoom: number): void {
 // A global overlay (near the end of <body>), not scoped to the Resources
 // page — opening one never navigates away from whatever page is currently
 // showing (Dashboard, a course detail view, etc.), it just layers on top.
-// Only these kinds have anything Google Drive's viewer offers that the
-// in-app preview can't (real slide/document layout) — PDFs/images already
-// render natively, so the button would just be clutter there.
-const OFFICE_PREVIEW_KINDS = new Set(['pptx', 'docx', 'xlsx']);
+// These local file kinds can be copied to Atlas's Drive preview folder. A
+// Classroom/link resource is handled separately by opening its URL directly.
+const DRIVE_PREVIEW_KINDS = new Set(['pdf', 'image', 'pptx', 'docx', 'xlsx']);
 
 async function openPreview(resource: Resource): Promise<void> {
+  // Classroom attachments that are links (including Drive files, YouTube,
+  // Forms, and ordinary URLs) already have their destination in file_path.
+  // Send them straight to the browser instead of opening a dead-end preview
+  // that only repeats the same Open link action.
+  if (resource.kind === 'link') {
+    await atlasApi.openExternalUrl(resource.file_path);
+    return;
+  }
+
   const overlay = document.getElementById('preview-overlay')!;
   const title = document.getElementById('preview-title')!;
   const note = document.getElementById('preview-note') as HTMLParagraphElement;
@@ -3474,17 +4536,16 @@ async function openPreview(resource: Resource): Promise<void> {
       : '';
   discardResourceOcr();
 
-  driveButton.hidden = !OFFICE_PREVIEW_KINDS.has(resource.kind);
+  driveButton.hidden = !DRIVE_PREVIEW_KINDS.has(resource.kind);
   driveButton.disabled = false;
   document.getElementById('preview-drive-status')!.textContent = '';
 
   const preview = await atlasApi.getPreview(resource.id);
   body.innerHTML = '';
+  body.classList.remove('pdf-preview-body');
 
   if (preview.type === 'pdf') {
-    const iframe = document.createElement('iframe');
-    iframe.src = preview.url;
-    body.appendChild(iframe);
+    await renderPdfInto(body, preview.data);
   } else if (preview.type === 'image') {
     const img = document.createElement('img');
     img.className = 'preview-image';
@@ -3508,13 +4569,12 @@ async function openPreview(resource: Resource): Promise<void> {
     pre.textContent = preview.text;
     body.appendChild(pre);
   } else if (preview.type === 'link') {
-    // No in-app rendering for an external link/Drive-file attachment —
-    // opening it means handing off to the real browser/Drive, not showing
-    // it inside Atlas's preview modal.
+    // Defensive fallback for a link returned by an older main-process build.
     const p = document.createElement('p');
     p.className = 'muted';
     p.textContent = 'This is a link to an external file.';
-    body.appendChild(p);
+    const row = document.createElement('div');
+    row.id = 'preview-link-row';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'link-button';
@@ -3522,7 +4582,8 @@ async function openPreview(resource: Resource): Promise<void> {
     button.addEventListener('click', () => {
       void atlasApi.openExternalUrl(preview.url);
     });
-    body.appendChild(button);
+    row.append(p, button);
+    body.appendChild(row);
     body.classList.add('centered');
   } else if (preview.type === 'unsupported') {
     const p = document.createElement('p');
@@ -3542,6 +4603,7 @@ function closePreview(): void {
   fullscreenButton.title = 'Fullscreen';
   fullscreenButton.setAttribute('aria-label', 'Fullscreen');
   body.innerHTML = ''; // stop any iframe/media activity
+  body.classList.remove('pdf-preview-body');
   discardResourceOcr();
   currentPreviewResourceId = null;
 }
@@ -3638,9 +4700,10 @@ let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 // having to re-read the DOM to figure out which result is "current."
 let currentSearchResults: SearchResult[] = [];
 let activeSearchIndex = -1;
+let searchCourseFilterId: number | null = null;
 
 function updateActiveSearchResult(): void {
-  const items = document.querySelectorAll('#search-results li');
+  const items = document.querySelectorAll<HTMLElement>('#search-results [data-search-index]');
   items.forEach((item, index) => {
     const isActive = index === activeSearchIndex;
     item.classList.toggle('active', isActive);
@@ -3659,6 +4722,9 @@ async function runSearch(query: string): Promise<void> {
   }
 
   const results = await atlasApi.search(query);
+  renderSearchDropdown(resultsList, results, query);
+  resultsList.hidden = false;
+  return;
   currentSearchResults = results;
   resultsList.innerHTML = '';
 
@@ -3698,6 +4764,160 @@ async function runSearch(query: string): Promise<void> {
     });
   }
   resultsList.hidden = false;
+}
+
+const SEARCH_ICON = {
+  course: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>',
+  file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
+  classroom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></svg>',
+};
+
+function highlightSearchTitle(text: string, query: string): string {
+  const words = query.trim().split(/\s+/).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!words.length) return escapeHtml(text);
+  const escapedWords = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return escapeHtml(text).replace(new RegExp(`(${escapedWords})`, 'gi'), '<mark>$1</mark>');
+}
+
+function searchBadge(result: SearchResult): { label: string; kind: string; icon: string } {
+  if (result.entityType === 'course') return { label: 'Course', kind: 'course', icon: SEARCH_ICON.course };
+  if (result.entityType === 'announcement' || result.entityType === 'assignment')
+    return { label: 'Classroom', kind: 'classroom', icon: SEARCH_ICON.classroom };
+  if (result.entityType === 'note') return { label: 'Note', kind: 'note', icon: SEARCH_ICON.file };
+  if (result.source === 'drive') return { label: 'Drive', kind: 'drive', icon: SEARCH_ICON.file };
+  return { label: 'File', kind: 'file', icon: SEARCH_ICON.file };
+}
+
+function courseSwatchColor(courseId: number): string {
+  return ['#3b82f6', '#8b5cf6', '#f59e0b', '#14b88a', '#ec4899'][Math.abs(courseId) % 5];
+}
+
+function appendSearchRow(
+  section: HTMLElement,
+  result: SearchResult,
+  query: string,
+  index: number,
+  detail = '',
+  titleOverride?: string
+): void {
+  const badge = searchBadge(result);
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'result-row';
+  row.dataset.searchIndex = String(index);
+  row.innerHTML = `<span class="r-icon">${badge.icon}</span><span class="r-main"><span class="r-title">${highlightSearchTitle(titleOverride ?? result.title, query)}</span><span class="r-sub"><span class="swatch" style="background:${courseSwatchColor(result.courseId)}"></span>${escapeHtml(result.courseName)}${detail ? ` · ${escapeHtml(detail)}` : ''}</span></span><span class="source-badge ${badge.kind}">${badge.label}</span>`;
+  row.addEventListener('click', () => void openSearchResult(result));
+  row.addEventListener('mouseenter', () => {
+    activeSearchIndex = index;
+    updateActiveSearchResult();
+  });
+  section.appendChild(row);
+}
+
+function appendPageHits(section: HTMLElement, parts: SearchResult[]): void {
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'page-hits-toggle';
+  toggle.textContent = `▸ ${parts.length} matching page${parts.length === 1 ? '' : 's'}`;
+  const hits = document.createElement('div');
+  hits.className = 'page-hits';
+  for (const part of parts) {
+    const hit = document.createElement('button');
+    hit.type = 'button';
+    hit.className = 'page-hit-row';
+    hit.innerHTML = `<span class="p-num">${escapeHtml(part.title)}</span><span>${highlightSnippet(part.snippet)}</span>`;
+    hit.addEventListener('click', () => void openSearchResult(part));
+    hits.appendChild(hit);
+  }
+  toggle.addEventListener('click', () => {
+    const expanded = hits.classList.toggle('expanded');
+    toggle.textContent = `${expanded ? '▾' : '▸'} ${parts.length} matching page${parts.length === 1 ? '' : 's'}`;
+  });
+  section.append(toggle, hits);
+}
+
+function renderSearchDropdown(resultsList: HTMLElement, allResults: SearchResult[], query: string): void {
+  resultsList.innerHTML = '';
+  const courses = new Map<number, string>();
+  allResults.forEach((result) => {
+    if (result.courseId && result.courseName) courses.set(result.courseId, result.courseName);
+    if (result.entityType === 'course') courses.set(result.entityId, result.title);
+  });
+  if (searchCourseFilterId !== null && !courses.has(searchCourseFilterId)) searchCourseFilterId = null;
+
+  const filters = document.createElement('li');
+  filters.className = 'search-filter-row';
+  const addFilter = (label: string, courseId: number | null): void => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'filter-chip';
+    chip.classList.toggle('active', searchCourseFilterId === courseId);
+    chip.textContent = label;
+    chip.title = label;
+    chip.addEventListener('click', (event) => {
+      // Re-rendering replaces the clicked chip synchronously. Without
+      // stopping this event, the later document click-away handler sees a
+      // detached target and closes the search overlay right after filtering.
+      event.stopPropagation();
+      searchCourseFilterId = courseId;
+      activeSearchIndex = -1;
+      renderSearchDropdown(resultsList, allResults, query);
+    });
+    filters.appendChild(chip);
+  };
+  addFilter('All courses', null);
+  courses.forEach((name, id) => addFilter(name, id));
+  if (courses.size) resultsList.appendChild(filters);
+
+  const results = searchCourseFilterId === null ? allResults : allResults.filter((r) => r.courseId === searchCourseFilterId || (r.entityType === 'course' && r.entityId === searchCourseFilterId));
+  if (!results.length) {
+    const empty = document.createElement('li');
+    empty.className = 'result-empty-hint';
+    empty.textContent = 'No matches in this course';
+    resultsList.appendChild(empty);
+    currentSearchResults = [];
+    return;
+  }
+
+  const grouped = {
+    Courses: results.filter((r) => r.searchSection === 'courses'),
+    Names: results.filter((r) => r.searchSection === 'names'),
+    Content: results.filter((r) => r.searchSection === 'content'),
+    Classroom: results.filter((r) => r.searchSection === 'classroom'),
+  };
+  const primary: SearchResult[] = [];
+  Object.entries(grouped).forEach(([heading, sectionResults]) => {
+    if (!sectionResults.length) return;
+    const section = document.createElement('li');
+    section.className = 'result-section';
+    const head = document.createElement('div');
+    head.className = 'result-section-head';
+    head.textContent = heading;
+    section.appendChild(head);
+    if (heading === 'Content') {
+      const documentGroups = new Map<number, SearchResult[]>();
+      sectionResults.filter((r) => r.entityType === 'document_part').forEach((part) => {
+        if (part.resourceId !== null) documentGroups.set(part.resourceId, [...(documentGroups.get(part.resourceId) ?? []), part]);
+      });
+      sectionResults.filter((r) => r.entityType !== 'document_part').forEach((result) => {
+        const index = primary.push(result) - 1;
+        appendSearchRow(section, result, query, index, result.snippet ? 'content match' : '');
+      });
+      documentGroups.forEach((parts) => {
+        const representative = parts[0];
+        const index = primary.push(representative) - 1;
+        appendSearchRow(section, representative, query, index, `${parts.length} page${parts.length === 1 ? '' : 's'} match`, representative.parentTitle ?? representative.title);
+        appendPageHits(section, parts);
+      });
+    } else {
+      sectionResults.forEach((result) => {
+        const index = primary.push(result) - 1;
+        appendSearchRow(section, result, query, index, result.entityType === 'assignment' ? 'Assignment' : result.entityType === 'announcement' ? 'Announcement' : '');
+      });
+    }
+    resultsList.appendChild(section);
+  });
+  currentSearchResults = primary;
 }
 
 async function openSearchResult(result: SearchResult): Promise<void> {
@@ -3810,28 +5030,34 @@ async function openDeadlineViewer(deadline: Deadline): Promise<void> {
   currentViewingDeadline = deadline;
 
   document.getElementById('deadline-view-title')!.textContent = deadline.title;
-  document.getElementById('deadline-view-kind')!.textContent =
-    DEADLINE_KIND_LABEL[deadline.kind] ?? deadline.kind;
+  document.getElementById('deadline-view-course')!.textContent = selectedCourse?.name ?? '';
   document.getElementById('deadline-view-due')!.textContent = formatDueDate(deadline.due_at);
+  document.getElementById('deadline-view-status')!.textContent = deadline.local_overrides ? 'Edited by you' : 'Unchanged';
+  document.getElementById('deadline-view-source')!.textContent = deadline.source === 'classroom' ? 'Google Classroom' : 'Manual';
 
   // Conflict handling (open-questions.md #3) — both notices are mutually
   // independent (a deadline can be both locally overridden and removed at
   // the source, e.g. edited once, then the professor deleted the
   // assignment), so they're shown/hidden separately rather than as one
   // combined state.
-  document.getElementById('deadline-view-removed-notice')!.hidden = deadline.classroom_removed !== 1;
+  const isClassroomDeadline = deadline.source === 'classroom' && Boolean(deadline.classroom_coursework_id);
+  const isRemovedFromClassroom = isClassroomDeadline && deadline.classroom_removed === 1;
+  document.getElementById('deadline-view-removed-notice')!.hidden = !isRemovedFromClassroom;
 
   const overrides = (deadline.local_overrides ?? '').split(',').filter(Boolean);
   const overrideNotice = document.getElementById('deadline-view-override-notice')!;
-  if (overrides.length > 0) {
+  const canResetToClassroom = isClassroomDeadline && !isRemovedFromClassroom && overrides.length > 0;
+  if (canResetToClassroom) {
     const fieldLabels: Record<string, string> = { title: 'Title', due_at: 'Due date' };
     document.getElementById('deadline-view-override-text')!.textContent =
       `You've edited: ${overrides.map((f) => fieldLabels[f] ?? f).join(', ')} — Classroom's own updates to ${
         overrides.length > 1 ? 'these' : 'this'
       } won't overwrite your changes.`;
     overrideNotice.hidden = false;
+    document.getElementById('deadline-reset-override-button')!.hidden = false;
   } else {
     overrideNotice.hidden = true;
+    document.getElementById('deadline-reset-override-button')!.hidden = true;
   }
 
   const descriptionEl = document.getElementById('deadline-view-description')!;
@@ -3865,19 +5091,72 @@ async function resetCurrentDeadlineOverrides(): Promise<void> {
 // separate from the native <input type="date">'s own yyyy-mm-dd value so
 // both entry methods (typing, or the picker button) can drive the same
 // field without fighting each other's format.
-function typedDateToIso(text: string): string | null {
-  const match = text.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (!match) return null;
-  const [, dd, mm, yyyy] = match;
-  const month = Number(mm);
-  const day = Number(dd);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+const deadlineKindLabels: Record<string, string> = {
+  assignment: 'Assignment', reading: 'Reading', quiz: 'Quiz', lab: 'Lab', project: 'Project', exam: 'Exam', manual: 'Other'
+};
+
+function formatDeadlineDueLabel(dateText: string, timeText: string): string {
+  return dateText ? `${dateText}${timeText ? ` · ${timeText}` : ''}` : 'Set date and time';
 }
 
-function isoDateToTyped(iso: string): string {
-  const [year, month, day] = iso.split('-');
-  return `${day}-${month}-${year}`;
+async function renderCourseDetailUpNext(courseId: number): Promise<void> {
+  const list = document.getElementById('course-detail-up-next')!;
+  const deadlines = (await atlasApi.listDeadlines(courseId))
+    .filter(isCurrentOrFutureDeadline)
+    .sort((a, b) => (a.due_at ?? '').localeCompare(b.due_at ?? ''))
+    .slice(0, COURSE_DETAIL_PREVIEW_LIMIT);
+  list.innerHTML = '';
+  if (deadlines.length === 0) {
+    const item = document.createElement('li');
+    item.className = 'muted';
+    item.textContent = 'No upcoming deadlines.';
+    list.appendChild(item);
+    return;
+  }
+  for (const deadline of deadlines) {
+    const item = document.createElement('li');
+    item.className = 'course-detail-deadline-row';
+    const title = document.createElement('span');
+    title.textContent = deadline.title;
+    const due = document.createElement('span');
+    due.textContent = formatDueDate(deadline.due_at);
+    item.append(title, due);
+    item.addEventListener('click', () => void openDeadlineViewer(deadline));
+    list.appendChild(item);
+  }
+}
+
+function parseDeadlineDue(dateText: string, timeText: string): { dueAt: string | null; error: string | null } {
+  const date = dateText.trim();
+  const time = timeText.trim();
+  if (!date && !time) return { dueAt: null, error: null };
+  const match = date.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return { dueAt: null, error: 'Use DD-MM-YYYY for the date.' };
+  const [, dayText, monthText, yearText] = match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
+    return { dueAt: null, error: 'Enter a real calendar date.' };
+  }
+  if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { dueAt: null, error: 'Use HH:MM for the time.' };
+  const isoDate = `${yearText}-${monthText}-${dayText}`;
+  return { dueAt: time ? `${isoDate}T${time}` : isoDate, error: null };
+}
+
+function setDeadlineKind(value: string): void {
+  (document.getElementById('deadline-edit-kind') as HTMLInputElement).value = value;
+  document.getElementById('deadline-kind-label')!.textContent = deadlineKindLabels[value] ?? 'Other';
+  document.querySelectorAll<HTMLButtonElement>('#deadline-kind-menu .dselect-option').forEach((option) => {
+    option.classList.toggle('selected', option.dataset.value === value);
+  });
+}
+
+function setDeadlineDueLabel(): void {
+  const date = (document.getElementById('deadline-due-date') as HTMLInputElement).value.trim();
+  const time = (document.getElementById('deadline-due-time') as HTMLInputElement).value.trim();
+  document.getElementById('deadline-due-label')!.textContent = formatDeadlineDueLabel(date, time);
 }
 
 async function openDeadlineEditForm(deadline: Deadline | null): Promise<void> {
@@ -3886,22 +5165,14 @@ async function openDeadlineEditForm(deadline: Deadline | null): Promise<void> {
 
   currentEditingDeadlineId = deadline ? deadline.id : null;
   (document.getElementById('deadline-edit-title') as HTMLInputElement).value = deadline?.title ?? '';
-  (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value = deadline?.kind ?? 'assignment';
-
-  const dateText = document.getElementById('deadline-edit-date-text') as HTMLInputElement;
-  const dateNative = document.getElementById('deadline-edit-date-native') as HTMLInputElement;
-  const timeInput = document.getElementById('deadline-edit-time') as HTMLInputElement;
-  if (deadline?.due_at) {
-    const [datePart, timePart] = deadline.due_at.split('T');
-    dateText.value = isoDateToTyped(datePart);
-    dateNative.value = datePart;
-    timeInput.value = timePart ?? '';
-  } else {
-    dateText.value = '';
-    dateNative.value = '';
-    timeInput.value = '';
-  }
-  document.getElementById('deadline-date-error')!.hidden = true;
+  setDeadlineKind(deadline?.kind ?? 'assignment');
+  const [isoDate = '', dueTime = ''] = deadline?.due_at?.split('T') ?? [];
+  (document.getElementById('deadline-due-date') as HTMLInputElement).value = isoDate
+    ? `${isoDate.slice(8, 10)}-${isoDate.slice(5, 7)}-${isoDate.slice(0, 4)}`
+    : '';
+  (document.getElementById('deadline-due-time') as HTMLInputElement).value = dueTime.slice(0, 5);
+  setDeadlineDueLabel();
+  document.getElementById('deadline-due-error')!.hidden = true;
 
   (document.getElementById('deadline-edit-description') as HTMLTextAreaElement).value =
     deadline?.description ?? '';
@@ -4010,6 +5281,10 @@ function insertMention(textarea: HTMLTextAreaElement, atIndex: number, candidate
 // set) falls back to dark.
 function applyTheme(theme: 'light' | 'dark'): void {
   document.documentElement.setAttribute('data-theme', theme);
+  const logoSource = theme === 'light' ? 'assets/atlas-logo-reference-light-transparent.png' : 'assets/atlas-logo-reference-dark-transparent.png';
+  document.querySelectorAll<HTMLImageElement>('[data-atlas-logo]').forEach((logo) => {
+    logo.src = logoSource;
+  });
   document.getElementById('settings-theme-dark')!.classList.toggle('active', theme === 'dark');
   document.getElementById('settings-theme-light')!.classList.toggle('active', theme === 'light');
 }
@@ -4025,10 +5300,14 @@ function setTheme(theme: 'light' | 'dark'): void {
 // which already drives active states/buttons/highlights throughout the app,
 // so changing this one CSS custom property recolors all of them at once
 // rather than needing per-component theming.
-const ACCENT_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899'];
+// These are the five literal Direction A swatches. Both token families are
+// updated below because pre-overhaul surfaces still use --color-accent while
+// the rebuilt pages use --accent.
+const ACCENT_COLORS = ['#d9a441', '#3b82f6', '#8b5cf6', '#3ba55d', '#ec4899'];
 const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
 
 function applyAccentColor(color: string): void {
+  document.documentElement.style.setProperty('--accent', color);
   document.documentElement.style.setProperty('--color-accent', color);
   document.querySelectorAll<HTMLElement>('.settings-accent-swatch').forEach((swatch) => {
     swatch.classList.toggle('active', swatch.dataset.accentColor === color);
@@ -4117,6 +5396,15 @@ async function saveShortcutOverrides(): Promise<void> {
 
 function registerAppShortcuts(): void {
   const actions: ShortcutAction[] = [
+    {
+      id: 'app.commandPalette',
+      label: 'Open command palette',
+      group: 'Navigation',
+      defaultBinding: 'Ctrl+K',
+      when: () => (document.getElementById('command-palette-overlay') as HTMLElement | null)?.hidden !== false,
+      run: openCommandPalette,
+    },
+
     // Navigation
     { id: 'nav.dashboard', label: 'Go to Dashboard', group: 'Navigation', defaultBinding: 'Ctrl+1', run: () => showPage('dashboard') },
     { id: 'nav.courses', label: 'Go to Courses', group: 'Navigation', defaultBinding: 'Ctrl+2', run: () => showPage('courses') },
@@ -4166,6 +5454,7 @@ function registerAppShortcuts(): void {
 
     // Course detail tabs
     { id: 'courseTab.overview', label: 'Course tab: Overview', group: 'Course detail', defaultBinding: 'Alt+1', when: courseDetailVisible, run: () => setCourseDetailTab('overview') },
+    { id: 'courseTab.readiness', label: 'Course tab: Readiness', group: 'Course detail', defaultBinding: 'Alt+7', when: courseDetailVisible, run: () => setCourseDetailTab('readiness') },
     { id: 'courseTab.deadlines', label: 'Course tab: Deadlines', group: 'Course detail', defaultBinding: 'Alt+2', when: courseDetailVisible, run: () => setCourseDetailTab('deadlines') },
     {
       id: 'courseTab.announcements',
@@ -4332,6 +5621,1081 @@ function registerAppShortcuts(): void {
   ];
 
   for (const action of actions) shortcutRegistry.register(action);
+}
+
+interface PaletteItem {
+  id: string;
+  label: string;
+  detail: string;
+  group: string;
+  shortcut?: string;
+  requiresExplicitSelection?: boolean;
+  run: () => void | Promise<void>;
+}
+
+type PaletteStep = 'commands' | 'course-selection';
+
+let commandPaletteItems: PaletteItem[] = [];
+let commandPaletteActiveIndex = 0;
+let commandPaletteStep: PaletteStep = 'commands';
+let commandPalettePendingCommand: 'export.course' | null = null;
+let commandPaletteReturnFocus: HTMLElement | null = null;
+let commandPaletteCourses: Course[] = [];
+let commandPaletteNotes: NoteWithCourse[] = [];
+let commandPaletteResources: ResourceWithCourse[] = [];
+let commandPaletteDeadlines: DashboardDeadline[] = [];
+let commandPaletteDataPromise: Promise<void> | null = null;
+let commandPaletteRenderToken = 0;
+let commandPaletteLoading = false;
+let commandPaletteError: string | null = null;
+let commandPaletteSelectionRequired = false;
+
+function commandPaletteIsOpen(): boolean {
+  return (document.getElementById('command-palette-overlay') as HTMLElement | null)?.hidden === false;
+}
+
+function commandPaletteShortcut(id: string): string | undefined {
+  const action = shortcutRegistry.all().find((candidate) => candidate.id === id);
+  if (!action) return undefined;
+  const binding = shortcutRegistry.primaryBindingFor(action);
+  return binding || undefined;
+}
+
+function paletteCommands(): PaletteCommandDefinition[] {
+  const command = (
+    id: string,
+    label: string,
+    group: string,
+    aliases: string[],
+    keywords: string[] = []
+  ): PaletteCommandDefinition => ({
+    id,
+    label,
+    group,
+    aliases,
+    keywords,
+    shortcut: commandPaletteShortcut(id),
+  });
+
+  return [
+    command('nav.dashboard', 'Go to Dashboard', 'Navigation', ['dashboard', 'home']),
+    command('nav.courses', 'Go to Courses', 'Navigation', ['courses', 'course list']),
+    command('nav.resources', 'Go to Resources', 'Navigation', ['resources', 'files']),
+    command('nav.notes', 'Go to Notes', 'Navigation', ['notes']),
+    command('nav.calendar', 'Go to Calendar', 'Navigation', ['calendar', 'deadlines']),
+    command('nav.settings', 'Go to Settings', 'Navigation', ['settings', 'preferences']),
+    command('create.note', 'New note', 'Create', ['new note', 'note', 'create note']),
+    command('create.upload', 'Upload file', 'Create', ['upload', 'upload file', 'add file']),
+    command('create.scan', 'Import scan', 'Create', ['scan', 'import scan']),
+    command('create.deadline', 'Add deadline', 'Create', ['add deadline', 'deadline', 'new deadline']),
+    command('sync.now', 'Sync all sources', 'Sync', ['sync', 'sync all', 'refresh everything']),
+    command('sync.drive', 'Sync Google Drive', 'Sync', ['sync drive', 'refresh drive']),
+    command('sync.classroom', 'Sync Google Classroom', 'Sync', ['sync classroom', 'refresh classroom']),
+    command('export.course', 'Export course for AI', 'Course actions', ['export for ai', 'export ai', 'export context']),
+    command('course.archive', 'Archive or unarchive course', 'Course actions', ['archive course', 'unarchive course']),
+    command('course.edit', 'Edit course', 'Course actions', ['edit course', 'rename course']),
+    command('course.delete', 'Delete course', 'Course actions', ['delete course', 'remove course']),
+    command('course.connectClassroom', 'Connect course to Classroom', 'Course actions', ['connect classroom', 'link classroom course']),
+    command('course.disconnectClassroom', 'Disconnect course from Classroom', 'Course actions', ['disconnect classroom', 'unlink classroom course']),
+    command('course.addWatchedFolder', 'Add watched folder', 'Course actions', ['watch folder', 'add watched folder', 'watch course folder']),
+    command('deadline.edit', 'Edit deadline', 'Deadlines', ['edit deadline', 'rename deadline']),
+    command('deadline.complete', 'Mark deadline complete or incomplete', 'Deadlines', ['complete deadline', 'finish deadline', 'mark deadline']),
+    command('deadline.delete', 'Delete deadline', 'Deadlines', ['delete deadline', 'remove deadline']),
+    command('resource.ocr', 'Run OCR', 'Resources & notes', ['run ocr', 'ocr']),
+    command('resource.drive', 'Open resource in Google Drive', 'Resources & notes', ['open in drive', 'open google drive', 'drive']),
+    command('resource.delete', 'Delete resource', 'Resources & notes', ['delete resource', 'remove resource', 'delete file']),
+    command('note.move', 'Move note to course', 'Resources & notes', ['move note', 'assign note', 'move note to course']),
+    command('note.delete', 'Delete note', 'Resources & notes', ['delete note', 'remove note']),
+    command('settings.backup', 'Create backup now', 'Settings', ['backup', 'create backup', 'back up']),
+    command('settings.clearDriveCache', 'Clear Drive preview cache', 'Settings', ['clear drive cache', 'clear preview cache']),
+    command('settings.reviewDrive', 'Review pending Drive files', 'Settings', ['review drive files', 'pending drive', 'drive review']),
+    command('settings.reviewClassroom', 'Review pending Classroom courses', 'Settings', ['review classroom courses', 'pending classroom', 'classroom review']),
+    command('settings.resetShortcuts', 'Reset keyboard shortcuts', 'Settings', ['reset shortcuts', 'restore shortcuts']),
+    command('settings.themeLight', 'Use light theme', 'Settings', ['light theme', 'switch to light']),
+    command('settings.themeDark', 'Use dark theme', 'Settings', ['dark theme', 'switch to dark']),
+    command('app.showShortcuts', 'Show keyboard shortcuts', 'Help', ['shortcuts', 'keyboard shortcuts', 'help']),
+    command('nav.toggleSidebar', 'Toggle sidebar', 'View', ['sidebar', 'toggle sidebar']),
+  ];
+}
+
+function palettePageLabel(): string {
+  if (selectedCourse && currentPage === 'courses') return `Course: ${selectedCourse.name}`;
+  return {
+    dashboard: 'Dashboard',
+    courses: 'Courses',
+    resources: 'Resources',
+    notes: 'Notes',
+    calendar: 'Calendar',
+    settings: 'Settings',
+  }[currentPage];
+}
+
+function paletteContextText(): string {
+  if (courseDetailVisible() && selectedCourse) return `${palettePageLabel()} · current course is visible`;
+  if (dashboardCourseFilterId !== null) {
+    const filteredCourse = commandPaletteCourses.find((course) => course.id === dashboardCourseFilterId);
+    if (filteredCourse) return `${palettePageLabel()} · filtered to ${filteredCourse.name}`;
+  }
+  return `${palettePageLabel()} · choose a target when an action needs one`;
+}
+
+function paletteCourseScore(query: string, course: Course): number | null {
+  return scorePaletteText(query, course.name, course.code ? [course.code] : []);
+}
+
+function paletteCourseChoices(query: string): Array<{ course: Course; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteCourses
+    .map((course) => ({ course, score: normalizedQuery ? paletteCourseScore(normalizedQuery, course) : 0 }))
+    .filter((entry): entry is { course: Course; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.course.name.localeCompare(b.course.name));
+}
+
+function paletteCurrentCourse(): Course | null {
+  if (courseDetailVisible() && selectedCourse) return selectedCourse;
+  if (dashboardCourseFilterId !== null) {
+    return commandPaletteCourses.find((course) => course.id === dashboardCourseFilterId) ?? null;
+  }
+  return null;
+}
+
+function paletteCurrentNote(): NoteWithCourse | null {
+  if (currentNoteId === null) return null;
+  return commandPaletteNotes.find((note) => note.id === currentNoteId) ?? null;
+}
+
+function paletteCurrentResource(): ResourceWithCourse | null {
+  if (currentPreviewResourceId === null) return null;
+  return commandPaletteResources.find((resource) => resource.id === currentPreviewResourceId) ?? null;
+}
+
+function paletteCurrentDeadline(): DashboardDeadline | null {
+  if (!currentViewingDeadline) return null;
+  return commandPaletteDeadlines.find((deadline) => deadline.id === currentViewingDeadline?.id) ?? null;
+}
+
+function paletteNoteChoices(query: string, handwrittenOnly = false): Array<{ note: NoteWithCourse; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteNotes
+    .filter((note) => !handwrittenOnly || note.is_handwritten === 1)
+    .map((note) => ({
+      note,
+      score: normalizedQuery ? scorePaletteText(normalizedQuery, note.title, [note.course_name]) : 0,
+    }))
+    .filter((entry): entry is { note: NoteWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.note.title.localeCompare(b.note.title));
+}
+
+function paletteResourceChoices(query: string, pdfOnly = false): Array<{ resource: ResourceWithCourse; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteResources
+    .filter((resource) => !pdfOnly || resource.kind === 'pdf')
+    .map((resource) => ({
+      resource,
+      score: normalizedQuery ? scorePaletteText(normalizedQuery, resource.title, [resource.course_name]) : 0,
+    }))
+    .filter((entry): entry is { resource: ResourceWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.resource.title.localeCompare(b.resource.title));
+}
+
+function paletteDeadlineChoices(query: string): Array<{ deadline: DashboardDeadline; score: number }> {
+  const normalizedQuery = normalizePaletteText(query);
+  return commandPaletteDeadlines
+    .map((deadline) => ({
+      deadline,
+      score: normalizedQuery
+        ? scorePaletteText(normalizedQuery, deadline.title, [deadline.course_name, deadline.kind])
+        : 0,
+    }))
+    .filter((entry): entry is { deadline: DashboardDeadline; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.deadline.title.localeCompare(b.deadline.title));
+}
+
+function paletteStrongChoices<T extends { score: number }>(query: string, choices: T[]): T[] {
+  if (!normalizePaletteText(query)) return choices;
+  return choices.filter(({ score }) => score >= 620);
+}
+
+function commandPaletteCommandItem(command: PaletteCommandDefinition, detail: string, run: () => void | Promise<void>): PaletteItem {
+  return {
+    id: `command:${command.id}`,
+    label: command.label,
+    detail,
+    group: command.group,
+    shortcut: command.shortcut,
+    run,
+  };
+}
+
+function focusPaletteCommand(text: string): void {
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  input.value = text;
+  (document.getElementById('command-palette-clear') as HTMLButtonElement).hidden = !text;
+  commandPaletteActiveIndex = 0;
+  renderCommandPaletteItems(text);
+  input.focus();
+}
+
+function invalidateCommandPaletteData(): void {
+  commandPaletteDataPromise = null;
+}
+
+function findShortcutAction(id: string): ShortcutAction | null {
+  return shortcutRegistry.all().find((action) => action.id === id) ?? null;
+}
+
+function runPaletteShortcut(id: string): void | Promise<void> {
+  closeCommandPalette();
+  return findShortcutAction(id)?.run();
+}
+
+function executeExportForCourse(course: Course): void {
+  closeCommandPalette();
+  void atlasApi.exportCourseContext(course.id).then((result) => {
+    const statusEl = document.getElementById('course-detail-export-status');
+    if (statusEl && courseDetailVisible() && selectedCourse?.id === course.id) {
+      statusEl.hidden = false;
+      statusEl.textContent = result.ok ? `Saved to ${result.filePath}` : result.error;
+    }
+  });
+}
+
+function beginPaletteCourseSelection(commandId: 'export.course'): void {
+  commandPaletteStep = 'course-selection';
+  commandPalettePendingCommand = commandId;
+  commandPaletteActiveIndex = 0;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  input.value = '';
+  input.placeholder = 'Choose a course…';
+  renderCommandPaletteItems('');
+  input.focus();
+}
+
+function runPaletteDeadline(): void {
+  closeCommandPalette();
+  const current = paletteCurrentCourse();
+  if (current) {
+    selectedCourse = current;
+    void openDeadlineEditForm(null);
+  } else {
+    void openCoursePicker('deadline');
+  }
+}
+
+async function runPaletteResourceOcr(resource: ResourceWithCourse): Promise<void> {
+  closeCommandPalette();
+  await openPreview(resource);
+  await runResourceOcr();
+}
+
+async function runPaletteNoteOcr(note: NoteWithCourse): Promise<void> {
+  closeCommandPalette();
+  await openNoteEditor(note);
+  await runNoteOcr();
+}
+
+function ocrCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const currentResource = argument ? null : paletteCurrentResource();
+  const currentNote = argument ? null : paletteCurrentNote();
+  if (currentResource && currentResource.kind === 'pdf') {
+    return [
+      commandPaletteCommandItem(command, `Current resource · ${currentResource.title}`, () => runPaletteResourceOcr(currentResource)),
+    ];
+  }
+  if (currentNote && currentNote.is_handwritten === 1) {
+    return [
+      commandPaletteCommandItem(command, `Current handwritten note · ${currentNote.title}`, () => runPaletteNoteOcr(currentNote)),
+    ];
+  }
+
+  const resources = paletteStrongChoices(argument, paletteResourceChoices(argument, true)).slice(0, 8).map(({ resource }) => ({
+    id: `ocr-resource:${resource.id}`,
+    label: `${command.label} · ${resource.title}`,
+    detail: `${resource.course_name} · PDF`,
+    group: 'Resources',
+    run: () => runPaletteResourceOcr(resource),
+  }));
+  const notes = paletteStrongChoices(argument, paletteNoteChoices(argument, true)).slice(0, 8).map(({ note }) => ({
+    id: `ocr-note:${note.id}`,
+    label: `${command.label} · ${note.title}`,
+    detail: `${note.course_name} · Handwritten note`,
+    group: 'Notes',
+    run: () => runPaletteNoteOcr(note),
+  }));
+  if (resources.length || notes.length) {
+    const choices = [...resources, ...notes];
+    return choices.map((item) => ({ ...item, requiresExplicitSelection: choices.length > 1 }));
+  }
+  return [commandPaletteCommandItem(command, 'Open a PDF or handwritten note first', () => undefined)];
+}
+
+function runPaletteMoveNote(note: NoteWithCourse): void {
+  closeCommandPalette();
+  openAssignNoteCoursePicker(note.id);
+}
+
+function moveNoteCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentNote();
+  if (current) {
+    return [commandPaletteCommandItem(command, `Current note · ${current.title}`, () => runPaletteMoveNote(current))];
+  }
+  const choices = paletteStrongChoices(argument, paletteNoteChoices(argument)).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose an existing note to move', () => undefined)];
+  return choices.map(({ note }) => ({
+    id: `move-note:${note.id}`,
+    label: `${command.label} · ${note.title}`,
+    detail: `${note.course_name} · Choose a destination course`,
+    group: 'Notes',
+    requiresExplicitSelection: choices.length > 1,
+    run: () => runPaletteMoveNote(note),
+  }));
+}
+
+async function runPaletteOpenInDrive(resource: ResourceWithCourse): Promise<void> {
+  closeCommandPalette();
+  if (resource.kind === 'link') {
+    await atlasApi.openExternalUrl(resource.file_path);
+    return;
+  }
+  await openPreview(resource);
+  openCurrentPreviewInGoogleDrive();
+}
+
+function driveCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentResource();
+  if (current) {
+    if (current.kind !== 'link' && !DRIVE_PREVIEW_KINDS.has(current.kind)) {
+      return [commandPaletteCommandItem(command, `${current.title} cannot be opened in Google Drive`, () => undefined)];
+    }
+    return [commandPaletteCommandItem(command, `Current resource · ${current.title}`, () => runPaletteOpenInDrive(current))];
+  }
+  const choices = paletteStrongChoices(argument, paletteResourceChoices(argument))
+    .filter(({ resource }) => resource.kind === 'link' || DRIVE_PREVIEW_KINDS.has(resource.kind))
+    .slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a resource to open in Google Drive', () => undefined)];
+  return choices.map(({ resource }) => ({
+    id: `drive-resource:${resource.id}`,
+    label: `${command.label} · ${resource.title}`,
+    detail: `${resource.course_name} · ${resource.kind.toUpperCase()}`,
+    group: 'Resources',
+    requiresExplicitSelection: choices.length > 1,
+    run: () => runPaletteOpenInDrive(resource),
+  }));
+}
+
+function deadlineCourse(deadline: DashboardDeadline): Course | null {
+  return commandPaletteCourses.find((course) => course.id === deadline.course_id) ?? null;
+}
+
+async function refreshAfterPaletteDeadlineChange(courseId: number): Promise<void> {
+  invalidateCommandPaletteData();
+  if (selectedCourse?.id === courseId) await renderDeadlines();
+  else if (currentPage === 'calendar') await renderCalendarPage();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+async function runPaletteEditDeadline(deadline: DashboardDeadline): Promise<void> {
+  closeCommandPalette();
+  const course = deadlineCourse(deadline);
+  if (!course) return;
+  selectedCourse = course;
+  await openDeadlineEditForm(deadline);
+}
+
+async function runPaletteToggleDeadline(deadline: DashboardDeadline): Promise<void> {
+  closeCommandPalette();
+  await atlasApi.setDeadlineCompleted(deadline.id, deadline.completed !== 1);
+  await refreshAfterPaletteDeadlineChange(deadline.course_id);
+}
+
+async function runPaletteDeleteDeadline(deadline: DashboardDeadline): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete deadline "${deadline.title}"? This can't be undone.`))) return;
+  if (currentViewingDeadline?.id === deadline.id) closeDeadlineEditor();
+  await atlasApi.deleteDeadline(deadline.id);
+  await refreshAfterPaletteDeadlineChange(deadline.course_id);
+}
+
+function deadlineActionItems(
+  match: PaletteCommandMatch | null,
+  command: PaletteCommandDefinition,
+  action: 'edit' | 'complete' | 'delete'
+): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentDeadline();
+  const run = (deadline: DashboardDeadline): void | Promise<void> => {
+    if (action === 'edit') return runPaletteEditDeadline(deadline);
+    if (action === 'complete') return runPaletteToggleDeadline(deadline);
+    return runPaletteDeleteDeadline(deadline);
+  };
+  if (current) {
+    const label = action === 'complete'
+      ? (current.completed === 1 ? 'Mark deadline incomplete' : 'Mark deadline complete')
+      : command.label;
+    return [{ ...commandPaletteCommandItem(command, `Current deadline · ${current.title}`, () => run(current)), label }];
+  }
+  const choices = paletteStrongChoices(argument, paletteDeadlineChoices(argument)).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a deadline to continue', () => undefined)];
+  return choices.map(({ deadline }) => ({
+    id: `${action}-deadline:${deadline.id}`,
+    label: `${action === 'complete' ? (deadline.completed === 1 ? 'Mark incomplete' : 'Mark complete') : command.label} · ${deadline.title}`,
+    detail: `${deadline.course_name} · ${deadline.due_at ? formatDueDate(deadline.due_at) : 'No due date'}`,
+    group: 'Deadlines',
+    requiresExplicitSelection: choices.length > 1,
+    run: () => run(deadline),
+  }));
+}
+
+async function runPaletteDeleteNote(note: NoteWithCourse): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete note "${note.title}"? This can't be undone.`))) return;
+  if (currentNoteId === note.id) await closeNoteEditor();
+  await atlasApi.deleteNote(note.id);
+  invalidateCommandPaletteData();
+  await renderNotesPage();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+function noteDeleteCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentNote();
+  if (current) return [commandPaletteCommandItem(command, `Current note · ${current.title}`, () => runPaletteDeleteNote(current))];
+  const choices = paletteStrongChoices(argument, paletteNoteChoices(argument)).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a note to delete', () => undefined)];
+  return choices.map(({ note }) => ({
+    id: `delete-note:${note.id}`,
+    label: `${command.label} · ${note.title}`,
+    detail: `${note.course_name} · Note`,
+    group: 'Notes',
+    requiresExplicitSelection: choices.length > 1,
+    run: () => runPaletteDeleteNote(note),
+  }));
+}
+
+async function runPaletteDeleteResource(resource: ResourceWithCourse): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete resource "${resource.title}"? This can't be undone.`))) return;
+  if (currentPreviewResourceId === resource.id) closePreview();
+  await atlasApi.deleteResource(resource.id);
+  invalidateCommandPaletteData();
+  await renderResourcesPage();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+function resourceDeleteCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentResource();
+  if (current) return [commandPaletteCommandItem(command, `Current resource · ${current.title}`, () => runPaletteDeleteResource(current))];
+  const choices = paletteStrongChoices(argument, paletteResourceChoices(argument)).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a resource to delete', () => undefined)];
+  return choices.map(({ resource }) => ({
+    id: `delete-resource:${resource.id}`,
+    label: `${command.label} · ${resource.title}`,
+    detail: `${resource.course_name} · Resource`,
+    group: 'Resources',
+    requiresExplicitSelection: choices.length > 1,
+    run: () => runPaletteDeleteResource(resource),
+  }));
+}
+
+async function preparePaletteSettingsTab(tab: string): Promise<void> {
+  closeCommandPalette();
+  showPage('settings');
+  await renderSettingsPage();
+  setSettingsTab(tab);
+}
+
+async function runPaletteCreateBackup(): Promise<void> {
+  await preparePaletteSettingsTab('storage');
+  await atlasApi.createBackup();
+  await renderSettingsStorage();
+}
+
+async function runPaletteClearDriveCache(): Promise<void> {
+  await preparePaletteSettingsTab('sources');
+  if (!(await showConfirm('Clear every uploaded Drive preview copy? This cannot be undone in Drive.'))) return;
+  await clearDrivePreviewCache();
+}
+
+async function runPaletteReviewDrive(): Promise<void> {
+  await preparePaletteSettingsTab('sources');
+  await openDriveReviewPanel();
+}
+
+async function runPaletteReviewClassroom(): Promise<void> {
+  await preparePaletteSettingsTab('sources');
+  await openClassroomReviewPanel();
+}
+
+async function runPaletteResetShortcuts(): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm('Reset every keyboard shortcut back to its default binding?'))) return;
+  shortcutOverrides = {};
+  await saveShortcutOverrides();
+  showPage('settings');
+  await renderSettingsPage();
+  setSettingsTab('shortcuts');
+  await renderSettingsShortcuts();
+}
+
+async function runPaletteTheme(theme: 'light' | 'dark'): Promise<void> {
+  closeCommandPalette();
+  showPage('settings');
+  applyTheme(theme);
+  await atlasApi.setSetting('theme', theme);
+  setSettingsTab('appearance');
+}
+
+function runPaletteSettingsCommand(id: string): void | Promise<void> {
+  if (id === 'settings.backup') return runPaletteCreateBackup();
+  if (id === 'settings.clearDriveCache') return runPaletteClearDriveCache();
+  if (id === 'settings.reviewDrive') return runPaletteReviewDrive();
+  if (id === 'settings.reviewClassroom') return runPaletteReviewClassroom();
+  if (id === 'settings.resetShortcuts') return runPaletteResetShortcuts();
+  return runPaletteTheme(id === 'settings.themeLight' ? 'light' : 'dark');
+}
+
+async function runPaletteArchiveCourse(course: Course): Promise<void> {
+  closeCommandPalette();
+  const action = course.archived === 1 ? 'Unarchive' : 'Archive';
+  if (!(await showConfirm(`${action} "${course.name}"? You can change this again later.`))) return;
+  const updated = await atlasApi.setCourseArchived(course.id, course.archived !== 1);
+  invalidateCommandPaletteData();
+  if (courseDetailVisible() && selectedCourse?.id === course.id) {
+    backToCourseList();
+    setShowArchivedCourses(updated.archived === 1);
+  } else {
+    await renderCourses();
+    if (currentPage === 'dashboard') await renderDashboard();
+  }
+}
+
+async function runPaletteDeleteCourse(course: Course): Promise<void> {
+  closeCommandPalette();
+  if (!(await showConfirm(`Delete course "${course.name}" and all its resources? This can't be undone.`))) return;
+  await atlasApi.deleteCourse(course.id);
+  invalidateCommandPaletteData();
+  if (selectedCourse?.id === course.id) backToCourseList();
+  await renderCourses();
+  await renderResourcesPage();
+  await renderNotesPage();
+  await renderDeadlines();
+  if (currentPage === 'dashboard') await renderDashboard();
+}
+
+async function openPaletteCourseDetail(course: Course): Promise<void> {
+  showPage('courses');
+  await selectCourse(course);
+}
+
+async function runPaletteConnectClassroom(course: Course): Promise<void> {
+  closeCommandPalette();
+  await openPaletteCourseDetail(course);
+  await openClassroomConnectPicker();
+}
+
+async function runPaletteDisconnectClassroom(course: Course): Promise<void> {
+  closeCommandPalette();
+  await openPaletteCourseDetail(course);
+  await disconnectCourseClassroomClicked();
+}
+
+async function runPaletteAddWatchedFolder(course: Course): Promise<void> {
+  closeCommandPalette();
+  await openPaletteCourseDetail(course);
+  const folder = await atlasApi.addWatchedFolder(course.id);
+  if (folder) {
+    await renderWatchedFolders();
+    await renderResourcesPage();
+  }
+}
+
+function courseActionItems(
+  match: PaletteCommandMatch | null,
+  command: PaletteCommandDefinition,
+  action: 'archive' | 'edit' | 'delete' | 'connect' | 'disconnect' | 'watch'
+): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentCourse();
+  const run = (course: Course): void | Promise<void> => {
+    if (action === 'archive') return runPaletteArchiveCourse(course);
+    if (action === 'delete') return runPaletteDeleteCourse(course);
+    if (action === 'connect') return runPaletteConnectClassroom(course);
+    if (action === 'disconnect') return runPaletteDisconnectClassroom(course);
+    if (action === 'watch') return runPaletteAddWatchedFolder(course);
+    closeCommandPalette();
+    openCourseEditModal(course);
+  };
+  if (current) {
+    const label = action === 'archive' ? (current.archived === 1 ? 'Unarchive course' : 'Archive course') : command.label;
+    return [
+      { ...commandPaletteCommandItem(command, `Current course · ${current.name}`, () => run(current)), label },
+    ];
+  }
+  const choices = paletteStrongChoices(argument, paletteCourseChoices(argument)).slice(0, 12);
+  if (!choices.length) return [commandPaletteCommandItem(command, 'Choose a course to continue', () => undefined)];
+  return choices.map(({ course }) => ({
+    id: `${action}-course:${course.id}`,
+    label: `${action === 'archive' ? (course.archived === 1 ? 'Unarchive course' : 'Archive course') : command.label} · ${course.name}`,
+    detail: [course.code, course.term, course.archived === 1 ? 'Archived course' : 'Course'].filter(Boolean).join(' · '),
+    group: 'Courses',
+    requiresExplicitSelection: choices.length > 1,
+    run: () => run(course),
+  }));
+}
+
+function exportCommandItems(match: PaletteCommandMatch | null, command: PaletteCommandDefinition): PaletteItem[] {
+  const argument = match?.argument ?? '';
+  const current = argument ? null : paletteCurrentCourse();
+  if (current) {
+    return [
+      commandPaletteCommandItem(
+        command,
+        `Current course · ${current.name}`,
+        () => executeExportForCourse(current)
+      ),
+    ];
+  }
+
+  const choices = paletteStrongChoices(argument, paletteCourseChoices(argument));
+  if (!argument) {
+    return [
+      commandPaletteCommandItem(command, 'Choose a course to continue', () => beginPaletteCourseSelection('export.course')),
+    ];
+  }
+  if (choices.length === 0) {
+    return [
+      commandPaletteCommandItem(command, `No course matches “${argument}”`, () => beginPaletteCourseSelection('export.course')),
+    ];
+  }
+
+  return choices.slice(0, 8).map(({ course }) => ({
+    id: `export:${course.id}`,
+    label: `${command.label} · ${course.name}`,
+    detail: course.code || course.term || 'Course',
+    group: 'Courses',
+    requiresExplicitSelection: choices.length > 1,
+    run: () => executeExportForCourse(course),
+  }));
+}
+
+function openPaletteEntity(entity: Course | NoteWithCourse | ResourceWithCourse): void | Promise<void> {
+  closeCommandPalette();
+  if ('folder_name' in entity) {
+    showPage('courses');
+    return selectCourse(entity);
+  }
+  if ('file_path' in entity) return openPreview(entity);
+  return openNoteEditor(entity);
+}
+
+function entityPaletteItems(query: string): PaletteItem[] {
+  const normalizedQuery = normalizePaletteText(query);
+  if (!normalizedQuery) return [];
+  const courses = commandPaletteCourses
+    .map((course) => ({ course, score: paletteCourseScore(normalizedQuery, course) }))
+    .filter((entry): entry is { course: Course; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.course.name.localeCompare(b.course.name))
+    .slice(0, 5)
+    .map(({ course }) => ({
+      id: `course:${course.id}`,
+      label: course.name,
+      detail: [course.code, course.term, course.archived === 1 ? 'Archived course' : 'Course'].filter(Boolean).join(' · '),
+      group: 'Courses',
+      run: () => openPaletteEntity(course),
+    }));
+  const notes = commandPaletteNotes
+    .map((note) => ({ note, score: scorePaletteText(normalizedQuery, note.title, [note.course_name]) }))
+    .filter((entry): entry is { note: NoteWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.note.title.localeCompare(b.note.title))
+    .slice(0, 4)
+    .map(({ note }) => ({
+      id: `note:${note.id}`,
+      label: note.title,
+      detail: `${note.course_name} · Note`,
+      group: 'Notes',
+      run: () => openPaletteEntity(note),
+    }));
+  const resources = commandPaletteResources
+    .map((resource) => ({ resource, score: scorePaletteText(normalizedQuery, resource.title, [resource.course_name]) }))
+    .filter((entry): entry is { resource: ResourceWithCourse; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.resource.title.localeCompare(b.resource.title))
+    .slice(0, 4)
+    .map(({ resource }) => ({
+      id: `resource:${resource.id}`,
+      label: resource.title,
+      detail: `${resource.course_name} · Resource`,
+      group: 'Resources',
+      run: () => openPaletteEntity(resource),
+    }));
+  return [...courses, ...notes, ...resources];
+}
+
+function commandPaletteItemsForQuery(query: string): PaletteItem[] {
+  const commands = paletteCommands();
+  const normalizedQuery = normalizePaletteText(query);
+  const prefixMatch = matchPaletteCommandPrefix(query, commands);
+  if (prefixMatch) {
+    if (prefixMatch.command.id === 'export.course') return exportCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'create.deadline') return [commandPaletteCommandItem(prefixMatch.command, 'Open the deadline editor', runPaletteDeadline)];
+    if (prefixMatch.command.id === 'deadline.edit') return deadlineActionItems(prefixMatch, prefixMatch.command, 'edit');
+    if (prefixMatch.command.id === 'deadline.complete') return deadlineActionItems(prefixMatch, prefixMatch.command, 'complete');
+    if (prefixMatch.command.id === 'deadline.delete') return deadlineActionItems(prefixMatch, prefixMatch.command, 'delete');
+    if (prefixMatch.command.id === 'resource.ocr') return ocrCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'note.move') return moveNoteCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'resource.drive') return driveCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'resource.delete') return resourceDeleteCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'note.delete') return noteDeleteCommandItems(prefixMatch, prefixMatch.command);
+    if (prefixMatch.command.id === 'course.archive') return courseActionItems(prefixMatch, prefixMatch.command, 'archive');
+    if (prefixMatch.command.id === 'course.edit') return courseActionItems(prefixMatch, prefixMatch.command, 'edit');
+    if (prefixMatch.command.id === 'course.delete') return courseActionItems(prefixMatch, prefixMatch.command, 'delete');
+    if (prefixMatch.command.id === 'course.connectClassroom') return courseActionItems(prefixMatch, prefixMatch.command, 'connect');
+    if (prefixMatch.command.id === 'course.disconnectClassroom') return courseActionItems(prefixMatch, prefixMatch.command, 'disconnect');
+    if (prefixMatch.command.id === 'course.addWatchedFolder') return courseActionItems(prefixMatch, prefixMatch.command, 'watch');
+    if (prefixMatch.command.id.startsWith('settings.')) {
+      return [commandPaletteCommandItem(prefixMatch.command, 'Open the relevant Settings panel', () => runPaletteSettingsCommand(prefixMatch.command.id))];
+    }
+    const detail = prefixMatch.argument ? `No parameters are needed for ${prefixMatch.command.label}` : 'Run this command';
+    return [commandPaletteCommandItem(prefixMatch.command, detail, () => runPaletteShortcut(prefixMatch.command.id))];
+  }
+
+  const items: PaletteItem[] = [];
+  const hasQuery = Boolean(normalizedQuery);
+  const rankedCommands = hasQuery
+    ? rankPaletteCommands(query, commands).slice(0, 12)
+    : commands.map((command) => ({ command, score: 0 }));
+  for (const { command } of rankedCommands) {
+    if (command.id === 'export.course') {
+      items.push(commandPaletteCommandItem(command, 'Choose a course when you run it', () => {
+        const current = paletteCurrentCourse();
+        if (current) executeExportForCourse(current);
+        else beginPaletteCourseSelection('export.course');
+      }));
+    } else if (command.id === 'create.deadline') {
+      items.push(commandPaletteCommandItem(command, 'Open the deadline editor', runPaletteDeadline));
+    } else if (command.id === 'deadline.edit') {
+      items.push(...(hasQuery
+        ? deadlineActionItems(null, command, 'edit')
+        : [commandPaletteCommandItem(command, 'Choose a deadline to edit', () => focusPaletteCommand('edit deadline'))]));
+    } else if (command.id === 'deadline.complete') {
+      items.push(...(hasQuery
+        ? deadlineActionItems(null, command, 'complete')
+        : [commandPaletteCommandItem(command, 'Choose a deadline to update', () => focusPaletteCommand('complete deadline'))]));
+    } else if (command.id === 'deadline.delete') {
+      items.push(...(hasQuery
+        ? deadlineActionItems(null, command, 'delete')
+        : [commandPaletteCommandItem(command, 'Choose a deadline to delete', () => focusPaletteCommand('delete deadline'))]));
+    } else if (command.id === 'resource.ocr') {
+      items.push(...(hasQuery
+        ? ocrCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a PDF or handwritten note', () => focusPaletteCommand('run ocr'))]));
+    } else if (command.id === 'note.move') {
+      items.push(...(hasQuery
+        ? moveNoteCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a note and destination course', () => focusPaletteCommand('move note'))]));
+    } else if (command.id === 'resource.drive') {
+      items.push(...(hasQuery
+        ? driveCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a resource', () => focusPaletteCommand('open in drive'))]));
+    } else if (command.id === 'resource.delete') {
+      items.push(...(hasQuery
+        ? resourceDeleteCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a resource to delete', () => focusPaletteCommand('delete resource'))]));
+    } else if (command.id === 'course.archive') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'archive')
+        : [commandPaletteCommandItem(command, 'Choose a course', () => focusPaletteCommand('archive course'))]));
+    } else if (command.id === 'course.edit') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'edit')
+        : [commandPaletteCommandItem(command, 'Choose a course', () => focusPaletteCommand('edit course'))]));
+    } else if (command.id === 'course.delete') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'delete')
+        : [commandPaletteCommandItem(command, 'Choose a course to delete', () => focusPaletteCommand('delete course'))]));
+    } else if (command.id === 'course.connectClassroom') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'connect')
+        : [commandPaletteCommandItem(command, 'Choose a course to connect', () => focusPaletteCommand('connect classroom'))]));
+    } else if (command.id === 'course.disconnectClassroom') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'disconnect')
+        : [commandPaletteCommandItem(command, 'Choose a course to disconnect', () => focusPaletteCommand('disconnect classroom'))]));
+    } else if (command.id === 'course.addWatchedFolder') {
+      items.push(...(hasQuery
+        ? courseActionItems(null, command, 'watch')
+        : [commandPaletteCommandItem(command, 'Choose a course to watch', () => focusPaletteCommand('watch folder'))]));
+    } else if (command.id === 'note.delete') {
+      items.push(...(hasQuery
+        ? noteDeleteCommandItems(null, command)
+        : [commandPaletteCommandItem(command, 'Choose a note to delete', () => focusPaletteCommand('delete note'))]));
+    } else if (command.id.startsWith('settings.')) {
+      items.push(commandPaletteCommandItem(command, 'Open the relevant Settings panel', () => runPaletteSettingsCommand(command.id)));
+    } else {
+      items.push(commandPaletteCommandItem(command, 'Run this command', () => runPaletteShortcut(command.id)));
+    }
+  }
+  return [...items, ...entityPaletteItems(query)].slice(0, hasQuery ? 16 : 40);
+}
+
+function renderCommandPaletteItems(query: string): void {
+  const list = document.getElementById('command-palette-results')!;
+  const empty = document.getElementById('command-palette-empty')!;
+  const context = document.getElementById('command-palette-context')!;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  (document.querySelector('#command-palette-panel .command-palette-body') as HTMLElement).scrollTop = 0;
+  if (commandPaletteError) {
+    context.textContent = commandPaletteError;
+  } else if (commandPaletteStep === 'course-selection') {
+    context.textContent = 'Export for AI - choose the course to use';
+  } else if (commandPaletteLoading) {
+    context.textContent = `${paletteContextText()} - loading local items...`;
+  } else {
+    context.textContent = paletteContextText();
+  }
+  input.placeholder = commandPaletteStep === 'course-selection' ? 'Choose a course…' : 'Search commands and Atlas…';
+  (document.getElementById('command-palette-clear') as HTMLButtonElement).hidden = !input.value;
+
+  const items: PaletteItem[] = commandPaletteStep === 'course-selection'
+    ? paletteCourseChoices(query).slice(0, 12).map(({ course }) => ({
+      id: `course-choice:${course.id}`,
+      label: course.name,
+      detail: [course.code, course.term, course.archived === 1 ? 'Archived course' : 'Course'].filter(Boolean).join(' · '),
+      group: 'Courses',
+      run: () => {
+        if (commandPalettePendingCommand === 'export.course') executeExportForCourse(course);
+      },
+    }))
+    : commandPaletteItemsForQuery(query);
+
+  commandPaletteItems = items;
+  commandPaletteSelectionRequired = commandPaletteStep === 'course-selection'
+    ? items.length > 1
+    : items.some((item) => item.requiresExplicitSelection);
+  if (commandPaletteSelectionRequired) {
+    commandPaletteActiveIndex = -1;
+    context.textContent = commandPaletteStep === 'course-selection'
+      ? 'Export for AI - choose a specific course'
+      : `${paletteContextText()} - choose a specific result`;
+  } else {
+    commandPaletteActiveIndex = Math.max(0, Math.min(commandPaletteActiveIndex, items.length - 1));
+  }
+  list.innerHTML = '';
+  empty.hidden = items.length !== 0;
+  empty.textContent = commandPaletteStep === 'course-selection' ? 'No matching courses.' : 'No commands or Atlas items match that search.';
+
+  let groupName = '';
+  let group: HTMLLIElement | null = null;
+  items.forEach((item, index) => {
+    if (item.group !== groupName) {
+      groupName = item.group;
+      group = document.createElement('li');
+      group.className = 'command-palette-group';
+      const heading = document.createElement('h4');
+      heading.textContent = groupName;
+      group.appendChild(heading);
+      list.appendChild(group);
+    }
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'command-palette-item';
+    row.id = `command-palette-option-${index}`;
+    row.dataset.index = String(index);
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(index === commandPaletteActiveIndex));
+    row.classList.toggle('active', index === commandPaletteActiveIndex);
+    const text = document.createElement('span');
+    text.className = 'command-palette-item-text';
+    const label = document.createElement('strong');
+    label.textContent = item.label;
+    const detail = document.createElement('small');
+    detail.textContent = item.detail;
+    text.append(label, detail);
+    row.appendChild(text);
+    if (item.shortcut) {
+      const shortcut = document.createElement('span');
+      shortcut.className = 'command-palette-key';
+      shortcut.textContent = item.shortcut;
+      row.appendChild(shortcut);
+    }
+    row.addEventListener('mouseenter', () => {
+      commandPaletteActiveIndex = index;
+      updateCommandPaletteActiveRow();
+    });
+    row.addEventListener('click', () => void executeCommandPaletteItem(index));
+    group!.appendChild(row);
+  });
+  updateCommandPaletteActiveRow();
+}
+
+function updateCommandPaletteActiveRow(): void {
+  const input = document.getElementById('command-palette-input') as HTMLInputElement | null;
+  document.querySelectorAll<HTMLButtonElement>('.command-palette-item').forEach((row) => {
+    const active = Number(row.dataset.index) === commandPaletteActiveIndex;
+    row.classList.toggle('active', active);
+    row.setAttribute('aria-selected', String(active));
+  });
+  const active = document.querySelector<HTMLButtonElement>(`.command-palette-item[data-index="${commandPaletteActiveIndex}"]`);
+  if (input) {
+    if (active?.id) input.setAttribute('aria-activedescendant', active.id);
+    else input.removeAttribute('aria-activedescendant');
+  }
+  active?.scrollIntoView({ block: 'nearest' });
+}
+
+function commandPaletteFocusableElements(): HTMLElement[] {
+  const panel = document.getElementById('command-palette-panel');
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll<HTMLElement>('button, input'))
+    .filter((element) => !element.hidden && !element.hasAttribute('disabled') && element.getAttribute('tabindex') !== '-1');
+}
+
+async function executeCommandPaletteItem(index: number): Promise<void> {
+  const item = commandPaletteItems[index];
+  if (!item) return;
+  try {
+    await item.run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const overlay = document.getElementById('command-palette-overlay')!;
+    if (overlay.hidden) {
+      commandPaletteReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      commandPaletteStep = 'commands';
+      commandPalettePendingCommand = null;
+      overlay.hidden = false;
+    }
+    commandPaletteError = `That action could not be completed: ${message}`;
+    commandPaletteLoading = false;
+    renderCommandPaletteItems('');
+    (document.getElementById('command-palette-input') as HTMLInputElement).focus();
+  }
+}
+
+async function loadCommandPaletteData(): Promise<void> {
+  if (!commandPaletteDataPromise) {
+    commandPaletteDataPromise = Promise.all([
+      atlasApi.listCourses(),
+      atlasApi.getCourseSummaries(true),
+      atlasApi.listAllNotes(),
+      atlasApi.listAllResources(),
+      atlasApi.listAllDeadlinesWithCourse(),
+    ]).then(([activeCourses, archivedCourses, notes, resources, deadlines]) => {
+      const courses = new Map<number, Course>();
+      [...activeCourses, ...archivedCourses].forEach((course) => courses.set(course.id, course));
+      commandPaletteCourses = [...courses.values()];
+      commandPaletteNotes = notes;
+      commandPaletteResources = resources;
+      commandPaletteDeadlines = deadlines;
+    });
+  }
+  await commandPaletteDataPromise;
+}
+
+function openCommandPalette(): void {
+  const overlay = document.getElementById('command-palette-overlay')!;
+  if (!overlay.hidden) return;
+  commandPaletteReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  commandPaletteStep = 'commands';
+  commandPalettePendingCommand = null;
+  commandPaletteActiveIndex = 0;
+  commandPaletteError = null;
+  commandPaletteLoading = true;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  const clearButton = document.getElementById('command-palette-clear') as HTMLButtonElement;
+  input.value = '';
+  clearButton.hidden = true;
+  overlay.hidden = false;
+  renderCommandPaletteItems('');
+  input.focus();
+  const token = ++commandPaletteRenderToken;
+  void loadCommandPaletteData().then(() => {
+    commandPaletteLoading = false;
+    if (commandPaletteIsOpen() && token === commandPaletteRenderToken) renderCommandPaletteItems(input.value);
+  }).catch(() => {
+    commandPaletteLoading = false;
+    commandPaletteDataPromise = null;
+    commandPaletteError = 'Atlas items could not be loaded. Close and reopen the palette to try again.';
+    if (commandPaletteIsOpen() && token === commandPaletteRenderToken) renderCommandPaletteItems(input.value);
+  });
+}
+
+function closeCommandPalette(): void {
+  const overlay = document.getElementById('command-palette-overlay');
+  if (!overlay || overlay.hidden) return;
+  overlay.hidden = true;
+  commandPaletteStep = 'commands';
+  commandPalettePendingCommand = null;
+  commandPaletteItems = [];
+  commandPaletteSelectionRequired = false;
+  const focusTarget = commandPaletteReturnFocus;
+  commandPaletteReturnFocus = null;
+  focusTarget?.focus();
+}
+
+function wireCommandPalette(): void {
+  const overlay = document.getElementById('command-palette-overlay')!;
+  const panel = document.getElementById('command-palette-panel')!;
+  const input = document.getElementById('command-palette-input') as HTMLInputElement;
+  const clearButton = document.getElementById('command-palette-clear') as HTMLButtonElement;
+  document.getElementById('command-palette-close')!.addEventListener('click', closeCommandPalette);
+  clearButton.addEventListener('click', () => {
+    input.value = '';
+    commandPaletteError = null;
+    commandPaletteActiveIndex = 0;
+    renderCommandPaletteItems('');
+    input.focus();
+  });
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeCommandPalette();
+  });
+  input.addEventListener('input', () => {
+    commandPaletteError = null;
+    commandPaletteActiveIndex = 0;
+    clearButton.hidden = !input.value;
+    renderCommandPaletteItems(input.value);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = (commandPaletteActiveIndex + 1) % commandPaletteItems.length;
+      updateCommandPaletteActiveRow();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (commandPaletteItems.length > 0) commandPaletteActiveIndex = commandPaletteActiveIndex <= 0
+        ? commandPaletteItems.length - 1
+        : commandPaletteActiveIndex - 1;
+      updateCommandPaletteActiveRow();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      void executeCommandPaletteItem(commandPaletteActiveIndex);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      if (commandPaletteStep === 'course-selection') {
+        commandPaletteStep = 'commands';
+        commandPalettePendingCommand = null;
+        input.value = '';
+        commandPaletteActiveIndex = 0;
+        renderCommandPaletteItems('');
+      } else {
+        closeCommandPalette();
+      }
+    }
+  });
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') {
+      const focusables = commandPaletteFocusableElements();
+      const currentIndex = focusables.indexOf(document.activeElement as HTMLElement);
+      if (!focusables.length) return;
+      event.preventDefault();
+      const nextIndex = currentIndex < 0
+        ? 0
+        : (currentIndex + (event.shiftKey ? -1 : 1) + focusables.length) % focusables.length;
+      focusables[nextIndex].focus();
+    }
+  });
 }
 
 function renderShortcutsCheatSheet(): void {
@@ -4505,7 +6869,36 @@ async function renderSettingsShortcuts(): Promise<void> {
 
 registerAppShortcuts();
 
+function renderWindowMaximizedState(isMaximized: boolean): void {
+  const button = document.getElementById('window-maximize') as HTMLButtonElement;
+  const maximizeIcon = button.querySelector<SVGElement>('[data-window-icon="maximize"]')!;
+  const restoreIcon = button.querySelector<SVGElement>('[data-window-icon="restore"]')!;
+  maximizeIcon.toggleAttribute('hidden', isMaximized);
+  restoreIcon.toggleAttribute('hidden', !isMaximized);
+  button.setAttribute('aria-label', isMaximized ? 'Restore window' : 'Maximize window');
+  button.setAttribute('aria-pressed', String(isMaximized));
+}
+
+function wireWindowControls(): void {
+  const dragRegion = document.getElementById('window-drag-region')!;
+  const minimizeButton = document.getElementById('window-minimize')!;
+  const maximizeButton = document.getElementById('window-maximize')!;
+  const closeButton = document.getElementById('window-close')!;
+
+  void atlasApi.windowControls.isMaximized().then(renderWindowMaximizedState);
+  atlasApi.windowControls.onMaximizedChanged(renderWindowMaximizedState);
+  minimizeButton.addEventListener('click', () => void atlasApi.windowControls.minimize());
+  maximizeButton.addEventListener('click', async () => {
+    renderWindowMaximizedState(await atlasApi.windowControls.toggleMaximize());
+  });
+  closeButton.addEventListener('click', () => void atlasApi.windowControls.close());
+  dragRegion.addEventListener('dblclick', async () => {
+    renderWindowMaximizedState(await atlasApi.windowControls.toggleMaximize());
+  });
+}
+
 async function init(): Promise<void> {
+  wireWindowControls();
   const savedTheme = await atlasApi.getSetting('theme');
   applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 
@@ -4526,7 +6919,6 @@ async function init(): Promise<void> {
   const savedSemesterFilter = await atlasApi.getSetting('semesterFilter');
   if (savedSemesterFilter) {
     semesterFilter = savedSemesterFilter;
-    (document.getElementById('semester-filter') as HTMLSelectElement).value = savedSemesterFilter;
   }
 
   await renderCourses();
@@ -4545,7 +6937,7 @@ async function init(): Promise<void> {
     e.preventDefault();
     const name = (document.getElementById('course-name') as HTMLInputElement).value.trim();
     const code = (document.getElementById('course-code') as HTMLInputElement).value.trim() || null;
-    const term = (document.getElementById('course-term') as HTMLSelectElement).value || null;
+    const term = (document.getElementById('course-term') as HTMLInputElement).value.trim() || null;
     if (!name) return;
 
     await atlasApi.createCourse(name, code, term);
@@ -4556,10 +6948,6 @@ async function init(): Promise<void> {
 
   document.getElementById('course-view-grid')!.addEventListener('click', () => setCourseViewMode('grid'));
   document.getElementById('course-view-list')!.addEventListener('click', () => setCourseViewMode('list'));
-  document.getElementById('course-sort')!.addEventListener('change', (e) => {
-    courseSort = (e.target as HTMLSelectElement).value as CourseSort;
-    void renderCourses();
-  });
   document.getElementById('toggle-archived-courses')!.addEventListener('click', () => {
     setShowArchivedCourses(!showArchivedCourses);
   });
@@ -4588,9 +6976,10 @@ async function init(): Promise<void> {
     const name = (document.getElementById('course-edit-name') as HTMLInputElement).value.trim();
     if (!name) return;
     const code = (document.getElementById('course-edit-code') as HTMLInputElement).value.trim() || null;
-    const term = (document.getElementById('course-edit-term') as HTMLSelectElement).value || null;
+    const term = (document.getElementById('course-edit-term') as HTMLInputElement).value.trim() || null;
     const courseId = editingCourseId;
     const updated = await atlasApi.updateCourse(courseId, name, code, term);
+    invalidateCommandPaletteData();
     closeCourseEditModal();
     await renderCourses();
     if (selectedCourse && selectedCourse.id === courseId) await selectCourse(updated);
@@ -4614,6 +7003,9 @@ async function init(): Promise<void> {
     if (!selectedCourse) return;
     notesCourseFilterId = selectedCourse.id;
     showPage('notes');
+  });
+  document.getElementById('course-detail-view-deadlines')!.addEventListener('click', () => {
+    setCourseDetailTab('deadlines');
   });
 
   document.getElementById('upload-button')!.addEventListener('click', () => openCoursePicker('upload'));
@@ -4646,31 +7038,113 @@ async function init(): Promise<void> {
   document.getElementById('deadline-view-list-toggle')!.addEventListener('click', () => setViewMode('list'));
   document.getElementById('deadline-view-grid-toggle')!.addEventListener('click', () => setViewMode('grid'));
 
-  document.querySelectorAll<HTMLButtonElement>('#resources-kind-filter .chip').forEach((chip) => {
+  document.querySelectorAll<HTMLButtonElement>('#resources-kind-filter .resource-kind-control').forEach((chip) => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('#resources-kind-filter .chip').forEach((el) => el.classList.remove('active'));
+      document.querySelectorAll('#resources-kind-filter .resource-kind-control').forEach((el) => el.classList.remove('active'));
       chip.classList.add('active');
+      resourcesExtractionReview = false;
       resourcesKindFilter = chip.dataset.kindFilter ?? '';
       void renderResourcesPage();
     });
   });
 
-  document.getElementById('resources-sort')!.addEventListener('change', (e) => {
-    resourcesSort = (e.target as HTMLSelectElement).value as ResourcesSort;
+  document.getElementById('resources-sort-controls')!.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-resource-sort]');
+    if (!button?.dataset.resourceSort) return;
+    resourcesSort = button.dataset.resourceSort as ResourcesSort;
+    document.querySelectorAll<HTMLButtonElement>('[data-resource-sort]').forEach((control) => {
+      control.classList.toggle('active', control === button);
+    });
     void renderResourcesPage();
   });
 
   document.querySelectorAll<HTMLButtonElement>('#dashboard-upcoming-tabs .chip').forEach((chip) => {
     chip.addEventListener('click', () => setDashboardUpcomingFilter(chip.dataset.upcomingFilter ?? ''));
   });
+  const dashboardCourseFilter = document.getElementById('dashboard-course-filter')!;
+  const dashboardCourseFilterTrigger = document.getElementById('dashboard-course-filter-trigger')!;
+  const dashboardCourseFilterMenu = document.getElementById('dashboard-course-filter-menu')!;
+  dashboardCourseFilterTrigger.addEventListener('click', () => {
+    const isOpen = !dashboardCourseFilterMenu.hidden;
+    dashboardCourseFilterMenu.hidden = isOpen;
+    dashboardCourseFilter.classList.toggle('open', !isOpen);
+    dashboardCourseFilterTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+  dashboardCourseFilterMenu.addEventListener('click', (event) => {
+    const option = (event.target as HTMLElement).closest<HTMLButtonElement>('.dselect-option');
+    if (!option) return;
+    dashboardCourseFilterId = option.dataset.courseId ? Number(option.dataset.courseId) : null;
+    dashboardCourseFilterMenu.hidden = true;
+    dashboardCourseFilter.classList.remove('open');
+    dashboardCourseFilterTrigger.setAttribute('aria-expanded', 'false');
+    void renderDashboard();
+  });
+  document.addEventListener('click', (event) => {
+    if (dashboardCourseFilter.contains(event.target as Node)) return;
+    dashboardCourseFilterMenu.hidden = true;
+    dashboardCourseFilter.classList.remove('open');
+    dashboardCourseFilterTrigger.setAttribute('aria-expanded', 'false');
+  });
   document.getElementById('dashboard-view-calendar')!.addEventListener('click', () => showPage('calendar'));
+  document.getElementById('dashboard-view-notes')!.addEventListener('click', () => showPage('notes'));
+  document.getElementById('dashboard-add-important')!.addEventListener('click', () => void openDashboardImportantAnnouncementForm());
+  document.getElementById('dashboard-important-close')!.addEventListener('click', closeDashboardImportantAnnouncementForm);
+  document.getElementById('dashboard-important-cancel')!.addEventListener('click', closeDashboardImportantAnnouncementForm);
+  document.getElementById('dashboard-important-overlay')!.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeDashboardImportantAnnouncementForm();
+  });
+  document.getElementById('dashboard-important-search')!.addEventListener('input', (event) => {
+    const query = (event.target as HTMLInputElement).value.trim().toLowerCase();
+    document.querySelectorAll<HTMLElement>('#dashboard-important-list .dashboard-important-item').forEach((row) => {
+      row.hidden = query.length > 0 && !row.textContent!.toLowerCase().includes(query);
+    });
+  });
+  document.getElementById('calendar-add-deadline')!.addEventListener('click', () => void openCoursePicker('deadline'));
 
   document.getElementById('calendar-prev-month')!.addEventListener('click', () => changeCalendarMonth(-1));
   document.getElementById('calendar-next-month')!.addEventListener('click', () => changeCalendarMonth(1));
   document.getElementById('calendar-today')!.addEventListener('click', goToCalendarToday);
+  document.getElementById('calendar-mini-prev')!.addEventListener('click', () => {
+    calendarMiniDate = new Date(calendarMiniDate.getFullYear(), calendarMiniDate.getMonth() - 1, 1);
+    void renderCalendarPage();
+  });
+  document.getElementById('calendar-mini-next')!.addEventListener('click', () => {
+    calendarMiniDate = new Date(calendarMiniDate.getFullYear(), calendarMiniDate.getMonth() + 1, 1);
+    void renderCalendarPage();
+  });
+  (['month', 'week', 'day'] as CalendarView[]).forEach((view) => {
+    document.getElementById(`calendar-view-${view}`)!.addEventListener('click', () => setCalendarView(view));
+  });
 
   document.getElementById('settings-theme-dark')!.addEventListener('click', () => setTheme('dark'));
   document.getElementById('settings-theme-light')!.addEventListener('click', () => setTheme('light'));
+  document.getElementById('settings-agent-access')!.addEventListener('click', async () => {
+    const enabled = (await atlasApi.getSetting('agentAccess')) !== '0';
+    await atlasApi.setSetting('agentAccess', enabled ? '0' : '1');
+    await renderAgentAccess();
+  });
+  document.getElementById('settings-copy-mcp')!.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(document.getElementById('settings-mcp-config')!.textContent ?? '');
+    const button = document.getElementById('settings-copy-mcp') as HTMLButtonElement;
+    button.textContent = 'Copied';
+    window.setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+  });
+  document.getElementById('settings-backup-now')!.addEventListener('click', async () => {
+    const button = document.getElementById('settings-backup-now') as HTMLButtonElement;
+    button.disabled = true;
+    button.textContent = 'Backing up…';
+    await atlasApi.createBackup();
+    button.disabled = false;
+    button.textContent = 'Back up now';
+    await renderSettingsStorage();
+  });
+  document.getElementById('settings-review-extraction')!.addEventListener('click', () => {
+    resourcesExtractionReview = true;
+    resourcesCourseFilterId = null;
+    resourcesSourceFilter = '';
+    resourcesKindFilter = '';
+    showPage('resources');
+  });
 
   document.getElementById('settings-shortcuts-reset-all')!.addEventListener('click', async () => {
     if (!(await showConfirm('Reset every keyboard shortcut back to its default binding?'))) return;
@@ -4690,13 +7164,10 @@ async function init(): Promise<void> {
     button.addEventListener('click', () => showPage(button.dataset.page as AppPage));
   });
   document.getElementById('manage-courses-button')!.addEventListener('click', () => showPage('courses'));
+  document.getElementById('dashboard-deadline-signal')!.addEventListener('click', () => showPage('calendar'));
+  document.getElementById('dashboard-resource-signal')!.addEventListener('click', () => showPage('resources'));
+  document.getElementById('dashboard-note-signal')!.addEventListener('click', () => showPage('notes'));
 
-  document.getElementById('sync-config-drive')!.addEventListener('change', (e) => {
-    void atlasApi.setSyncConfig('drive', (e.target as HTMLSelectElement).value).then(renderSyncStatus);
-  });
-  document.getElementById('sync-config-classroom')!.addEventListener('change', (e) => {
-    void atlasApi.setSyncConfig('classroom', (e.target as HTMLSelectElement).value).then(renderSyncStatus);
-  });
   document.getElementById('sync-now-drive')!.addEventListener('click', () => void syncSourceNowClicked('drive'));
   document
     .getElementById('sync-now-classroom')!
@@ -4715,6 +7186,11 @@ async function init(): Promise<void> {
   document.getElementById('drive-review-bulk-import')!.addEventListener('click', importSelectedDriveFiles);
   document.getElementById('drive-review-bulk-ignore')!.addEventListener('click', ignoreSelectedDriveFiles);
   atlasApi.onDriveChanged(() => void renderDrivePendingStatus());
+  atlasApi.onSyncStatusChanged((source) => {
+    void renderSyncStatus();
+    if (source === 'drive') void renderDriveStatus();
+    else void renderClassroomStatus();
+  });
 
   document.getElementById('classroom-connect-button')!.addEventListener('click', connectClassroom);
   document.getElementById('classroom-disconnect-button')!.addEventListener('click', disconnectClassroom);
@@ -4740,7 +7216,10 @@ async function init(): Promise<void> {
     // re-sync) — refresh whatever's currently visible so it doesn't look
     // like the sync silently did nothing if they're already looking at it.
     if (currentPage === 'dashboard') void renderDashboard();
-    else if (currentPage === 'courses' && selectedCourse) void renderCourseDetailPreviews(selectedCourse.id);
+    else if (currentPage === 'courses' && selectedCourse) {
+      void renderCourseDetailPreviews(selectedCourse.id);
+      void renderCourseReadiness(selectedCourse.id);
+    }
     else if (currentPage === 'courses') void renderCourses();
   });
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
@@ -4748,13 +7227,18 @@ async function init(): Promise<void> {
     setSidebarCollapsed(!isCollapsed);
   });
 
-  document.getElementById('semester-filter')!.addEventListener('change', (e) => {
-    setSemesterFilter((e.target as HTMLSelectElement).value);
-  });
-
   document.getElementById('new-note-button')!.addEventListener('click', () => openCoursePicker('note'));
   document.getElementById('import-scan-button')!.addEventListener('click', () => openCoursePicker('scan'));
   document.getElementById('toggle-agent-notes')!.addEventListener('click', () => setShowOnlyAgentNotes(!showOnlyAgentNotes));
+  document.getElementById('notes-view-grid')!.addEventListener('click', () => { notesViewMode = 'grid'; document.getElementById('notes-view-grid')!.classList.add('active'); document.getElementById('notes-view-list')!.classList.remove('active'); void renderNotesPage(); });
+  document.getElementById('notes-view-list')!.addEventListener('click', () => { notesViewMode = 'list'; document.getElementById('notes-view-list')!.classList.add('active'); document.getElementById('notes-view-grid')!.classList.remove('active'); void renderNotesPage(); });
+  document.getElementById('notes-sort-controls')!.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-notes-sort]');
+    if (!button?.dataset.notesSort) return;
+    notesSort = button.dataset.notesSort as typeof notesSort;
+    document.querySelectorAll<HTMLButtonElement>('[data-notes-sort]').forEach((item) => item.classList.toggle('active', item === button));
+    void renderNotesPage();
+  });
 
   document.getElementById('note-run-ocr')!.addEventListener('click', runNoteOcr);
   document.getElementById('note-ocr-discard')!.addEventListener('click', discardNoteOcr);
@@ -4860,6 +7344,16 @@ async function init(): Promise<void> {
       el.textContent = `Done — ${progress.total} file${progress.total === 1 ? '' : 's'} read.`;
     }
   });
+  atlasApi.onExtractionUpdated((resourceId) => {
+    const courseId = currentPage === 'courses' ? selectedCourse?.id : undefined;
+    if (courseId === undefined) return;
+    void atlasApi.listResources(courseId).then((resources) => {
+      if (selectedCourse?.id === courseId && resources.some((resource) => resource.id === resourceId)) {
+        void renderCourseReadiness(courseId);
+      }
+    });
+  });
+  wireCommandPalette();
   void loadShortcutOverrides();
   document.addEventListener('keydown', (e) => {
     const active = document.activeElement;
@@ -4915,6 +7409,7 @@ async function init(): Promise<void> {
 
   atlasApi.onCourseContextMenuToggleArchive(async (courseId, archived) => {
     await atlasApi.setCourseArchived(courseId, archived);
+    invalidateCommandPaletteData();
     if (selectedCourse && selectedCourse.id === courseId) backToCourseList();
     await renderCourses();
   });
@@ -4929,31 +7424,76 @@ async function init(): Promise<void> {
     void resetCurrentDeadlineOverrides();
   });
   document.getElementById('deadline-view-close')!.addEventListener('click', closeDeadlineEditor);
+  document.getElementById('deadline-view-close-footer')!.addEventListener('click', closeDeadlineEditor);
+  document.getElementById('deadline-edit-close')!.addEventListener('click', closeDeadlineEditor);
+  document.getElementById('deadline-edit-view-button')!.addEventListener('click', () => {
+    if (currentViewingDeadline) void openDeadlineViewer(currentViewingDeadline);
+  });
   document.getElementById('deadline-cancel-button')!.addEventListener('click', closeDeadlineEditor);
 
-  const dateTextInput = document.getElementById('deadline-edit-date-text') as HTMLInputElement;
-  const dateNativeInput = document.getElementById('deadline-edit-date-native') as HTMLInputElement;
-  const dateErrorEl = document.getElementById('deadline-date-error')!;
-
-  dateTextInput.addEventListener('input', () => {
-    const iso = typedDateToIso(dateTextInput.value);
-    dateErrorEl.hidden = dateTextInput.value.trim() === '' || iso !== null;
-    dateNativeInput.value = iso ?? '';
+  const kindSelect = document.getElementById('deadline-kind-select')!;
+  const kindTrigger = document.getElementById('deadline-kind-trigger')!;
+  const kindMenu = document.getElementById('deadline-kind-menu')!;
+  const closeKindSelect = () => {
+    kindMenu.hidden = true;
+    kindSelect.classList.remove('open');
+    kindTrigger.setAttribute('aria-expanded', 'false');
+  };
+  kindTrigger.addEventListener('click', () => {
+    const isOpen = !kindMenu.hidden;
+    kindMenu.hidden = isOpen;
+    kindSelect.classList.toggle('open', !isOpen);
+    kindTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+  kindMenu.addEventListener('click', (event) => {
+    const option = (event.target as HTMLElement).closest<HTMLButtonElement>('.dselect-option');
+    if (!option?.dataset.value) return;
+    setDeadlineKind(option.dataset.value);
+    closeKindSelect();
   });
 
-  document.getElementById('deadline-edit-date-pick')!.addEventListener('click', () => {
-    // showPicker() is the modern way to open a date input's native picker
-    // programmatically (Chromium 99+, so available in Electron) — needed
-    // since the native input itself is visually hidden in favor of the
-    // typed text field being the visible/primary way to enter a date.
-    if (typeof dateNativeInput.showPicker === 'function') dateNativeInput.showPicker();
-    else dateNativeInput.focus();
+  const dueSelect = document.getElementById('deadline-due-select')!;
+  const dueTrigger = document.getElementById('deadline-due-trigger')!;
+  const dueMenu = document.getElementById('deadline-due-menu')!;
+  const dueDateInput = document.getElementById('deadline-due-date') as HTMLInputElement;
+  const dueTimeInput = document.getElementById('deadline-due-time') as HTMLInputElement;
+  const dueError = document.getElementById('deadline-due-error')!;
+  const closeDueSelect = () => {
+    dueMenu.hidden = true;
+    dueSelect.classList.remove('open');
+    dueTrigger.setAttribute('aria-expanded', 'false');
+  };
+  const applyDueSelection = (): string | null => {
+    const parsed = parseDeadlineDue(dueDateInput.value, dueTimeInput.value);
+    if (parsed.error) {
+      dueError.textContent = parsed.error;
+      dueError.hidden = false;
+      return null;
+    }
+    dueError.hidden = true;
+    setDeadlineDueLabel();
+    return parsed.dueAt;
+  };
+  dueTrigger.addEventListener('click', () => {
+    const isOpen = !dueMenu.hidden;
+    dueMenu.hidden = isOpen;
+    dueSelect.classList.toggle('open', !isOpen);
+    dueTrigger.setAttribute('aria-expanded', String(!isOpen));
   });
-
-  dateNativeInput.addEventListener('change', () => {
-    if (!dateNativeInput.value) return;
-    dateTextInput.value = isoDateToTyped(dateNativeInput.value);
-    dateErrorEl.hidden = true;
+  document.getElementById('deadline-due-apply')!.addEventListener('click', () => {
+    if (applyDueSelection() !== null || (!dueDateInput.value.trim() && !dueTimeInput.value.trim())) closeDueSelect();
+  });
+  document.getElementById('deadline-due-clear')!.addEventListener('click', () => {
+    dueDateInput.value = '';
+    dueTimeInput.value = '';
+    dueError.hidden = true;
+    setDeadlineDueLabel();
+    closeDueSelect();
+  });
+  document.addEventListener('click', (event) => {
+    const target = event.target as Node;
+    if (!kindSelect.contains(target)) closeKindSelect();
+    if (!dueSelect.contains(target)) closeDueSelect();
   });
 
   const descriptionTextarea = document.getElementById('deadline-edit-description') as HTMLTextAreaElement;
@@ -4999,16 +7539,14 @@ async function init(): Promise<void> {
     const title = (document.getElementById('deadline-edit-title') as HTMLInputElement).value.trim();
     if (!title) return;
 
-    const typedDate = dateTextInput.value.trim();
-    if (typedDate && typedDateToIso(typedDate) === null) {
-      dateErrorEl.hidden = false;
+    const kind = (document.getElementById('deadline-edit-kind') as HTMLInputElement).value;
+    const parsedDue = parseDeadlineDue(dueDateInput.value, dueTimeInput.value);
+    if (parsedDue.error) {
+      dueError.textContent = parsedDue.error;
+      dueError.hidden = false;
       return;
     }
-
-    const kind = (document.getElementById('deadline-edit-kind') as HTMLSelectElement).value;
-    const isoDate = typedDate ? typedDateToIso(typedDate) : null;
-    const time = (document.getElementById('deadline-edit-time') as HTMLInputElement).value;
-    const dueAt = isoDate ? (time ? `${isoDate}T${time}` : isoDate) : null;
+    const dueAt = parsedDue.dueAt;
     const description = descriptionTextarea.value.trim() || null;
 
     const saved =
@@ -5050,7 +7588,12 @@ async function init(): Promise<void> {
     if (e.key === 'Escape') closeCoursePicker();
   });
   document.getElementById('course-picker-browse')!.addEventListener('click', async () => {
-    if (coursePickerSelectedId === null || coursePickerBusy) return;
+    if (coursePickerBusy) return;
+    if (coursePickerMode === 'upload') {
+      (document.getElementById('course-picker-file-input') as HTMLInputElement).click();
+      return;
+    }
+    if (coursePickerSelectedId === null) return;
     const courseId = coursePickerSelectedId;
 
     if (coursePickerMode === 'scan') {
@@ -5077,18 +7620,29 @@ async function init(): Promise<void> {
     if (resource) await renderResourcesPage();
   });
 
+  document.getElementById('course-picker-file-input')!.addEventListener('change', (event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (file && coursePickerMode === 'upload') setUploadPickerFile(file);
+  });
+
   const coursePickerDropzone = document.getElementById('course-picker-dropzone')!;
   coursePickerDropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    if (coursePickerSelectedId === null || coursePickerBusy) return;
+    if (coursePickerBusy || (coursePickerMode !== 'upload' && coursePickerSelectedId === null)) return;
     coursePickerDropzone.classList.add('drag-active');
   });
   coursePickerDropzone.addEventListener('dragleave', () => coursePickerDropzone.classList.remove('drag-active'));
   coursePickerDropzone.addEventListener('drop', async (e) => {
     e.preventDefault();
     coursePickerDropzone.classList.remove('drag-active');
-    if (coursePickerSelectedId === null || coursePickerBusy) return;
+    if (coursePickerBusy || (coursePickerMode !== 'upload' && coursePickerSelectedId === null)) return;
+    const file = e.dataTransfer?.files[0];
+    if (coursePickerMode === 'upload') {
+      if (file) setUploadPickerFile(file);
+      return;
+    }
     const courseId = coursePickerSelectedId;
+    if (courseId === null) return;
 
     if (coursePickerMode === 'scan') {
       const files = Array.from(e.dataTransfer?.files ?? []);
@@ -5097,7 +7651,6 @@ async function init(): Promise<void> {
       return;
     }
 
-    const file = e.dataTransfer?.files[0];
     if (!file) return;
     closeCoursePicker();
     await uploadDroppedFile(courseId, file);
@@ -5106,17 +7659,17 @@ async function init(): Promise<void> {
   // Dropping a file directly onto the Resources page list uploads it — to
   // whichever course the rail is currently filtered to, or via the course
   // picker (with the file already attached) if "All Resources" is showing.
-  const resourcesSplit = document.getElementById('resources-split')!;
-  resourcesSplit.addEventListener('dragover', (e) => {
+  const resourcesLayout = document.getElementById('resources-layout')!;
+  resourcesLayout.addEventListener('dragover', (e) => {
     e.preventDefault();
-    resourcesSplit.classList.add('drag-active');
+    resourcesLayout.classList.add('drag-active');
   });
-  resourcesSplit.addEventListener('dragleave', (e) => {
-    if (e.target === resourcesSplit) resourcesSplit.classList.remove('drag-active');
+  resourcesLayout.addEventListener('dragleave', (e) => {
+    if (e.target === resourcesLayout) resourcesLayout.classList.remove('drag-active');
   });
-  resourcesSplit.addEventListener('drop', async (e) => {
+  resourcesLayout.addEventListener('drop', async (e) => {
     e.preventDefault();
-    resourcesSplit.classList.remove('drag-active');
+    resourcesLayout.classList.remove('drag-active');
     const file = e.dataTransfer?.files[0];
     if (!file) return;
     if (resourcesCourseFilterId !== null) {
@@ -5136,9 +7689,12 @@ async function init(): Promise<void> {
   // Fired by the main process when a watched folder picks up a new file —
   // the global Resources page isn't scoped to one course, so just refresh
   // it outright rather than checking which course the event was for.
-  atlasApi.onResourcesChanged(async () => {
+  atlasApi.onResourcesChanged(async (courseId) => {
     if (currentPage === 'resources') await renderResourcesPage();
-    else void renderDashboard();
+    else if (currentPage === 'courses' && selectedCourse?.id === courseId) {
+      await renderCourseDetailPreviews(courseId);
+      await renderCourseReadiness(courseId);
+    } else void renderDashboard();
   });
 
   const searchInput = document.getElementById('search-input') as HTMLInputElement;

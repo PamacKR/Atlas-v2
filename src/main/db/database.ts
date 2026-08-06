@@ -216,6 +216,9 @@ function migrate(db: Database.Database): void {
   if (!announcementColumns.includes('classroom_announcement_id')) {
     db.exec('ALTER TABLE announcements ADD COLUMN classroom_announcement_id TEXT');
   }
+  if (!announcementColumns.includes('dashboard_pinned')) {
+    db.exec('ALTER TABLE announcements ADD COLUMN dashboard_pinned INTEGER NOT NULL DEFAULT 0');
+  }
 
   const assignmentColumns = (
     db.prepare('PRAGMA table_info(assignments)').all() as { name: string }[]
@@ -287,6 +290,19 @@ function migrate(db: Database.Database): void {
   db.exec(
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_resources_drive_file_id ON resources(drive_file_id) WHERE drive_file_id IS NOT NULL'
   );
+
+  // Dashboard v2 must not debut as a wall of every historical Classroom
+  // item. Seed the cleared state once, after all existing tables/migrations
+  // are available; only Classroom items inserted later are genuinely new.
+  const dashboardBaseline = db.prepare("SELECT value FROM app_settings WHERE key = 'dashboard_v2_baseline'").get();
+  if (!dashboardBaseline) {
+    const seedDashboardBaseline = db.transaction(() => {
+      db.prepare("INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id) SELECT 'announcement', id FROM announcements WHERE source = 'classroom'").run();
+      db.prepare("INSERT OR IGNORE INTO dashboard_cleared_items (item_type, item_id) SELECT 'assignment', id FROM assignments WHERE source = 'classroom'").run();
+      db.prepare("INSERT INTO app_settings (key, value) VALUES ('dashboard_v2_baseline', '1')").run();
+    });
+    seedDashboardBaseline();
+  }
 }
 
 export function closeDb(): void {

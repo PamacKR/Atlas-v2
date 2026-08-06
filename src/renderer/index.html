@@ -9,14 +9,20 @@
 <body>
   <div id="app-shell">
     <nav id="sidebar">
-      <div id="sidebar-brand">Atlas</div>
-      <button class="sidebar-nav-item active" type="button" data-page="dashboard"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="courses"><span class="nav-icon">📚</span><span class="nav-label">Courses</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="resources"><span class="nav-icon">🗂️</span><span class="nav-label">Resources</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="notes"><span class="nav-icon">📝</span><span class="nav-label">Notes</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="calendar"><span class="nav-icon">📅</span><span class="nav-label">Calendar</span></button>
-      <button class="sidebar-nav-item" type="button" data-page="settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></button>
-      <button id="sidebar-collapse-toggle" class="sidebar-nav-item" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">
+      <div id="sidebar-brand" class="wordmark">
+        <img id="sidebar-brand-logo" class="atlas-logo" data-atlas-logo src="assets/atlas-logo-reference-dark-transparent.png" alt="Atlas" />
+        <span class="wm-rest">Atlas</span>
+      </div>
+      <div class="sidebar-nav-list">
+      <button class="sidebar-nav-item nav-item active" type="button" data-page="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span><span class="nav-label">Dashboard</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="courses"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span><span class="nav-label">Courses</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="resources"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v8.5A2.5 2.5 0 0 1 18.5 21h-13A2.5 2.5 0 0 1 3 18.5Z"/></svg></span><span class="nav-label">Resources</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="notes"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h11l5 5v13H4Z"/><path d="M15 3v5h5M8 13h8M8 17h6"/></svg></span><span class="nav-label">Notes</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="calendar"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></span><span class="nav-label">Calendar</span></button>
+      <button class="sidebar-nav-item nav-item" type="button" data-page="settings"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.2 7.2 0 0 0-1.69-.98L14.5 2.42A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.49.42l-.38 2.65c-.61.25-1.18.58-1.69.98l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.04.32-.07.65-.07.98s.02.66.07.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46a.5.5 0 0 0 .6.22l2.49-1c.51.4 1.08.73 1.69.98l.38 2.65A.5.5 0 0 0 10 22h4a.5.5 0 0 0 .49-.42l.38-2.65c.61-.25 1.18-.58 1.69-.98l2.49 1a.5.5 0 0 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65Z"/><circle cx="12" cy="12" r="3.5"/></svg></span><span class="nav-label">Settings</span></button>
+      </div>
+      <div class="nav-spacer"></div>
+      <button id="sidebar-collapse-toggle" class="sidebar-nav-item sidebar-toggle" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">
         <span class="nav-icon" id="sidebar-collapse-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </span>
@@ -24,34 +30,63 @@
       </button>
     </nav>
 
-    <div id="main-area">
+    <div id="main-area" data-page="dashboard">
+      <div id="window-chrome" aria-label="Window controls">
+        <div id="window-drag-region" aria-hidden="true"></div>
+        <div id="window-controls">
+          <button id="window-minimize" type="button" aria-label="Minimize window">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" /></svg>
+          </button>
+          <button id="window-maximize" type="button" aria-label="Maximize window" aria-pressed="false">
+            <svg data-window-icon="maximize" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" /></svg>
+            <svg data-window-icon="restore" viewBox="0 0 16 16" aria-hidden="true" hidden><path d="M3.5 5.5h7v7h-7zM5.5 3.5h7v7" /></svg>
+          </button>
+          <button id="window-close" type="button" aria-label="Close Atlas">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+          </button>
+        </div>
+      </div>
       <header id="topbar">
+        <div id="topbar-page-titles">
+          <h1 id="courses-topbar-title" hidden>Courses <span id="courses-page-count" class="dim">0</span></h1>
+          <h1 id="resources-topbar-title" hidden>Resources <span id="resources-page-count" class="dim">0</span></h1>
+          <h1 id="notes-topbar-title" hidden>Notes <span id="notes-page-count" class="dim">0</span></h1>
+          <h1 id="calendar-topbar-title" hidden>Calendar</h1>
+          <h1 id="settings-topbar-title" hidden>Settings</h1>
+        </div>
+        <div id="topbar-right">
+          <div id="courses-topbar-actions" class="topbar-page-actions" hidden>
+            <button id="ashoka-import-button" type="button" class="section-action">Import from Ashoka Planner</button>
+            <button id="add-course-toggle" type="button" class="section-action">+ Add course</button>
+          </div>
+          <div id="resources-topbar-actions" class="topbar-page-actions" hidden><button id="upload-button" type="button" class="section-action">+ Upload file</button><div id="resources-source-filter" class="dselect resources-source-select"></div></div>
+          <div id="notes-topbar-actions" class="topbar-page-actions" hidden>
+            <button id="import-scan-button" type="button" class="btn">+ Import scan</button>
+            <button id="new-note-button" type="button" class="btn">+ New note</button>
+          </div>
+          <div id="calendar-topbar-actions" class="topbar-page-actions" hidden><button id="calendar-add-deadline" type="button" class="section-action">+ Add deadline</button></div>
+        <div id="dashboard-course-filter" class="dselect dashboard-course-filter">
+          <button id="dashboard-course-filter-trigger" class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span id="dashboard-course-filter-label">All courses</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="dashboard-course-filter-menu" class="dselect-menu" role="listbox" hidden></div>
+        </div>
         <div id="search-box">
           <input id="search-input" type="text" placeholder="Search notes, resources…" autocomplete="off" />
           <ul id="search-results" hidden></ul>
         </div>
+        </div>
       </header>
 
       <section id="page-dashboard" class="app-page">
-        <h2>Dashboard</h2>
+        <header class="dashboard-intro"><h1 id="dashboard-heading">Today</h1></header>
 
-        <div id="dashboard-stats">
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-courses">0</span>
-            <span class="stat-label">Courses</span>
-          </div>
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-resources">0</span>
-            <span class="stat-label">Resources</span>
-          </div>
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-notes">0</span>
-            <span class="stat-label">Notes</span>
-          </div>
-          <div class="stat-tile">
-            <span class="stat-value" id="stat-deadlines">0</span>
-            <span class="stat-label">Upcoming deadlines</span>
-          </div>
+        <div id="dashboard-stats" class="signals" aria-label="Academic overview">
+          <button class="signal is-urgent" type="button" id="dashboard-deadline-signal"><span class="n" id="stat-deadlines">0</span><span class="t">due this week</span></button>
+          <button class="signal" type="button" id="dashboard-resource-signal"><span class="n" id="stat-resources">0</span><span class="t">resources available</span></button>
+          <button class="signal" type="button" id="dashboard-note-signal"><span class="n" id="stat-notes">0</span><span class="t">notes in Atlas</span></button>
+          <span id="stat-courses" hidden>0</span>
         </div>
 
         <!-- Three-column layout (My Courses | Upcoming | Recent activity),
@@ -59,35 +94,34 @@
              width-widgets arrangement. -->
         <div id="dashboard-main-grid">
           <div class="dashboard-widget dashboard-widget-stretch" id="dashboard-courses-widget">
-            <div class="resources-header">
-              <h3>My courses</h3>
+            <div class="resources-header section-head">
+              <h2>Courses</h2>
             </div>
             <ul id="dashboard-course-list" class="dashboard-course-chips"></ul>
-            <button id="manage-courses-button" type="button" class="dashboard-widget-footer-btn">⚙️ Manage courses</button>
+            <button id="manage-courses-button" type="button" class="dashboard-widget-footer-btn">Manage →</button>
           </div>
 
+          <div id="dashboard-left-column">
           <div class="dashboard-widget dashboard-widget-stretch" id="dashboard-upcoming-widget">
-            <div class="resources-header">
-              <h3>Upcoming</h3>
-            </div>
-            <div class="chip-row" id="dashboard-upcoming-tabs">
-              <button class="chip active" type="button" data-upcoming-filter="">All</button>
-              <button class="chip" type="button" data-upcoming-filter="assignment">Assignments</button>
-              <button class="chip" type="button" data-upcoming-filter="exam">Exams</button>
-              <button class="chip" type="button" data-upcoming-filter="reading">Readings</button>
-              <button class="chip" type="button" data-upcoming-filter="other">Other</button>
+            <div class="resources-header section-head">
+              <h2>Up next</h2>
             </div>
             <ul id="dashboard-deadlines"></ul>
-            <button id="dashboard-view-calendar" type="button" class="dashboard-widget-footer-btn">View full calendar →</button>
+            <button id="dashboard-view-calendar" type="button" class="dashboard-widget-footer-btn">Calendar →</button>
+          </div>
+          <div class="dashboard-widget" id="dashboard-announcements-widget">
+            <div class="resources-header section-head"><h2>Announcements</h2><div class="dashboard-announcement-actions"><button id="dashboard-add-important" type="button" class="section-action">Mark important</button><button id="dashboard-mark-all-updates" type="button" class="section-action" hidden>Mark all read</button></div></div>
+            <ul id="dashboard-announcements"></ul>
+          </div>
           </div>
 
           <div id="dashboard-right-column">
             <div class="dashboard-widget">
-              <h3>Recently added resources</h3>
+              <div class="section-head"><h2>Recent</h2></div>
               <ul id="dashboard-resources"></ul>
             </div>
             <div class="dashboard-widget">
-              <h3>What changed today</h3>
+              <div class="section-head"><h2>Notes</h2><button id="dashboard-view-notes" type="button" class="section-action">Notes →</button></div>
               <ul id="dashboard-activity"></ul>
             </div>
           </div>
@@ -96,63 +130,35 @@
 
       <section id="page-courses" class="app-page" hidden>
         <div id="courses-list-view">
-          <div class="page-header">
-            <div>
-              <h2>Courses</h2>
-              <p class="muted">All your courses in one place.</p>
-            </div>
-            <div class="page-header-actions">
-              <button id="ashoka-import-button" type="button">Import from Ashoka Planner</button>
-              <button id="add-course-toggle" type="button">+ Add course</button>
-            </div>
-          </div>
-
           <form id="course-form" hidden>
             <input id="course-name" type="text" placeholder="Course name" required />
             <input id="course-code" type="text" placeholder="Code (optional)" />
-            <select id="course-term">
-              <option value="">Semester</option>
-              <option value="Monsoon 26">Monsoon 26</option>
-              <option value="Spring 27">Spring 27</option>
-              <option value="Monsoon 27">Monsoon 27</option>
-              <option value="Spring 28">Spring 28</option>
-            </select>
+            <input id="course-term" type="text" placeholder="Term (optional)" />
             <button type="submit">Add course</button>
           </form>
 
           <div class="courses-toolbar">
             <div class="courses-toolbar-left">
-              <select id="semester-filter">
-                <option value="">All semesters</option>
-                <option value="Monsoon 26">Monsoon 26</option>
-                <option value="Spring 27">Spring 27</option>
-                <option value="Monsoon 27">Monsoon 27</option>
-                <option value="Spring 28">Spring 28</option>
-              </select>
               <!-- Toggles between active courses (default) and archived ones —
                    never both mixed together, so a card on screen is
                    unambiguously one or the other. -->
-              <button id="toggle-archived-courses" type="button" class="link-button">Show archived courses</button>
+              <div id="courses-term-controls" class="courses-text-controls" aria-label="Filter courses by term"></div>
+              <div class="toolbar-divider" aria-hidden="true"></div>
             </div>
             <div class="courses-toolbar-right">
-              <select id="course-sort">
-                <option value="name">Sort by: Name</option>
-                <option value="resources">Sort by: Resources</option>
-                <option value="deadlines">Sort by: Deadlines</option>
-                <option value="notes">Sort by: Notes</option>
-              </select>
               <div class="view-toggle">
-                <button id="course-view-grid" type="button" class="active" title="Grid view" aria-label="Grid view">
+                <button id="course-view-grid" type="button" title="Grid view" aria-label="Grid view">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                 </button>
-                <button id="course-view-list" type="button" title="List view" aria-label="List view">
+                <button id="course-view-list" type="button" class="active" title="List view" aria-label="List view">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 </button>
               </div>
+              <button id="toggle-archived-courses" type="button" class="toggle-archived">Show archived</button>
             </div>
           </div>
 
-          <ul id="course-list" class="view-grid"></ul>
+          <div id="course-list" class="view-list"></div>
           <p id="course-list-empty" class="muted" hidden></p>
         </div>
 
@@ -162,32 +168,37 @@
             Back to Courses
           </button>
 
-          <div class="course-detail-header">
+          <div class="course-detail-header course-header">
             <div id="course-detail-avatar-slot"></div>
             <div>
-              <h2 id="course-detail-heading"></h2>
+              <h1 id="course-detail-heading"></h1>
               <p id="course-detail-meta" class="muted"></p>
             </div>
             <!-- Phase 4 Part E fallback (phase4-spec.md §7) — a plain-Markdown
                  dump of this course's context, for pasting into an AI tool
                  that can't use the MCP server directly. -->
-            <button id="course-detail-edit" type="button" class="link-button">Edit course</button>
-            <button id="course-detail-export-context" type="button" class="link-button">Export for AI</button>
-            <button id="course-detail-archive-toggle" type="button" class="link-button">Archive course</button>
+            <div class="course-detail-header-actions">
+              <button id="course-detail-edit" type="button" class="link-button">Edit course</button>
+              <button id="course-detail-export-context" type="button" class="link-button">Export for AI</button>
+              <button id="course-detail-archive-toggle" type="button" class="link-button">Archive course</button>
+            </div>
           </div>
           <p id="course-detail-export-status" class="muted" hidden></p>
 
           <!-- Tabbed layout (replaces the old single long-scroll page) —
-               Overview/Deadlines/Files always shown; Announcements/
+               Overview/Readiness/Deadlines/Files always shown; Announcements/
                Assignments/Classwork tabs only appear once the course is
                connected to Classroom (toggled in renderer.ts). -->
-          <div id="course-detail-tabs">
+          <div id="course-detail-tabs" class="course-tabs-row">
+            <div class="course-tabs">
             <button class="course-detail-tab active" type="button" data-course-tab="overview">Overview</button>
             <button class="course-detail-tab" type="button" data-course-tab="deadlines">Deadlines</button>
             <button class="course-detail-tab" type="button" data-course-tab="announcements" id="course-tab-announcements" hidden>Announcements</button>
             <button class="course-detail-tab" type="button" data-course-tab="assignments" id="course-tab-assignments" hidden>Assignments</button>
             <button class="course-detail-tab" type="button" data-course-tab="classwork" id="course-tab-classwork" hidden>Classwork</button>
             <button class="course-detail-tab" type="button" data-course-tab="files">Files</button>
+            <button class="course-detail-tab" type="button" data-course-tab="readiness">Readiness</button>
+            </div>
           </div>
 
           <div class="course-detail-tab-panel" data-course-tab-panel="overview">
@@ -206,9 +217,16 @@
                 </div>
                 <ul id="course-detail-notes-preview"></ul>
               </div>
+              <div class="dashboard-widget course-detail-up-next">
+                <div class="resources-header">
+                  <h3>Up next</h3>
+                  <button id="course-detail-view-deadlines" type="button" class="link-button">Deadlines &#8594;</button>
+                </div>
+                <ul id="course-detail-up-next"></ul>
+              </div>
             </div>
 
-            <section id="course-classroom-section">
+            <section id="course-classroom-section" class="course-classroom-status">
               <h4>Classroom</h4>
               <div id="course-classroom-connected" hidden>
                 <p class="muted">Connected to <span id="course-classroom-name"></span></p>
@@ -265,136 +283,153 @@
               <button id="add-watch-folder" type="button">Watch a folder…</button>
             </section>
           </div>
+
+          <div class="course-detail-tab-panel" data-course-tab-panel="readiness" hidden>
+            <section id="course-readiness-section" class="course-readiness-section">
+              <div class="resources-header course-readiness-header">
+                <div>
+                  <h3>Agent readiness</h3>
+                  <p id="course-readiness-summary" class="course-readiness-summary"></p>
+                </div>
+              </div>
+              <div id="course-readiness-metrics" class="course-readiness-metrics" aria-label="Course readiness summary"></div>
+              <div id="course-readiness-issues" class="course-readiness-issues"></div>
+              <p id="course-readiness-empty" class="muted" hidden></p>
+            </section>
+          </div>
         </div>
       </section>
 
       <section id="page-resources" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Resources</h2>
-            <p class="muted">All your course materials in one place.</p>
-          </div>
-          <button id="upload-button" type="button">+ Upload file</button>
-        </div>
-
-        <div class="chip-row" id="resources-kind-filter">
-          <button class="chip active" type="button" data-kind-filter="">All</button>
-          <button class="chip" type="button" data-kind-filter="pdf">PDF</button>
-          <button class="chip" type="button" data-kind-filter="docx,text,markdown">Document</button>
-          <button class="chip" type="button" data-kind-filter="image">Image</button>
-          <button class="chip" type="button" data-kind-filter="pptx">Presentation</button>
-          <button class="chip" type="button" data-kind-filter="xlsx">Spreadsheet</button>
-          <button class="chip" type="button" data-kind-filter="zip,other">Other</button>
-        </div>
-
-        <div class="split-layout" id="resources-split">
-          <aside class="split-rail">
-            <h4>Courses</h4>
+        <div id="resources-layout">
+          <aside class="resources-course-rail">
             <ul id="resources-course-rail"></ul>
           </aside>
-          <div class="split-list">
-            <div class="resources-toolbar">
-              <div class="courses-toolbar-right">
-                <select id="resources-sort">
-                  <option value="name">Sort by: Name</option>
-                  <option value="recent">Sort by: Recently added</option>
-                  <option value="kind">Sort by: Kind</option>
-                  <option value="course">Sort by: Course</option>
-                </select>
-                <div class="view-toggle">
+          <div class="resources-main">
+            <div class="resources-kindrow">
+              <div id="resources-kind-filter" class="resources-text-controls" aria-label="Filter resources by kind">
+                <button class="resource-kind-control active" type="button" data-kind-filter="">All kinds</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="pdf">PDF</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="docx,text,markdown">Document</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="image">Image</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="pptx">Presentation</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="xlsx">Spreadsheet</button>
+                <button class="resource-kind-control" type="button" data-kind-filter="zip,other">Other</button>
+              </div>
+              <div class="resources-toolbar-spacer"></div>
+              <div id="resources-sort-controls" class="resources-text-controls" aria-label="Sort resources">
+                <button class="resource-sort-control active" type="button" data-resource-sort="recent">Recent</button>
+                <button class="resource-sort-control" type="button" data-resource-sort="name">Name</button>
+                <button class="resource-sort-control" type="button" data-resource-sort="course">Course</button>
+              </div>
+              <div class="view-toggle resources-view-toggle">
                   <button id="view-grid" type="button" title="Grid view" aria-label="Grid view">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                   </button>
                   <button id="view-list" type="button" class="active" title="List view" aria-label="List view">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                   </button>
-                </div>
               </div>
             </div>
-            <ul id="all-resources-list" class="view-list"></ul>
+            <div id="all-resources-list" class="view-list"></div>
           </div>
         </div>
       </section>
 
       <section id="page-notes" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Notes</h2>
-            <p class="muted">All your notes in one place.</p>
-          </div>
-          <div class="notes-header-actions">
-            <button id="import-scan-button" type="button">+ Import scan</button>
-            <button id="new-note-button" type="button">+ New note</button>
-          </div>
-        </div>
-
-        <div class="split-layout" id="notes-split">
-          <aside class="split-rail">
-            <h4>Courses</h4>
+        <div id="notes-layout">
+          <aside class="notes-course-rail">
             <ul id="notes-course-rail"></ul>
-            <!-- Filters to just the notes an AI agent generated (Phase 4 Part
-                 B) vs. everything the user made themselves (typed, imported,
-                 or scanned — all "user-made" alike). -->
-            <button id="toggle-agent-notes" type="button" class="link-button">Show only agent notes</button>
+            <div class="rail-divider"></div>
+            <button id="toggle-agent-notes" type="button">Show only agent notes</button>
           </aside>
-          <div class="split-list" id="notes-list-pane">
-            <div id="all-notes-list"></div>
+          <div class="notes-main">
+            <div class="notes-toolbar">
+              <div id="notes-sort-controls" class="notes-text-controls">
+                <button type="button" class="active" data-notes-sort="recent">Recent</button>
+                <button type="button" data-notes-sort="name">Name</button>
+                <button type="button" data-notes-sort="course">Course</button>
+              </div>
+              <div class="notes-toolbar-spacer"></div>
+              <div class="view-toggle notes-view-toggle">
+                <button id="notes-view-grid" type="button" title="Grid view" aria-label="Grid view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+                <button id="notes-view-list" type="button" class="active" title="List view" aria-label="List view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+              </div>
+            </div>
+            <div id="all-notes-list" class="view-list"></div>
           </div>
         </div>
       </section>
 
       <section id="page-calendar" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Calendar</h2>
-            <p class="muted">Every deadline and assignment in one view.</p>
-          </div>
-          <div id="calendar-month-nav">
-            <button id="calendar-prev-month" type="button" title="Previous month" aria-label="Previous month">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <span id="calendar-month-label"></span>
-            <button id="calendar-next-month" type="button" title="Next month" aria-label="Next month">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-            <button id="calendar-today" type="button" class="link-button">Today</button>
+        <div class="cal-toolbar" aria-label="Calendar controls">
+          <button id="calendar-prev-month" class="cal-nav-btn" type="button" title="Previous" aria-label="Previous period">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span id="calendar-month-label" class="cal-month-label"></span>
+          <button id="calendar-next-month" class="cal-nav-btn" type="button" title="Next" aria-label="Next period">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button id="calendar-today" type="button" class="cal-today-btn">Today</button>
+          <div class="toolbar-spacer"></div>
+          <div class="viewmode" aria-label="Calendar view">
+            <button id="calendar-view-month" class="active" type="button" aria-pressed="true">Month</button>
+            <button id="calendar-view-week" type="button" aria-pressed="false">Week</button>
+            <button id="calendar-view-day" type="button" aria-pressed="false">Day</button>
           </div>
         </div>
 
         <div id="calendar-layout">
-          <div id="calendar-grid-wrap">
-            <div id="calendar-weekday-row">
+          <div id="calendar-content">
+            <div id="calendar-month-view">
+              <div id="calendar-weekday-row" class="cal-weekdays">
               <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+              </div>
+              <div id="calendar-grid" class="cal-grid"></div>
             </div>
-            <div id="calendar-grid"></div>
+            <div id="calendar-week-view" hidden></div>
+            <div id="calendar-day-view" hidden></div>
           </div>
           <aside id="calendar-sidebar">
-            <div id="calendar-legend"></div>
-            <h4>Upcoming</h4>
-            <div id="calendar-upcoming-list"></div>
+            <section class="cal-side-section">
+              <div class="mini-cal-head">
+                <span id="calendar-mini-label" class="mc-label"></span>
+                <div class="mc-nav">
+                  <button id="calendar-mini-prev" class="cal-nav-btn mini-nav-btn" type="button" title="Previous month" aria-label="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                  <button id="calendar-mini-next" class="cal-nav-btn mini-nav-btn" type="button" title="Next month" aria-label="Next month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                </div>
+              </div>
+              <div id="calendar-mini-grid" class="mini-cal-grid"></div>
+            </section>
+            <section class="cal-side-section">
+              <h2>Filters</h2>
+              <div id="calendar-type-filters"></div>
+              <div class="calendar-filter-gap" aria-hidden="true"></div>
+              <div id="calendar-course-filters"></div>
+            </section>
+            <section class="cal-side-section">
+              <h2>Upcoming</h2>
+              <div id="calendar-upcoming-list"></div>
+            </section>
           </aside>
         </div>
       </section>
 
       <section id="page-settings" class="app-page" hidden>
-        <div class="page-header">
-          <div>
-            <h2>Settings</h2>
-            <p class="muted">Customize Atlas to fit your workflow.</p>
-          </div>
-        </div>
-
         <div id="settings-layout">
           <nav id="settings-nav">
-            <button class="settings-nav-item active" type="button" data-settings-tab="general">General</button>
-            <button class="settings-nav-item" type="button" data-settings-tab="sources">Sources</button>
-            <button class="settings-nav-item" type="button" data-settings-tab="shortcuts">Shortcuts</button>
-            <button class="settings-nav-item" type="button" data-settings-tab="about">About</button>
+            <button class="settings-nav-item active" type="button" data-settings-tab="appearance"><span>Appearance</span><small>Theme, accent</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="sources"><span>Sources</span><small>Drive, Classroom, sync</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="shortcuts"><span>Shortcuts</span><small>Keybindings</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="ai"><span>AI &amp; Integration</span><small>Agent &amp; MCP connection</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="storage"><span>Storage</span><small>Usage &amp; backup</small></button>
+            <button class="settings-nav-item" type="button" data-settings-tab="about"><span>About</span><small>Version info</small></button>
           </nav>
 
-          <div class="settings-panel" data-settings-panel="general">
+          <div id="settings-panels">
+          <div class="settings-panel" data-settings-panel="appearance">
             <section class="settings-section">
-              <h3>Appearance</h3>
+              <h2>Appearance</h2>
               <div class="settings-row">
                 <div>
                   <div class="settings-row-label">Theme</div>
@@ -423,24 +458,15 @@
                  failing with no way to notice (see open-questions.md #21,
                  where exactly that happened for weeks). -->
             <section class="settings-section">
-              <h3>Sync</h3>
+              <h2>Sync</h2>
               <div class="settings-row">
                 <div>
                   <div class="settings-row-label">Google Drive</div>
                   <div id="sync-status-drive" class="settings-row-hint"></div>
                 </div>
                 <div class="sync-row-controls">
-                  <select id="sync-config-drive">
-                    <option value="off">Off</option>
-                    <option value="launch">On launch only</option>
-                    <option value="interval:20">Every 20 seconds</option>
-                    <option value="interval:60">Every 1 minute</option>
-                    <option value="interval:300">Every 5 minutes</option>
-                    <option value="interval:900">Every 15 minutes</option>
-                    <option value="interval:1800">Every 30 minutes</option>
-                    <option value="interval:3600">Every 60 minutes</option>
-                  </select>
-                  <button id="sync-now-drive" type="button" class="link-button">Sync now</button>
+                  <div id="sync-config-drive" class="dselect sync-config-select"></div>
+                  <button id="sync-now-drive" type="button" class="settings-button">Sync now</button>
                 </div>
               </div>
               <div class="settings-row">
@@ -449,57 +475,42 @@
                   <div id="sync-status-classroom" class="settings-row-hint"></div>
                 </div>
                 <div class="sync-row-controls">
-                  <select id="sync-config-classroom">
-                    <option value="off">Off</option>
-                    <option value="launch">On launch only</option>
-                    <option value="interval:300">Every 5 minutes</option>
-                    <option value="interval:900">Every 15 minutes</option>
-                    <option value="interval:1800">Every 30 minutes</option>
-                    <option value="interval:3600">Every 60 minutes</option>
-                  </select>
-                  <button id="sync-now-classroom" type="button" class="link-button">Sync now</button>
+                  <div id="sync-config-classroom" class="dselect sync-config-select"></div>
+                  <button id="sync-now-classroom" type="button" class="settings-button">Sync now</button>
                 </div>
               </div>
 
-              <button id="sync-now-all" type="button">Sync everything now</button>
+              <div class="settings-row settings-sync-all-row"><div></div><div class="settings-row-controls"><button id="sync-now-all" type="button" class="settings-button">Sync everything now</button></div></div>
             </section>
 
             <section class="settings-section">
-              <h3>Google Drive</h3>
-              <p id="drive-status" class="muted">Not connected.</p>
-              <button id="drive-connect-button" type="button">Connect Google Drive</button>
-              <button id="drive-disconnect-button" type="button" hidden>Disconnect</button>
+              <h2>Google Drive</h2>
+              <div class="settings-row">
+                <div><div id="drive-status" class="settings-status-pill"><span class="settings-status-dot"></span>Not connected.</div><div id="drive-status-hint" class="settings-row-hint">Connect Drive to watch a folder and open Office files in Drive.</div></div>
+                <div class="settings-row-controls"><button id="drive-connect-button" type="button" class="settings-button">Connect Google Drive</button><button id="drive-disconnect-button" type="button" class="settings-button" hidden>Disconnect</button></div>
+              </div>
               <div id="drive-folder-form" hidden>
                 <label for="drive-folder-input">Drive folder to watch</label>
                 <div id="drive-folder-row">
                   <input id="drive-folder-input" type="text" placeholder="Paste your Drive folder link" />
-                  <button id="drive-folder-save" type="button">Save</button>
+                  <button id="drive-folder-save" type="button" class="settings-button">Save</button>
                 </div>
               </div>
               <p id="drive-pending-status" class="muted" hidden></p>
-              <button id="drive-review-button" type="button" hidden>Review new files</button>
+              <button id="drive-review-button" type="button" class="settings-button" hidden>Review new files</button>
             </section>
 
             <section class="settings-section">
-              <h3>Office file previews</h3>
-              <p class="muted">PowerPoint/Word/Excel files opened via "Open in Google Drive" are uploaded to a dedicated "Atlas Previews" folder in your Drive, so later opens are instant instead of re-uploading every time.</p>
-              <button id="drive-clear-preview-cache-button" type="button">Clear Drive preview cache</button>
+              <h2>Office file previews</h2>
+              <div class="settings-row settings-row-no-rule"><div><div class="settings-row-label">Drive preview cache</div><div class="settings-row-hint">PowerPoint, Word, and Excel files opened in Drive are cached there so later opens are instant.</div></div><button id="drive-clear-preview-cache-button" type="button" class="settings-button">Clear cache</button></div>
               <p id="drive-clear-preview-cache-status" class="muted" hidden></p>
             </section>
 
             <section class="settings-section">
-              <h3>Text extraction</h3>
-              <p class="muted">Atlas reads the text out of your PDFs, slides, and documents so an AI agent (Phase 4) can search inside them, not just by filename.</p>
-              <p id="extraction-status" class="muted"></p>
-            </section>
-
-            <section class="settings-section">
-              <h3>Google Classroom</h3>
-              <p id="classroom-status" class="muted">Not connected.</p>
-              <button id="classroom-connect-button" type="button">Connect Google Classroom</button>
-              <button id="classroom-disconnect-button" type="button" hidden>Disconnect</button>
+              <h2>Google Classroom</h2>
+              <div class="settings-row"><div><div id="classroom-status" class="settings-status-pill"><span class="settings-status-dot"></span>Not connected.</div><div id="classroom-status-hint" class="settings-row-hint">Connect Classroom to bring in courses, deadlines, and announcements.</div></div><div class="settings-row-controls"><button id="classroom-connect-button" type="button" class="settings-button">Connect Google Classroom</button><button id="classroom-disconnect-button" type="button" class="settings-button" hidden>Disconnect</button></div></div>
               <p id="classroom-pending-status" class="muted" hidden></p>
-              <button id="classroom-review-button" type="button" hidden>Review new courses</button>
+              <button id="classroom-review-button" type="button" class="settings-button" hidden>Review new courses</button>
             </section>
           </div>
 
@@ -509,23 +520,47 @@
                  settings-section pattern rather than introducing anything
                  new; real visual design is Phase 6. -->
             <section class="settings-section">
-              <div class="settings-row">
+              <div class="settings-shortcuts-heading">
                 <div>
-                  <h3>Keyboard shortcuts</h3>
+                  <h2>Keyboard shortcuts</h2>
                   <div class="settings-row-hint">Click a binding to change it. Esc cancels; typing a combo already in use asks before stealing it.</div>
                 </div>
-                <button id="settings-shortcuts-reset-all" type="button">Reset all to defaults</button>
+                <button id="settings-shortcuts-reset-all" type="button" class="settings-button">Reset all to defaults</button>
               </div>
               <div id="settings-shortcuts-list"></div>
             </section>
           </div>
 
+          <div class="settings-panel" data-settings-panel="ai" hidden>
+            <section class="settings-section"><h2>Agent access</h2><div class="settings-row"><div><div class="settings-row-label">Allow agent access</div><div class="settings-row-hint">The MCP server checks this before every tool call. Turning it off immediately blocks a connected agent.</div></div><button id="settings-agent-access" class="settings-toggle" type="button" role="switch" aria-checked="true"><span></span></button></div></section>
+            <section class="settings-section"><h2>Connect an agent</h2><p class="settings-muted-block">Atlas includes a working <code>.mcp.json</code> at the project root. For another MCP-compatible tool, use this configuration.</p><div class="mcp-config"><code id="settings-mcp-config">{
+  "mcpServers": {
+    "atlas": {
+      "command": "node",
+      "args": ["scripts/run-mcp-server.js"]
+    }
+  }
+}</code><button id="settings-copy-mcp" class="settings-button" type="button">Copy</button></div></section>
+          </div>
+
+          <div class="settings-panel" data-settings-panel="storage" hidden>
+            <section class="settings-section"><h2>Usage</h2><div class="settings-row settings-row-no-rule"><div><div id="storage-total" class="settings-row-label"></div><div id="storage-legend" class="storage-legend"></div></div></div></section>
+            <section class="settings-section"><h2>By course</h2><div id="storage-courses"></div></section>
+            <section class="settings-section"><h2>Text extraction</h2><div class="settings-row"><div><div id="storage-extraction-title" class="settings-row-label"></div><div id="storage-extraction-hint" class="settings-row-hint"></div></div><button id="settings-review-extraction" class="settings-button" type="button" hidden>Review</button></div></section>
+            <section class="settings-section"><h2>Backup</h2><div class="settings-row"><div><div class="settings-row-label">Local backup</div><div id="storage-backup-hint" class="settings-row-hint"></div></div><div class="settings-row-controls"><div id="settings-backup-frequency" class="dselect sync-config-select"></div><button id="settings-backup-now" type="button" class="settings-button">Back up now</button></div></div><div id="storage-backups"></div></section>
+          </div>
+
           <div class="settings-panel" data-settings-panel="about" hidden>
             <section class="settings-section">
-              <h3>About Atlas</h3>
+              <h2>About Atlas</h2>
+              <div class="settings-about-brand">
+                <img id="settings-about-logo" class="atlas-logo" data-atlas-logo src="assets/atlas-logo-reference-dark-transparent.png" alt="Atlas logo" />
+                <span>Atlas</span>
+              </div>
               <p id="settings-about-description">Atlas is your single academic knowledge base — courses, resources, notes, and deadlines pulled automatically from Google Classroom and Drive, local folders, and manual uploads, all kept in one searchable place. Atlas doesn't reason or generate anything itself: it's the source of truth an AI agent (like Claude Code, connected via MCP) reads from and writes back to, for studying, planning, and assignment help.</p>
               <p id="settings-about-version" class="muted"></p>
             </section>
+          </div>
           </div>
         </div>
       </section>
@@ -535,10 +570,12 @@
 
   <div id="note-overlay" hidden>
     <div id="note-overlay-panel">
-      <div class="split-preview-header">
-        <input id="note-title-input" type="text" placeholder="Untitled" />
-        <div class="split-preview-actions">
-          <span id="note-save-status" class="muted"></span>
+      <div class="note-overlay-header">
+        <div class="note-overlay-header-titles">
+          <input id="note-title-input" type="text" placeholder="Untitled" />
+          <div class="note-overlay-sub"><span id="note-overlay-course-swatch" class="swatch"></span><span id="note-overlay-course"></span><span>·</span><span id="note-overlay-origin"></span><span>·</span><span id="note-save-status"></span></div>
+        </div>
+        <div class="note-overlay-actions">
           <button id="note-assign-course" type="button" hidden>Assign to course…</button>
           <button id="note-view-scan" type="button" title="View original scan" aria-label="View original scan" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -554,6 +591,8 @@
           </button>
         </div>
       </div>
+      <div id="note-editor-body">
+        <div id="note-content-area">
       <div id="note-scan-panel" hidden></div>
       <div id="note-ocr-preview" hidden>
         <p class="muted">OCR result — review before inserting. This replaces the note's current content.</p>
@@ -564,24 +603,30 @@
         </div>
       </div>
       <div id="note-editor-root"></div>
+        </div>
+      </div>
     </div>
   </div>
 
   <div id="course-picker-overlay" hidden>
-    <div id="course-picker-panel">
-      <div class="modal-header">
-        <h3 id="course-picker-title">Choose a course</h3>
-        <button id="course-picker-close" type="button" title="Close" aria-label="Close">
+    <div id="course-picker-panel" class="overlay-panel size-sm">
+      <div class="overlay-header course-picker-header">
+        <div class="overlay-header-titles"><h3 id="course-picker-title">Choose a course</h3></div>
+        <div class="overlay-header-actions"><button id="course-picker-close" type="button" title="Close" aria-label="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        </button></div>
       </div>
-      <input id="course-picker-search" type="text" placeholder="Search courses…" autocomplete="off" />
-      <ul id="course-picker-list"></ul>
-      <div id="course-picker-dropzone" hidden>
-        <p id="course-picker-dropzone-hint" class="muted">Select a course above, then drop a file here</p>
-        <button id="course-picker-browse" type="button">Browse files…</button>
+      <div class="overlay-body course-picker-body">
+        <input id="course-picker-search" type="text" placeholder="Search courses…" autocomplete="off" />
+        <div id="course-picker-dropzone" hidden>
+          <p id="course-picker-dropzone-hint" class="muted">Select a course above, then drop a file here</p>
+          <button id="course-picker-browse" type="button">Browse files…</button>
+          <input id="course-picker-file-input" type="file" hidden />
+        </div>
+        <p id="course-picker-list-label">Assign to a course</p>
+        <ul id="course-picker-list"></ul>
+        <p id="course-picker-progress" class="muted" hidden></p>
       </div>
-      <p id="course-picker-progress" class="muted" hidden></p>
     </div>
   </div>
 
@@ -596,13 +641,7 @@
       <form id="course-edit-form">
         <input id="course-edit-name" type="text" placeholder="Course name" required />
         <input id="course-edit-code" type="text" placeholder="Code (optional)" />
-        <select id="course-edit-term">
-          <option value="">Semester</option>
-          <option value="Monsoon 26">Monsoon 26</option>
-          <option value="Spring 27">Spring 27</option>
-          <option value="Monsoon 27">Monsoon 27</option>
-          <option value="Spring 28">Spring 28</option>
-        </select>
+        <input id="course-edit-term" type="text" placeholder="Term (optional)" />
         <button type="submit">Save</button>
       </form>
     </div>
@@ -614,22 +653,27 @@
        existing modal look — real visual design is Phase 6, this exists so
        shortcuts are discoverable at all in the meantime. -->
   <div id="shortcuts-cheatsheet-overlay" hidden>
-    <div id="shortcuts-cheatsheet-panel">
-      <div class="modal-header">
-        <h3>Keyboard shortcuts</h3>
-        <button id="shortcuts-cheatsheet-close" type="button" title="Close" aria-label="Close">
+    <div id="shortcuts-cheatsheet-panel" class="overlay-panel size-md">
+      <div class="overlay-header">
+        <div class="overlay-header-titles"><h3>Keyboard shortcuts</h3></div>
+        <div class="overlay-header-actions">
+          <button id="shortcuts-cheatsheet-close" type="button" aria-label="Close shortcuts">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+          </button>
+        </div>
       </div>
-      <div id="shortcuts-cheatsheet-body"></div>
+      <div id="shortcuts-cheatsheet-body" class="overlay-body"></div>
     </div>
   </div>
 
   <div id="preview-overlay" hidden>
-    <div id="preview-panel">
-      <div class="split-preview-header">
-        <span id="preview-title"></span>
-        <div class="split-preview-actions">
+    <div id="preview-panel" class="overlay-panel size-xl">
+      <div class="overlay-header preview-overlay-header">
+        <div class="overlay-header-titles">
+          <h3 id="preview-title"></h3>
+          <p id="preview-note" class="sub" hidden></p>
+        </div>
+        <div class="overlay-header-actions split-preview-actions">
           <span id="preview-ocr-status" class="muted"></span>
           <span id="preview-drive-status" class="muted"></span>
           <button id="preview-run-ocr" type="button" title="Run OCR on this PDF" aria-label="Run OCR on this PDF" hidden>
@@ -646,22 +690,23 @@
           </button>
         </div>
       </div>
-      <p id="preview-note" class="muted" hidden></p>
-      <div id="zoom-controls" hidden>
-        <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
-        <span id="zoom-level">100%</span>
-        <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
-        <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
-      </div>
-      <div id="preview-ocr-review" hidden>
-        <p class="muted">OCR result — review before saving. Saved text makes this PDF searchable in Atlas.</p>
-        <div id="preview-ocr-review-text"></div>
-        <div id="preview-ocr-review-actions">
-          <button id="preview-ocr-discard" type="button">Discard</button>
-          <button id="preview-ocr-save" type="button">Save extracted text</button>
+      <div id="preview-content">
+        <div id="zoom-controls" hidden>
+          <button id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+          <span id="zoom-level">100%</span>
+          <button id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+          <button id="zoom-reset" type="button" title="Reset zoom">Reset</button>
         </div>
+        <div id="preview-ocr-review" hidden>
+          <p class="muted">OCR result — review before saving. Saved text makes this PDF searchable in Atlas.</p>
+          <div id="preview-ocr-review-text"></div>
+          <div id="preview-ocr-review-actions">
+            <button id="preview-ocr-discard" type="button">Discard</button>
+            <button id="preview-ocr-save" type="button">Save extracted text</button>
+          </div>
+        </div>
+        <div id="preview-body" class="overlay-body no-pad"></div>
       </div>
-      <div id="preview-body"></div>
     </div>
   </div>
 
@@ -669,44 +714,47 @@
     <div id="deadline-editor-panel">
       <div id="deadline-view-mode">
         <div id="deadline-view-header">
-          <h3 id="deadline-view-title"></h3>
-          <span id="deadline-view-kind" class="code"></span>
+          <div><h3 id="deadline-view-title"></h3><p id="deadline-view-course"></p></div>
+          <div id="deadline-view-header-actions"><button id="deadline-view-tab" type="button" class="active">View</button><button id="deadline-edit-button" type="button">Edit</button><button id="deadline-view-close" type="button" aria-label="Close">×</button></div>
         </div>
-        <p id="deadline-view-due" class="muted"></p>
+        <div id="deadline-view-facts"><div><span>Due</span><strong id="deadline-view-due"></strong></div><div><span>Status</span><strong id="deadline-view-status"></strong></div><div><span>Source</span><strong id="deadline-view-source"></strong></div><div id="deadline-view-notes-row"><span>Notes</span><strong id="deadline-view-description"></strong></div></div>
         <!-- Conflict handling (open-questions.md #3) — shown only for a
              Classroom-synced deadline the user has locally edited, or one
              whose Classroom coursework was deleted at the source. -->
         <p id="deadline-view-removed-notice" class="deadline-conflict-notice" hidden>This assignment is no longer in Google Classroom. Delete it here if you want to remove it.</p>
         <div id="deadline-view-override-notice" class="deadline-conflict-notice" hidden>
           <span id="deadline-view-override-text"></span>
-          <button id="deadline-reset-override-button" type="button" class="link-button">Reset to Classroom version</button>
+          <span class="deadline-override-copy">Classroom version available</span>
         </div>
-        <div id="deadline-view-description"></div>
         <div id="deadline-view-actions">
-          <button id="deadline-edit-button" type="button">Edit</button>
-          <button id="deadline-view-close" type="button">Close</button>
+          <button id="deadline-reset-override-button" type="button" class="link-button" hidden>Reset to Classroom</button><span></span><button id="deadline-view-close-footer" type="button">Close</button>
         </div>
       </div>
 
       <form id="deadline-edit-form" hidden>
-        <input id="deadline-edit-title" type="text" placeholder="Title" required />
-        <select id="deadline-edit-kind">
-          <option value="assignment">Assignment</option>
-          <option value="reading">Reading</option>
-          <option value="quiz">Quiz</option>
-          <option value="lab">Lab</option>
-          <option value="project">Project</option>
-          <option value="exam">Exam</option>
-          <option value="manual">Other</option>
-        </select>
-        <div id="deadline-date-row">
-          <input id="deadline-edit-date-text" type="text" placeholder="dd-mm-yyyy" autocomplete="off" />
-          <button id="deadline-edit-date-pick" type="button" title="Pick a date" aria-label="Pick a date">📅</button>
-          <input id="deadline-edit-date-native" type="date" />
-          <input id="deadline-edit-time" type="time" />
-        </div>
-        <span id="deadline-date-error" class="muted" hidden>Invalid date — use dd-mm-yyyy</span>
-        <div id="deadline-mention-box">
+        <div class="deadline-edit-header"><h3>Edit deadline</h3><div><button id="deadline-edit-view-button" type="button">View</button><button type="button" class="active">Edit</button><button id="deadline-edit-close" type="button" aria-label="Close">×</button></div></div>
+        <label>Title<input id="deadline-edit-title" type="text" placeholder="Title" required /></label>
+        <label>Kind
+          <input id="deadline-edit-kind" type="hidden" value="assignment" />
+          <div id="deadline-kind-select" class="dselect deadline-form-select">
+            <button id="deadline-kind-trigger" class="dselect-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span id="deadline-kind-label">Assignment</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+            <div id="deadline-kind-menu" class="dselect-menu" role="listbox" hidden>
+              <button type="button" class="dselect-option" data-value="assignment">Assignment</button><button type="button" class="dselect-option" data-value="reading">Reading</button><button type="button" class="dselect-option" data-value="quiz">Quiz</button><button type="button" class="dselect-option" data-value="lab">Lab</button><button type="button" class="dselect-option" data-value="project">Project</button><button type="button" class="dselect-option" data-value="exam">Exam</button><button type="button" class="dselect-option" data-value="manual">Other</button>
+            </div>
+          </div>
+        </label>
+        <label>Due
+          <div id="deadline-due-select" class="dselect deadline-form-select">
+            <button id="deadline-due-trigger" class="dselect-trigger" type="button" aria-haspopup="dialog" aria-expanded="false"><span id="deadline-due-label">Set date and time</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+            <div id="deadline-due-menu" class="dselect-menu deadline-due-menu" role="dialog" hidden>
+              <label>Date<input id="deadline-due-date" type="text" inputmode="numeric" autocomplete="off" placeholder="DD-MM-YYYY" /></label>
+              <label>Time<input id="deadline-due-time" type="text" inputmode="numeric" autocomplete="off" placeholder="HH:MM" /></label>
+              <div><button id="deadline-due-clear" class="deadline-due-clear" type="button">Clear due date</button><button id="deadline-due-apply" class="deadline-due-apply" type="button">Done</button></div>
+            </div>
+          </div>
+          <span id="deadline-due-error" class="deadline-due-error" hidden></span>
+        </label>
+        <div id="deadline-mention-box"><label>Notes</label>
           <textarea
             id="deadline-edit-description"
             placeholder="Description (optional) — type @ to reference a file or note"
@@ -714,15 +762,45 @@
           <ul id="deadline-mention-suggestions" hidden></ul>
         </div>
         <div id="deadline-edit-actions">
-          <button id="deadline-save-button" type="submit">Save</button>
-          <button id="deadline-cancel-button" type="button">Cancel</button>
+          <button id="deadline-cancel-button" type="button">Cancel</button><button id="deadline-save-button" type="submit">Save</button>
         </div>
       </form>
     </div>
   </div>
 
+  <div id="command-palette-overlay" hidden>
+    <div id="command-palette-panel" class="overlay-panel size-md" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
+      <div class="overlay-header command-palette-header">
+        <div class="overlay-header-titles">
+          <h3 id="command-palette-title">Command palette</h3>
+          <div id="command-palette-context" class="sub"></div>
+        </div>
+        <div class="overlay-header-actions">
+          <button id="command-palette-close" type="button" aria-label="Close command palette">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="overlay-body command-palette-body">
+        <div id="command-palette-search-row">
+        <input id="command-palette-input" type="text" autocomplete="off" spellcheck="false" placeholder="Search commands and Atlas…" aria-label="Search commands and Atlas" aria-controls="command-palette-results" aria-activedescendant="" />
+          <button id="command-palette-clear" type="button" aria-label="Clear command palette search" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <ul id="command-palette-results" role="listbox" aria-label="Command palette results"></ul>
+        <p id="command-palette-empty" class="muted" hidden></p>
+      </div>
+      <div class="overlay-footer command-palette-footer">
+        <span>↑↓ Navigate</span><span>Enter Select</span><span>Esc Close</span>
+      </div>
+    </div>
+  </div>
+
   <div id="confirm-overlay" hidden>
     <div id="confirm-panel">
+      <div class="confirm-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div>
+      <h3 id="confirm-title">Confirm action</h3>
       <p id="confirm-message"></p>
       <div id="confirm-actions">
         <button id="confirm-cancel" type="button">Cancel</button>
@@ -732,46 +810,63 @@
   </div>
 
   <div id="drive-review-overlay" hidden>
-    <div id="drive-review-panel">
-      <div class="split-preview-header">
-        <span>New files from Google Drive</span>
-        <div class="split-preview-actions">
-          <button id="drive-review-close" type="button" title="Later" aria-label="Later">
+    <div id="drive-review-panel" class="overlay-panel size-md">
+      <div class="overlay-header">
+        <div class="overlay-header-titles">
+          <h3>New files from Google Drive</h3>
+          <div id="drive-review-subtitle" class="sub">Review and assign files before importing them.</div>
+        </div>
+        <div class="overlay-header-actions">
+          <button id="drive-review-close" type="button" aria-label="Close review">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       </div>
-      <div id="drive-review-bulk">
-        <label><input type="checkbox" id="drive-review-select-all" /> Select all</label>
-        <select id="drive-review-bulk-course"></select>
-        <select id="drive-review-bulk-type">
-          <option value="resource">Resource</option>
-          <option value="note">Note</option>
-        </select>
-        <button id="drive-review-bulk-import" type="button">Import</button>
-        <button id="drive-review-bulk-ignore" type="button">Ignore</button>
+      <div class="overlay-body drive-review-body">
+        <div id="drive-review-bulk" class="drive-review-bulk">
+          <label><input type="checkbox" id="drive-review-select-all" /> Select all</label>
+          <div id="drive-review-bulk-course" class="dselect drive-review-select"></div>
+          <div id="drive-review-bulk-type" class="dselect drive-review-select"></div>
+          <button id="drive-review-bulk-import" class="btn primary" type="button">Import selected</button>
+          <button id="drive-review-bulk-ignore" class="btn" type="button">Ignore selected</button>
+        </div>
+        <ul id="drive-review-list"></ul>
       </div>
-      <ul id="drive-review-list"></ul>
+    </div>
+  </div>
+
+  <div id="dashboard-important-overlay" hidden>
+    <div id="dashboard-important-panel" class="overlay-panel size-sm" role="dialog" aria-modal="true" aria-labelledby="dashboard-important-title">
+      <div class="overlay-header">
+        <div class="overlay-header-titles"><h3 id="dashboard-important-title">Mark announcement as important</h3></div>
+        <div class="overlay-header-actions"><button id="dashboard-important-close" class="overlay-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+      </div>
+      <div id="dashboard-important-form">
+        <div class="overlay-body"><p>Choose an existing announcement to keep on Dashboard.</p><input id="dashboard-important-search" type="search" placeholder="Search announcements…" autocomplete="off" /><ul id="dashboard-important-list"></ul></div>
+        <div class="overlay-footer"><button id="dashboard-important-cancel" class="btn" type="button">Cancel</button></div>
+      </div>
     </div>
   </div>
 
   <div id="classroom-review-overlay" hidden>
-    <div id="classroom-review-panel">
-      <div class="split-preview-header">
-        <span>New courses from Google Classroom</span>
-        <div class="split-preview-actions">
-          <button id="classroom-review-close" type="button" title="Later" aria-label="Later">
+    <div id="classroom-review-panel" class="overlay-panel size-md">
+      <div class="overlay-header">
+        <div class="overlay-header-titles"><h3>New courses from Google Classroom</h3><div id="classroom-review-subtitle" class="sub">Review course mappings before importing them.</div></div>
+        <div class="overlay-header-actions">
+          <button id="classroom-review-close" type="button" aria-label="Close review">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       </div>
-      <div id="classroom-review-bulk">
-        <label><input type="checkbox" id="classroom-review-select-all" /> Select all</label>
-        <select id="classroom-review-bulk-course"></select>
-        <button id="classroom-review-bulk-confirm" type="button">Confirm</button>
-        <button id="classroom-review-bulk-ignore" type="button">Ignore</button>
+      <div class="overlay-body classroom-review-body">
+        <div id="classroom-review-bulk" class="classroom-review-bulk">
+          <label><input type="checkbox" id="classroom-review-select-all" /> Select all</label>
+          <div id="classroom-review-bulk-course" class="dselect classroom-review-select"></div>
+          <button id="classroom-review-bulk-confirm" class="btn primary" type="button">Confirm selected</button>
+          <button id="classroom-review-bulk-ignore" class="btn" type="button">Ignore selected</button>
+        </div>
+        <ul id="classroom-review-list"></ul>
       </div>
-      <ul id="classroom-review-list"></ul>
     </div>
   </div>
 
@@ -791,16 +886,20 @@
   </div>
 
   <div id="classroom-item-detail-overlay" hidden>
-    <div id="classroom-item-detail-panel">
-      <div class="modal-header">
-        <h3 id="classroom-item-detail-title"></h3>
-        <button id="classroom-item-detail-close" type="button" title="Close" aria-label="Close">
+    <div id="classroom-item-detail-panel" class="overlay-panel size-md">
+      <div class="overlay-header">
+        <div class="overlay-header-titles"><h3 id="classroom-item-detail-title"></h3></div>
+        <div class="overlay-header-actions">
+          <button id="classroom-item-detail-close" type="button" aria-label="Close item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+          </button>
+        </div>
       </div>
-      <p id="classroom-item-detail-meta" class="muted"></p>
-      <p id="classroom-item-detail-body"></p>
-      <div id="classroom-item-detail-links"></div>
+      <div class="overlay-body classroom-item-detail-body-wrap">
+        <p id="classroom-item-detail-meta" class="muted"></p>
+        <p id="classroom-item-detail-body"></p>
+        <div id="classroom-item-detail-links"></div>
+      </div>
     </div>
   </div>
 

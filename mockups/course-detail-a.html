@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Atlas — Course detail (Direction A: continuous)</title>
+<style>
+/* ---------------------------------------------------------------
+   Atlas UI overhaul — Direction A, "continuous"
+   Mockup only. Not wired into the app.
+
+   Covers the real course-detail screen (src/renderer/index.html
+   #courses-detail-view): a header, then 6 tabs — Overview /
+   Deadlines / Announcements / Assignments / Classwork / Files.
+   The last 3 tabs only exist once a course is connected to
+   Classroom; this mockup shows the connected state for one course
+   (Behavioral Finance) so all 6 tabs are visible at once, and notes
+   in the Files tab where the unconnected/no-Classroom case differs.
+
+   Reuses the shell/sidebar/topline/row/section-head/swatch pattern
+   verbatim from dashboard-a.html and courses-a.html — no new
+   chrome, only new page content below .topline.
+   --------------------------------------------------------------- */
+
+:root {
+  --bg:            #0f0f0e;
+  --bg-hover:      #1a1a17;
+  --text:          #ecebe6;
+  --text-muted:    #8d8a83;
+  --text-faint:    #5b5852;
+  --rule:          #24241f;
+  --rule-strong:   #302f29;
+  --accent:        #d9a441;
+  --urgent:        #e0574a;
+  --good:          #3ba55d;
+
+  --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+
+  --text-xs: 11.5px;
+  --text-sm: 13px;
+  --text-md: 14.5px;
+  --text-lg: 16.5px;
+  --text-xl: 30px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 13px;
+  --space-4: 18px;
+  --space-5: 26px;
+  --space-6: 36px;
+  --space-7: 56px;
+  --space-8: 72px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+
+  --transition: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+#shell { display: flex; height: 100vh; }
+
+#sidebar {
+  position: relative;
+  height: 100%;
+  width: 224px;
+  flex-shrink: 0;
+  padding: var(--space-7) var(--space-4) var(--space-8) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  transition: width var(--transition), padding var(--transition);
+}
+#sidebar.collapsed { width: 76px; }
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-7);
+  padding-left: 10px;
+}
+.wordmark .wm-a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 34px;
+}
+#sidebar.collapsed .wordmark .wm-a {
+  width: 34px;
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+}
+#sidebar.collapsed .wordmark .wm-rest { display: none; }
+
+nav { display: flex; flex-direction: column; gap: 2px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 38px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.nav-item:hover { color: var(--text); background: var(--bg-hover); }
+.nav-item.active { color: var(--text); font-weight: 500; }
+.nav-label { line-height: 1; }
+.nav-icon {
+  width: 34px; height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nav-icon svg { width: 19px; height: 19px; }
+#sidebar.collapsed .nav-item { border-radius: var(--radius-md); }
+#sidebar.collapsed .nav-item:hover { background: none; }
+#sidebar.collapsed .nav-item:hover .nav-icon { background: var(--bg-hover); border-radius: var(--radius-md); }
+#sidebar.collapsed .nav-label { display: none; }
+
+.nav-spacer { flex: 1; }
+
+.sidebar-toggle {
+  position: absolute;
+  left: 28px;
+  bottom: var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.sidebar-toggle:hover { color: var(--text); background: var(--bg-hover); }
+.sidebar-toggle svg { width: 14px; height: 14px; transition: transform var(--transition); }
+#sidebar.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+#sidebar.collapsed .sidebar-toggle .toggle-label { display: none; }
+
+.nav-meta {
+  padding-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  line-height: 1.7;
+  margin-top: var(--space-4);
+}
+#sidebar.collapsed .nav-meta { display: none; }
+
+#main {
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: var(--space-7) var(--space-8) var(--space-8) var(--space-7);
+}
+
+.swatch { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
+
+h2 {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.section-action {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.section-action:hover { color: var(--text); }
+
+.row {
+  display: grid;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: 8px var(--space-3);
+  margin: 0 calc(var(--space-3) * -1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+}
+.row:hover { background: var(--bg-hover); transform: translateX(2px); }
+.row .title {
+  font-size: var(--text-md);
+  font-weight: 450;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row .meta {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.more {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-1) calc(var(--space-3) * -1) 0;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.more:hover { color: var(--text); background: var(--bg-hover); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--rule-strong); color: var(--text); }
+.btn.primary { color: var(--text); border-color: var(--rule-strong); }
+.btn.primary:hover { background: var(--bg-hover); }
+.link-button {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.link-button:hover { color: var(--text); }
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.is-connected { background: var(--good); }
+.status-dot.is-off { background: var(--text-faint); }
+
+/* --- Back link ---------------------------------------------------- */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  margin-bottom: var(--space-5);
+  transition: color var(--transition);
+}
+.back-link:hover { color: var(--text); }
+.back-link svg { width: 15px; height: 15px; }
+
+/* --- Course header: no card, just a bigger swatch tile + type ------ */
+.course-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--space-5);
+}
+.course-avatar {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: #0f0f0e;
+}
+.course-header h1 { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.02em; }
+.course-header .meta { font-size: var(--text-sm); color: var(--text-faint); margin-top: 2px; }
+.course-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+/* --- Tabs: hairline underline, not a boxed pill row -----------------
+   The view-toggle (list/grid) lives in this same row, right-aligned,
+   instead of its own toolbar line below the tabs — a separate toolbar
+   row left a band of empty space between the tabs and the first
+   content row. It's a single shared control (one list/grid state,
+   not per-tab) shown for every tab except Overview, whose two-widget
+   layout doesn't have a grid form.
+
+   align-items is flex-end, not center: each .tab has 13px of its own
+   padding-bottom (reserved so the active tab's underline can sit
+   flush with the row's shared border, 1px lower via margin-bottom:
+   -1px) that the tab's *text* doesn't occupy — centering against the
+   tab's full box therefore centered the button ~9px below the actual
+   text. Bottom-aligning instead, then pulling the toggle back up by
+   the same 13px the tab reserves below its text (minus half the
+   text/button height difference), lines the button up with the text
+   itself rather than with the padded box around it. --------- */
+.tabs-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--space-6);
+}
+.tabs {
+  display: flex;
+  gap: var(--space-6);
+}
+.tab {
+  padding: 0 0 var(--space-3);
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-faint);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+.tab:hover { color: var(--text-muted); }
+.tab.active { color: var(--text); font-weight: 500; border-color: var(--accent); }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* --- Overview: two widgets side by side, then Classroom status ----- */
+.overview-widgets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-7);
+  align-items: start;
+}
+.overview-widgets .section + .section { margin-top: var(--space-7); }
+
+.classroom-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding-top: var(--space-6);
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--rule);
+}
+
+/* --- List/grid toggle, same shape as Calendar's -----
+   margin-bottom nudges it up from the row's bottom-aligned baseline so
+   its icons' visual center lines up with the tab text's center instead
+   of the tab's padded box — see .tabs-row's comment above. */
+.view-toggle {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 9px;
+}
+.view-toggle button {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.view-toggle button svg { width: 15px; height: 15px; }
+.view-toggle button:hover { color: var(--text); background: var(--bg-hover); }
+.view-toggle button.active { color: var(--text); background: var(--bg-hover); }
+
+.deadline-row { grid-template-columns: 90px 1fr 110px 90px; }
+.deadline-row .due { color: var(--text-muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.deadline-row .badge {
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-align: right;
+}
+.deadline-row.is-done .title { color: var(--text-faint); text-decoration: line-through; }
+
+/* Generic tile-grid, shared by every panel's grid view (Deadlines,
+   Announcements, Assignments, Classwork, Files) rather than a bespoke
+   grid per tab — the toggle is one control, not five near-duplicates. */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+.tile {
+  padding: var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.tile:hover { border-color: var(--rule-strong); background: var(--bg-hover); }
+.tile .t-icon { color: var(--text-faint); margin-bottom: var(--space-3); }
+.tile .t-icon svg { width: 18px; height: 18px; }
+.tile .t-title { display: block; font-size: var(--text-md); font-weight: 500; margin-bottom: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .t-meta { display: block; font-size: var(--text-sm); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tile.is-done .t-title { color: var(--text-faint); text-decoration: line-through; }
+
+/* List/grid visibility — one shared state (body.view-grid) driven by
+   the single toggle in the tabs row, applied to whichever panel is
+   currently active. */
+.list-view { display: block; }
+.grid-view { display: none; }
+body.view-grid .list-view { display: none; }
+body.view-grid .grid-view { display: grid; }
+
+/* --- Announcements / Assignments / Classwork: plain feed rows ------ */
+.feed-row { grid-template-columns: 1fr 90px; }
+.feed-row .snippet { font-size: var(--text-sm); color: var(--text-muted); margin-top: 2px; }
+.feed-row .when { font-size: var(--text-sm); color: var(--text-faint); text-align: right; }
+.feed-row.is-unread .title { font-weight: 500; }
+.unread {
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 6px;
+}
+
+/* --- Files tab: watched folders --------------------------------- */
+.folder-row { grid-template-columns: 20px 1fr 90px; }
+.folder-row .fname { font-size: var(--text-md); }
+.folder-row svg { width: 15px; height: 15px; color: var(--text-faint); }
+.hint-block { font-size: var(--text-sm); color: var(--text-faint); margin-bottom: var(--space-4); max-width: 520px; }
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <aside id="sidebar">
+    <div class="wordmark"><span class="wm-a">A</span><span class="wm-rest">tlas</span></div>
+    <nav>
+      <div class="nav-item" title="Dashboard">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5a1 1 0 0 0 1 1H9a1 1 0 0 0 1-1V15a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4.5a1 1 0 0 0 1 1h2.5a1 1 0 0 0 1-1V10"/></svg></span>
+        <span class="nav-label">Dashboard</span>
+      </div>
+      <div class="nav-item active" title="Courses">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span>
+        <span class="nav-label">Courses</span>
+      </div>
+      <div class="nav-item" title="Resources">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></span>
+        <span class="nav-label">Resources</span>
+      </div>
+      <div class="nav-item" title="Notes">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><line x1="8.5" y1="13" x2="15.5" y2="13"/><line x1="8.5" y1="17" x2="13.5" y2="17"/></svg></span>
+        <span class="nav-label">Notes</span>
+      </div>
+      <div class="nav-item" title="Calendar">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></svg></span>
+        <span class="nav-label">Calendar</span>
+      </div>
+      <div class="nav-item" title="Settings">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1Z"/></svg></span>
+        <span class="nav-label">Settings</span>
+      </div>
+    </nav>
+    <div class="nav-spacer"></div>
+    <div class="nav-meta">
+      Synced 2h ago<br />
+      Agent connected
+    </div>
+    <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      <span class="toggle-label">Collapse</span>
+    </button>
+  </aside>
+
+  <main id="main">
+    <button class="back-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to Courses
+    </button>
+
+    <div class="course-header">
+      <div class="course-avatar" style="background:#3b82f6">B</div>
+      <div>
+        <h1>Behavioral Finance</h1>
+        <div class="meta">FIN-3563 / ECO-3563 / FIN-4563 / ECO-4563 · Monsoon 26</div>
+      </div>
+      <div class="course-header-actions">
+        <button class="link-button">Edit course</button>
+        <button class="link-button">Export for AI</button>
+        <button class="link-button">Archive course</button>
+      </div>
+    </div>
+
+    <div class="tabs-row">
+      <div class="tabs">
+        <div class="tab active" data-tab="overview">Overview</div>
+        <div class="tab" data-tab="deadlines">Deadlines</div>
+        <div class="tab" data-tab="announcements">Announcements</div>
+        <div class="tab" data-tab="assignments">Assignments</div>
+        <div class="tab" data-tab="classwork">Classwork</div>
+        <div class="tab" data-tab="files">Files</div>
+      </div>
+      <!-- One shared list/grid control for every tab except Overview
+           (its two-widget layout has no grid form) — hidden/shown by
+           the tab-click script at the bottom, state kept on <body>
+           so it persists across tab switches. -->
+      <div class="view-toggle" id="panel-view-toggle">
+        <button class="active" title="List view" data-mode="list">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </button>
+        <button title="Grid view" data-mode="grid">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- OVERVIEW ======================================================= -->
+    <div class="tab-panel active" data-panel="overview">
+      <div class="overview-widgets">
+        <div>
+          <section>
+            <div class="section-head">
+              <h2>Resources (47)</h2>
+              <span class="section-action">View all →</span>
+            </div>
+            <div class="row" style="grid-template-columns: 1fr 60px;">
+              <span class="title">W12 — Solow Growth Model.pdf</span><span class="meta">2h</span>
+            </div>
+            <div class="row" style="grid-template-columns: 1fr 60px;">
+              <span class="title">Lecture 9 slides.pptx</span><span class="meta">3d</span>
+            </div>
+            <div class="row" style="grid-template-columns: 1fr 60px;">
+              <span class="title">ECO 2202 course index.xlsx</span><span class="meta">1w</span>
+            </div>
+          </section>
+          <section class="section">
+            <div class="section-head">
+              <h2>Notes (1)</h2>
+              <span class="section-action">View all →</span>
+            </div>
+            <div class="row" style="grid-template-columns: 1fr 60px;">
+              <span class="title">W3L2 — growth model notes</span><span class="meta">2d</span>
+            </div>
+          </section>
+        </div>
+        <div>
+          <section>
+            <div class="section-head">
+              <h2>Up next</h2>
+              <span class="section-action">Deadlines →</span>
+            </div>
+            <div class="row deadline-row" style="grid-template-columns: 1fr 70px;">
+              <span class="title">Problem Set 1</span><span class="due" style="text-align:right;">Sat 23:59</span>
+            </div>
+            <div class="row deadline-row" style="grid-template-columns: 1fr 70px;">
+              <span class="title">Problem Set 3</span><span class="due" style="text-align:right;">Sun 23:59</span>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="classroom-status-row">
+        <div>
+          <div class="status-pill"><span class="status-dot is-connected"></span>Connected to Google Classroom</div>
+        </div>
+        <button class="link-button">Disconnect</button>
+      </div>
+    </div>
+
+    <!-- DEADLINES ====================================================== -->
+    <div class="tab-panel" data-panel="deadlines">
+      <div class="list-view">
+        <div class="row deadline-row"><span class="title">Problem Set 1</span><span class="due">Sat 23:59</span><span class="badge">edited</span><span></span></div>
+        <div class="row deadline-row"><span class="title">Problem Set 3</span><span class="due">Sun 23:59</span><span></span><span></span></div>
+        <div class="row deadline-row is-done"><span class="title">Reading: Ch. 5</span><span class="due">last week</span><span></span><span></span></div>
+      </div>
+      <div class="grid-view tile-grid">
+        <div class="tile"><span class="t-title">Problem Set 1</span><span class="t-meta">Sat 23:59 · edited</span></div>
+        <div class="tile"><span class="t-title">Problem Set 3</span><span class="t-meta">Sun 23:59</span></div>
+        <div class="tile is-done"><span class="t-title">Reading: Ch. 5</span><span class="t-meta">last week</span></div>
+      </div>
+      <div style="margin-top: var(--space-5);">
+        <button class="btn">+ Add deadline</button>
+      </div>
+    </div>
+
+    <!-- ANNOUNCEMENTS ================================================== -->
+    <div class="tab-panel" data-panel="announcements">
+      <div class="list-view">
+        <div class="row feed-row is-unread">
+          <div><span class="unread"></span><span class="title">Readings for 2 April — Ch. 7 and Weil</span><div class="snippet">Please make sure to complete both readings before Wednesday's session…</div></div>
+          <span class="when">2h</span>
+        </div>
+        <div class="row feed-row">
+          <div><span class="title">No class on Friday — makeup TBA</span><div class="snippet">Due to a scheduling conflict, Friday's session is cancelled…</div></div>
+          <span class="when">3d</span>
+        </div>
+      </div>
+      <div class="grid-view tile-grid">
+        <div class="tile"><span class="t-title">Readings for 2 April — Ch. 7 and Weil</span><span class="t-meta">Please make sure to complete both readings before Wednesday's session…</span></div>
+        <div class="tile"><span class="t-title">No class on Friday — makeup TBA</span><span class="t-meta">Due to a scheduling conflict, Friday's session is cancelled…</span></div>
+      </div>
+    </div>
+
+    <!-- ASSIGNMENTS ===================================================== -->
+    <div class="tab-panel" data-panel="assignments">
+      <div class="list-view">
+        <div class="row feed-row">
+          <div><span class="title">Problem Set 1</span><div class="snippet">Chapters 3–4, questions 1–8</div></div>
+          <span class="when">Sat</span>
+        </div>
+        <div class="row feed-row">
+          <div><span class="title">Problem Set 3</span><div class="snippet">Chapters 6–7, all questions</div></div>
+          <span class="when">Sun</span>
+        </div>
+      </div>
+      <div class="grid-view tile-grid">
+        <div class="tile"><span class="t-title">Problem Set 1</span><span class="t-meta">Chapters 3–4, questions 1–8</span></div>
+        <div class="tile"><span class="t-title">Problem Set 3</span><span class="t-meta">Chapters 6–7, all questions</span></div>
+      </div>
+    </div>
+
+    <!-- CLASSWORK ======================================================= -->
+    <div class="tab-panel" data-panel="classwork">
+      <div class="list-view">
+        <div class="row feed-row">
+          <div><span class="title">In-class exercise — loss aversion</span><div class="snippet">Worksheet handed out during lecture 9</div></div>
+          <span class="when">3d</span>
+        </div>
+      </div>
+      <div class="grid-view tile-grid">
+        <div class="tile"><span class="t-title">In-class exercise — loss aversion</span><span class="t-meta">Worksheet handed out during lecture 9</span></div>
+      </div>
+    </div>
+
+    <!-- FILES =========================================================== -->
+    <div class="tab-panel" data-panel="files">
+      <div class="section-head">
+        <h2>Watched folders</h2>
+      </div>
+      <p class="hint-block">Files added to a watched folder are copied into Atlas automatically.</p>
+      <div class="list-view">
+        <div class="row folder-row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+          <span class="fname">D:\Ashoka\Behavioral Finance</span>
+          <span class="section-action">Remove</span>
+        </div>
+      </div>
+      <div class="grid-view tile-grid">
+        <div class="tile">
+          <div class="t-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></div>
+          <span class="t-title">Behavioral Finance</span>
+          <span class="t-meta">D:\Ashoka\Behavioral Finance</span>
+        </div>
+      </div>
+      <div style="margin-top: var(--space-5);">
+        <button class="btn">+ Watch a folder…</button>
+      </div>
+    </div>
+  </main>
+
+</div>
+<script>
+  document.getElementById('sidebar-toggle').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    document.getElementById('shell').classList.toggle('sidebar-collapsed');
+  });
+
+  const viewToggle = document.getElementById('panel-view-toggle');
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelector(`.tab-panel[data-panel="${tab.dataset.tab}"]`).classList.add('active');
+      viewToggle.style.display = tab.dataset.tab === 'overview' ? 'none' : 'flex';
+    });
+  });
+
+  viewToggle.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      viewToggle.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.body.classList.toggle('view-grid', btn.dataset.mode === 'grid');
+    });
+  });
+</script>
+</body>
+</html>

@@ -53,15 +53,15 @@ const fs = require('fs');
   }
 
   // Upload/New Note both open the course-picker modal now (real search +
-  // list, not the small anchored popup it replaced) — select the course by
-  // name, then (Upload only) confirm via Browse, which goes through the
-  // same ATLAS_TEST_UPLOAD_PATH test hook as a direct upload.
+  // list, not the small anchored popup it replaced). Upload is file-first:
+  // seed the hidden file input with the test fixture, then select the course;
+  // the real app uses the native picker at this point.
   async function uploadViaModal(courseName) {
     await window.click('#upload-button');
     await window.waitForTimeout(200);
-    await window.click(`#course-picker-list li:has-text("${courseName}")`);
+    await window.setInputFiles('#course-picker-file-input', testUploadPath);
     await window.waitForTimeout(150);
-    await window.click('#course-picker-browse');
+    await window.click(`#course-picker-list li:has-text("${courseName}")`);
     await window.waitForTimeout(300);
   }
 
@@ -84,7 +84,7 @@ const fs = require('fs');
   );
   if (!coursesNavActive) throw new Error('FAIL: Courses sidebar nav item did not become active');
 
-  const beforeCount = (await window.$$('#course-list li')).length;
+  const beforeCount = (await window.$$('#course-list [data-course-id]')).length;
   console.log('courses before:', beforeCount);
 
   // "+ Add course" is a rare action (a handful of courses per semester) —
@@ -93,28 +93,40 @@ const fs = require('fs');
   await window.waitForTimeout(150);
   await window.fill('#course-name', 'Verify Script Test Course');
   await window.fill('#course-code', 'VERIFY101');
-  await window.selectOption('#course-term', 'Monsoon 26');
+  await window.fill('#course-term', 'Monsoon 26');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
   const formHiddenAfterSubmit = await window.getAttribute('#course-form', 'hidden');
   if (formHiddenAfterSubmit === null) throw new Error('FAIL: course-form did not hide itself after submit');
 
-  const items = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  const items = await window.$$eval('#course-list [data-course-id]', (els) => els.map((e) => e.textContent));
   console.log('courses after:', items);
   if (!items.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: added course did not appear in the list');
   }
-  if (!items.some((t) => t && t.includes('0') && t.includes('Resources'))) {
+  if (!items.some((t) => t && t.includes('0files'))) {
     throw new Error('FAIL: new course card did not show a resource count');
   }
 
-  // Semester filter: the course was created with term "Monsoon 26" above.
+  // Create a second term so this throwaway-data run can exercise both sides
+  // of the semester filter. A fresh verification database otherwise only
+  // contains the one Monsoon course created above, so a hard-coded Spring
+  // option does not exist to click.
+  await window.click('#add-course-toggle');
+  await window.waitForTimeout(100);
+  await window.fill('#course-name', 'Verify Other Term Course');
+  await window.fill('#course-code', 'VERIFY102');
+  await window.fill('#course-term', 'Spring 27');
+  await window.click('#course-form button[type="submit"]');
+  await window.waitForTimeout(250);
+
+  // Semester filter: the first course was created with term "Monsoon 26" above.
   // Filtering to a different term should hide it; filtering back (or to
   // "All semesters") should show it again. Reset to "All" before continuing
-  // so the rest of the script can keep finding it via '#course-list li'.
-  await window.selectOption('#semester-filter', 'Spring 27');
+  // so the rest of the script can keep finding it in the course collection.
+  await window.click('#courses-term-controls [data-term="Spring 27"]');
   await window.waitForTimeout(200);
-  const itemsFilteredOut = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  const itemsFilteredOut = await window.$$eval('#course-list [data-course-id]', (els) => els.map((e) => e.textContent));
   console.log('courses with Spring 27 filter (should exclude the Monsoon 26 course):', itemsFilteredOut);
   if (itemsFilteredOut.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: semester filter did not hide a course from a different term');
@@ -124,9 +136,9 @@ const fs = require('fs');
     throw new Error(`FAIL: semester filter selection was not persisted, got ${persistedFilter}`);
   }
 
-  await window.selectOption('#semester-filter', '');
+  await window.click('#courses-term-controls [data-term=""]');
   await window.waitForTimeout(200);
-  const itemsAllSemesters = await window.$$eval('#course-list li', (els) => els.map((e) => e.textContent));
+  const itemsAllSemesters = await window.$$eval('#course-list [data-course-id]', (els) => els.map((e) => e.textContent));
   if (!itemsAllSemesters.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error('FAIL: course did not reappear after resetting semester filter to "All semesters"');
   }
@@ -153,12 +165,30 @@ const fs = require('fs');
   const themeBeforeToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
   console.log('theme before toggle:', themeBeforeToggle);
   if (themeBeforeToggle !== 'dark') throw new Error(`FAIL: expected dark theme by default, got "${themeBeforeToggle}"`);
+  const darkLogoSource = await window.getAttribute('#sidebar-brand-logo', 'src');
+  if (darkLogoSource !== 'assets/atlas-logo-reference-dark-transparent.png') throw new Error(`FAIL: dark theme used the wrong logo asset: ${darkLogoSource}`);
+  if (await window.isHidden('#sidebar-brand .wm-rest')) throw new Error('FAIL: expanded sidebar hid the Atlas wordmark');
+  const expandedBrandGeometry = await window.evaluate(() => {
+    const logo = document.querySelector('#sidebar-brand-logo').getBoundingClientRect();
+    const navIcon = document.querySelector('.sidebar-nav-item[data-page="dashboard"] .nav-icon').getBoundingClientRect();
+    return { logo: { x: logo.x, y: logo.y, width: logo.width, height: logo.height }, navIcon: { x: navIcon.x, y: navIcon.y, width: navIcon.width, height: navIcon.height } };
+  });
+  if (expandedBrandGeometry.logo.width !== 34 || expandedBrandGeometry.logo.height !== 34) throw new Error(`FAIL: expanded logo cell changed size: ${JSON.stringify(expandedBrandGeometry.logo)}`);
+  if (Math.abs((expandedBrandGeometry.logo.x - expandedBrandGeometry.navIcon.x) - 3) > 1) {
+    throw new Error(`FAIL: expanded logo did not receive the intended optical alignment nudge: ${JSON.stringify(expandedBrandGeometry)}`);
+  }
   await goToPage('settings');
   await window.click('#settings-theme-light');
   await window.waitForTimeout(200);
   let themeAfterToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
   console.log('theme after toggle:', themeAfterToggle);
   if (themeAfterToggle !== 'light') throw new Error(`FAIL: expected light theme after toggle, got "${themeAfterToggle}"`);
+  const lightLogoSource = await window.getAttribute('#sidebar-brand-logo', 'src');
+  if (lightLogoSource !== 'assets/atlas-logo-reference-light-transparent.png') throw new Error(`FAIL: light theme used the wrong logo asset: ${lightLogoSource}`);
+  await window.click('.settings-nav-item[data-settings-tab="about"]');
+  await window.waitForTimeout(150);
+  if (await window.isHidden('[data-settings-panel="about"]')) throw new Error('FAIL: About settings panel did not open');
+  if (await window.isHidden('#settings-about-logo')) throw new Error('FAIL: About panel did not render the Atlas logo');
   await window.reload();
   await window.waitForTimeout(500);
   themeAfterToggle = await window.evaluate(() => document.documentElement.getAttribute('data-theme'));
@@ -174,6 +204,20 @@ const fs = require('fs');
   let sidebarCollapsed = await window.evaluate(() => document.getElementById('sidebar').classList.contains('collapsed'));
   console.log('sidebar collapsed after toggle:', sidebarCollapsed);
   if (!sidebarCollapsed) throw new Error('FAIL: sidebar did not collapse on toggle click');
+  if (await window.isHidden('#sidebar-brand-logo')) throw new Error('FAIL: collapsed sidebar hid the Atlas logo');
+  if (!(await window.isHidden('#sidebar-brand .wm-rest'))) throw new Error('FAIL: collapsed sidebar still showed the Atlas wordmark');
+  const collapsedBrandGeometry = await window.evaluate(() => {
+    const logo = document.querySelector('#sidebar-brand-logo').getBoundingClientRect();
+    const navIcon = document.querySelector('.sidebar-nav-item[data-page="dashboard"] .nav-icon').getBoundingClientRect();
+    return { logo: { x: logo.x, y: logo.y, width: logo.width, height: logo.height }, navIcon: { x: navIcon.x, y: navIcon.y, width: navIcon.width, height: navIcon.height } };
+  });
+  if (collapsedBrandGeometry.logo.width !== 34 || collapsedBrandGeometry.logo.height !== 34) throw new Error(`FAIL: collapsed logo cell changed size: ${JSON.stringify(collapsedBrandGeometry.logo)}`);
+  if (Math.abs(collapsedBrandGeometry.logo.x - expandedBrandGeometry.logo.x) > 1 || Math.abs(collapsedBrandGeometry.logo.width - expandedBrandGeometry.logo.width) > 1) {
+    throw new Error(`FAIL: logo moved or resized between sidebar states: expanded=${JSON.stringify(expandedBrandGeometry.logo)} collapsed=${JSON.stringify(collapsedBrandGeometry.logo)}`);
+  }
+  if (Math.abs((collapsedBrandGeometry.logo.x - collapsedBrandGeometry.navIcon.x) - 3) > 1) {
+    throw new Error(`FAIL: collapsed logo did not receive the intended optical alignment nudge: ${JSON.stringify(collapsedBrandGeometry)}`);
+  }
   await window.reload();
   await window.waitForTimeout(500);
   sidebarCollapsed = await window.evaluate(() => document.getElementById('sidebar').classList.contains('collapsed'));
@@ -188,10 +232,9 @@ const fs = require('fs');
   // Select the course: shows its drill-down (Deadlines + Watched folders)
   // inline on the Courses page — Resources/Notes are separate global pages
   // now, not shown here.
-  await window.click('#course-list li.course-card');
+  const courseId = await window.$eval('#course-list [data-course-id]', (el) => Number(el.dataset.courseId));
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
-
-  const courseId = await window.$eval('#course-list li.course-card.selected', (el) => Number(el.dataset.courseId));
 
   const courseDetailHidden = await window.getAttribute('#courses-detail-view', 'hidden');
   console.log('course detail view hidden after selecting a course:', courseDetailHidden !== null);
@@ -214,14 +257,14 @@ const fs = require('fs');
   if ((await window.getAttribute('#courses-detail-view', 'hidden')) === null) {
     throw new Error('FAIL: "Back to Courses" did not hide the course detail view');
   }
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
 
   // --- Resources page (global — every resource across every course) ---
   await goToPage('resources');
   await uploadViaModal('Verify Script Test Course');
 
-  const resourceItems = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  const resourceItems = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources after upload:', resourceItems);
   if (!resourceItems.some((t) => t && t.includes('sample-lecture-notes.md'))) {
     throw new Error('FAIL: uploaded resource did not appear in the resource list');
@@ -230,17 +273,27 @@ const fs = require('fs');
   // Captured now (list is markdown-only at this point) rather than later,
   // since a later upload (the test image) sorts before it by added_at and
   // would otherwise make "the first .resource-name" ambiguous.
-  const markdownResourceId = await window.$eval('#all-resources-list li', (el) =>
+  const markdownResourceId = await window.$eval('#all-resources-list [data-resource-id]', (el) =>
     Number(el.dataset.resourceId)
   );
 
   // Click the row to open the full overlay preview modal.
+  const normalWindowControlsBackground = await window.evaluate(() => getComputedStyle(document.getElementById('window-controls')).backgroundColor);
+  if (normalWindowControlsBackground === 'rgba(0, 0, 0, 0)') {
+    throw new Error('FAIL: window controls lost their solid background during normal page browsing');
+  }
   await window.click('#all-resources-list .resource-name');
   await window.waitForTimeout(300);
 
   const previewVisible = !(await window.isHidden('#preview-overlay'));
   console.log('resources preview overlay visible:', previewVisible);
   if (!previewVisible) throw new Error('FAIL: preview overlay did not open on filename click');
+
+  const previewWindowControlsBackground = await window.evaluate(() => getComputedStyle(document.getElementById('window-controls')).backgroundColor);
+  console.log('window controls background while file preview is open:', previewWindowControlsBackground);
+  if (previewWindowControlsBackground !== 'rgba(0, 0, 0, 0)') {
+    throw new Error(`FAIL: window controls did not become transparent over the file preview backdrop, got "${previewWindowControlsBackground}"`);
+  }
 
   const previewHtml = await window.innerHTML('#preview-body');
   console.log('preview body contains "Sample lecture notes":', previewHtml.includes('Sample lecture notes'));
@@ -357,7 +410,7 @@ const fs = require('fs');
   if (!imageResource) throw new Error('FAIL: image upload did not return a resource');
   const imageResourceId = imageResource.id;
   await goToPage('resources');
-  await window.click(`li[data-resource-id="${imageResourceId}"] .resource-name`);
+  await window.click(`[data-resource-id="${imageResourceId}"] .resource-name`);
   await window.waitForTimeout(300);
 
   const zoomControlsVisible = !(await window.isHidden('#zoom-controls'));
@@ -394,7 +447,7 @@ const fs = require('fs');
   // confirm it comes back at 150%, not reset to 100%.
   await window.click('#preview-close');
   await window.waitForTimeout(200);
-  await window.click(`li[data-resource-id="${imageResourceId}"] .resource-name`);
+  await window.click(`[data-resource-id="${imageResourceId}"] .resource-name`);
   await window.waitForTimeout(300);
   const reopenedLevel = await window.textContent('#zoom-level');
   console.log('zoom level on reopen (should still be 150%):', reopenedLevel);
@@ -421,7 +474,7 @@ const fs = require('fs');
   const txtResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
   if (!txtResource) throw new Error('FAIL: .txt upload did not return a resource');
   await goToPage('resources');
-  await window.click(`li[data-resource-id="${txtResource.id}"] .resource-name`);
+  await window.click(`[data-resource-id="${txtResource.id}"] .resource-name`);
   await window.waitForTimeout(300);
   const zoomHiddenForTxt = await window.isHidden('#zoom-controls');
   console.log('zoom controls hidden for .txt preview:', zoomHiddenForTxt);
@@ -435,12 +488,12 @@ const fs = require('fs');
   // drag a real OS file, so this dispatches a synthetic 'drop' event with an
   // in-page File/DataTransfer — the same DOM API the drop handler consumes,
   // just constructed in the renderer instead of coming from the OS.
-  await window.click('#resources-course-rail li:has-text("All Resources")');
+  await window.click('#resources-course-rail li:has-text("All courses")');
   await window.evaluate(() => {
     const dt = new DataTransfer();
     dt.items.add(new File(['dropped content'], 'dropped-all-resources.txt', { type: 'text/plain' }));
     document
-      .getElementById('resources-split')
+      .getElementById('resources-layout')
       .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
   });
   await window.waitForTimeout(300);
@@ -449,7 +502,7 @@ const fs = require('fs');
   if (!dropModalVisible) throw new Error('FAIL: dropping a file with "All Resources" showing did not open the course picker');
   await window.click(`#course-picker-list li:has-text("Verify Script Test Course")`);
   await window.waitForTimeout(300);
-  let resourcesAfterDrop = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  let resourcesAfterDrop = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources after drop-then-pick-course upload:', resourcesAfterDrop);
   if (!resourcesAfterDrop.some((t) => t && t.includes('dropped-all-resources.txt'))) {
     throw new Error('FAIL: file dropped with no course filter did not upload after picking a course');
@@ -463,14 +516,14 @@ const fs = require('fs');
     const dt = new DataTransfer();
     dt.items.add(new File(['dropped content 2'], 'dropped-filtered.txt', { type: 'text/plain' }));
     document
-      .getElementById('resources-split')
+      .getElementById('resources-layout')
       .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
   });
   await window.waitForTimeout(300);
   if (!(await window.isHidden('#course-picker-overlay'))) {
     throw new Error('FAIL: dropping a file with a course filter active should not open the course picker');
   }
-  resourcesAfterDrop = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  resourcesAfterDrop = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources after direct (filtered) drop:', resourcesAfterDrop);
   if (!resourcesAfterDrop.some((t) => t && t.includes('dropped-filtered.txt'))) {
     throw new Error('FAIL: file dropped with a course filter active did not upload directly');
@@ -478,7 +531,7 @@ const fs = require('fs');
 
   // Resources sort dropdown (name/recent/kind/course) — positioned next to
   // the view toggle, same grouping/placement as Courses' own sort+toggle.
-  await window.selectOption('#resources-sort', 'name');
+  await window.click('#resources-sort-controls [data-resource-sort="name"]');
   await window.waitForTimeout(200);
   const namesSorted = await window.$$eval('#all-resources-list .resource-name', (els) =>
     els.map((e) => e.textContent)
@@ -490,25 +543,25 @@ const fs = require('fs');
   }
 
   // Kind-filter chips (All/PDF/Document/Image/.../Other).
-  await window.click('#resources-kind-filter .chip[data-kind-filter="image"]');
+  await window.click('#resources-kind-filter .resource-kind-control[data-kind-filter="image"]');
   await window.waitForTimeout(200);
-  const imageFilteredTexts = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  const imageFilteredTexts = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources with "Image" chip filter:', imageFilteredTexts);
   if (!imageFilteredTexts.some((t) => t.includes('test-image.png')) || imageFilteredTexts.some((t) => t.includes('grades.xlsx'))) {
     throw new Error(`FAIL: Image chip filter did not correctly scope the list: ${JSON.stringify(imageFilteredTexts)}`);
   }
-  await window.click('#resources-kind-filter .chip[data-kind-filter=""]');
+  await window.click('#resources-kind-filter .resource-kind-control[data-kind-filter=""]');
   await window.waitForTimeout(200);
 
   // Course rail filter.
   await window.click(`#resources-course-rail li:has-text("Verify Script Test Course")`);
   await window.waitForTimeout(200);
-  const courseFilteredTexts = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+  const courseFilteredTexts = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
   console.log('resources filtered to one course:', courseFilteredTexts.length, 'items');
   if (courseFilteredTexts.length === 0) {
     throw new Error('FAIL: course rail filter produced no results for a course with resources');
   }
-  await window.click('#resources-course-rail li:has-text("All Resources")');
+  await window.click('#resources-course-rail li:has-text("All courses")');
   await window.waitForTimeout(200);
 
   // Grid view toggle.
@@ -519,7 +572,7 @@ const fs = require('fs');
   if (!listClass || !listClass.includes('view-grid')) {
     throw new Error('FAIL: grid view mode did not apply');
   }
-  const iconTiles = await window.$$('li.icon-tile');
+  const iconTiles = await window.$$('.resource-file-tile');
   if (iconTiles.length === 0) throw new Error('FAIL: no icon tiles rendered in grid view');
 
   // View mode is meant to be a single app-wide, persisted preference (not
@@ -619,7 +672,7 @@ const fs = require('fs');
   await window.click('#note-close');
   await window.waitForTimeout(300);
 
-  const noteListAfterClose = await window.$$eval('#all-notes-list li[data-note-id]', (els) =>
+  const noteListAfterClose = await window.$$eval('#all-notes-list [data-note-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('notes after close:', noteListAfterClose);
@@ -633,8 +686,8 @@ const fs = require('fs');
     throw new Error(`FAIL: expected the "Today" group header first, got "${todayGroupText}"`);
   }
 
-  const noteId = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
-  await window.click(`li[data-note-id="${noteId}"]`);
+  const noteId = await window.$eval('#all-notes-list [data-note-id]', (el) => Number(el.dataset.noteId));
+  await window.click(`[data-note-id="${noteId}"]`);
   await window.waitForTimeout(500);
   const reopenedNoteText = await window.textContent(noteEditableSelector);
   console.log('reopened note content:', reopenedNoteText);
@@ -663,7 +716,7 @@ const fs = require('fs');
   await window.evaluate((id) => window.atlas.deleteNote(id), noteId);
   await goToPage('notes'); // force a refresh
   await window.waitForTimeout(300);
-  const noteListAfterDelete = await window.$$eval('#all-notes-list li[data-note-id]', (els) =>
+  const noteListAfterDelete = await window.$$eval('#all-notes-list [data-note-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('notes after delete:', noteListAfterDelete);
@@ -695,12 +748,12 @@ const fs = require('fs');
   await window.waitForTimeout(1200);
   await window.click('#note-close');
   await window.waitForTimeout(300);
-  const boldTitleInList = await window.textContent('#all-notes-list li[data-note-id] .note-item-title');
+  const boldTitleInList = await window.textContent('#all-notes-list [data-note-id] .note-item-title');
   console.log('title derived from a bolded first line:', boldTitleInList);
   if (!boldTitleInList.includes('W2L3 Recap') || boldTitleInList.includes('**')) {
     throw new Error(`FAIL: title should be "W2L3 Recap" with no markdown markers, got "${boldTitleInList}"`);
   }
-  const boldNoteIdActual = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
+  const boldNoteIdActual = await window.$eval('#all-notes-list [data-note-id]', (el) => Number(el.dataset.noteId));
   await window.evaluate((id) => window.atlas.deleteNote(id), boldNoteIdActual);
   await goToPage('notes');
 
@@ -741,7 +794,7 @@ const fs = require('fs');
 
   // The handwritten badge (✍️) should distinguish it from a typed note in the list.
   const pdfNoteTitleInList = await window.textContent(
-    `#all-notes-list li[data-note-id="${pdfNote.id}"] .note-item-title`
+    `#all-notes-list [data-note-id="${pdfNote.id}"] .note-item-title`
   );
   console.log('handwritten note title in list:', pdfNoteTitleInList);
   if (!pdfNoteTitleInList.includes('✍️')) {
@@ -752,7 +805,7 @@ const fs = require('fs');
   // handwritten note's editor is blank until OCR is run and accepted, so
   // opening the note should show the original scan by default (not an
   // empty editor) — the toggle switches to the editor/OCR view instead.
-  await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
+  await window.click(`#all-notes-list [data-note-id="${pdfNote.id}"]`);
   await window.waitForTimeout(500);
   const scanToggleVisible = !(await window.isHidden('#note-view-scan'));
   console.log('"View original scan" button visible for a handwritten note:', scanToggleVisible);
@@ -760,16 +813,19 @@ const fs = require('fs');
 
   const scanPanelVisibleByDefault = !(await window.isHidden('#note-scan-panel'));
   const editorHiddenByDefault = await window.isHidden('#note-editor-root');
-  const scanIframeSrcByDefault = await window.getAttribute('#note-scan-panel iframe', 'src').catch(() => null);
+  const scanPdfPageCount = await window.locator('#note-scan-panel .pdf-preview-page canvas').count();
+  const scanUsesAtlasScrollbar = (await window.getAttribute('#note-scan-panel', 'class')).includes('pdf-preview-body');
   console.log(
     'scan shown by default for a handwritten note:',
     scanPanelVisibleByDefault,
     '— editor hidden:',
     editorHiddenByDefault,
-    '— iframe src:',
-    scanIframeSrcByDefault
+    '— rendered PDF pages:',
+    scanPdfPageCount,
+    '— Atlas scrollbar container:',
+    scanUsesAtlasScrollbar
   );
-  if (!scanPanelVisibleByDefault || !editorHiddenByDefault || !scanIframeSrcByDefault) {
+  if (!scanPanelVisibleByDefault || !editorHiddenByDefault || scanPdfPageCount !== 2 || !scanUsesAtlasScrollbar) {
     throw new Error('FAIL: opening a handwritten note should show the original scan by default, not the editor');
   }
 
@@ -857,7 +913,7 @@ const fs = require('fs');
   // handwritten note) would steal keyboard focus into it, and the top-level
   // Escape listener would never see the keypress at all: a real focus-trap
   // risk, not just a test artifact, so this deliberately avoids that click.
-  await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
+  await window.click(`#all-notes-list [data-note-id="${pdfNote.id}"]`);
   await window.waitForTimeout(300);
   await window.keyboard.press('Escape');
   await window.waitForTimeout(300);
@@ -919,7 +975,7 @@ const fs = require('fs');
   const scanPdfResource = await window.evaluate((cid) => window.atlas.uploadResource(cid), courseId);
   if (!scanPdfResource) throw new Error('FAIL: uploading the PDF fixture as a resource did not return a resource');
   await goToPage('resources');
-  await window.click(`li[data-resource-id="${scanPdfResource.id}"] .resource-name`);
+  await window.click(`[data-resource-id="${scanPdfResource.id}"] .resource-name`);
   await window.waitForTimeout(300);
 
   const ocrResourceButtonVisible = !(await window.isHidden('#preview-run-ocr'));
@@ -927,9 +983,12 @@ const fs = require('fs');
   if (!ocrResourceButtonVisible) throw new Error('FAIL: "Run OCR" should be visible for a PDF resource preview');
   // The original PDF must still be what's showing by default (not any OCR
   // view) — Run OCR is purely an opt-in extra, never the default preview.
-  const pdfIframeSrcBeforeOcr = await window.getAttribute('#preview-body iframe', 'src').catch(() => null);
-  console.log('PDF iframe src before running OCR:', pdfIframeSrcBeforeOcr);
-  if (!pdfIframeSrcBeforeOcr) throw new Error('FAIL: opening a PDF resource should show the original PDF by default');
+  const pdfPageCountBeforeOcr = await window.locator('#preview-body.pdf-preview-body .pdf-preview-page canvas').count();
+  const pdfUsesAtlasScrollbar = (await window.getAttribute('#preview-body', 'class')).includes('pdf-preview-body');
+  console.log('PDF pages rendered before OCR:', pdfPageCountBeforeOcr, '— Atlas scrollbar container:', pdfUsesAtlasScrollbar);
+  if (pdfPageCountBeforeOcr !== 2 || !pdfUsesAtlasScrollbar) {
+    throw new Error('FAIL: opening a PDF resource should render the original PDF inside Atlas by default');
+  }
 
   await window.click('#preview-run-ocr');
   await window.waitForTimeout(8000); // real OCR round-trip, not mocked
@@ -987,7 +1046,7 @@ const fs = require('fs');
   if (!searchResultTexts.some((t) => t && t.includes('Sample lecture notes') && t.includes('Verify Script Test Course'))) {
     throw new Error(`FAIL: search did not find the expected resource, got ${JSON.stringify(searchResultTexts)}`);
   }
-  await window.click('#search-results li');
+  await window.click('#search-results [data-search-index="0"]');
   await window.waitForTimeout(400);
   const previewVisibleAfterSearchClick = !(await window.isHidden('#preview-overlay'));
   console.log('preview opened from a search result:', previewVisibleAfterSearchClick);
@@ -1006,7 +1065,7 @@ const fs = require('fs');
   await window.fill('#search-input', 'lecture');
   await window.waitForTimeout(500);
   await window.press('#search-input', 'ArrowDown');
-  const activeAfterArrowDown = await window.$eval('#search-results li', (el) => el.classList.contains('active'));
+  const activeAfterArrowDown = await window.$eval('#search-results [data-search-index="0"]', (el) => el.classList.contains('active'));
   console.log('first search result active after ArrowDown:', activeAfterArrowDown);
   if (!activeAfterArrowDown) {
     throw new Error('FAIL: ArrowDown did not mark the first search result as active');
@@ -1061,7 +1120,7 @@ const fs = require('fs');
   // Navigating to Courses fresh always lands on the grid now (not whichever
   // course's detail view happened to be open before) — reselect the course
   // to reach its detail view (Deadlines/Watched folders) again.
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
 
   // --- Deadlines: nested in the Courses page's drill-down for the selected
@@ -1077,9 +1136,16 @@ const fs = require('fs');
 
   async function fillDeadlineForm({ title, kind, date, time, description }) {
     await window.fill('#deadline-edit-title', title);
-    if (kind) await window.selectOption('#deadline-edit-kind', kind);
-    if (date) await window.fill('#deadline-edit-date-text', date);
-    if (time) await window.fill('#deadline-edit-time', time);
+    if (kind) {
+      await window.click('#deadline-kind-trigger');
+      await window.click(`#deadline-kind-menu .dselect-option[data-value="${kind}"]`);
+    }
+    if (date || time) {
+      await window.click('#deadline-due-trigger');
+      if (date) await window.fill('#deadline-due-date', date);
+      if (time) await window.fill('#deadline-due-time', time);
+      await window.click('#deadline-due-apply');
+    }
     if (description) await window.fill('#deadline-edit-description', description);
   }
 
@@ -1236,7 +1302,7 @@ const fs = require('fs');
   await goToPage('courses');
   // Navigating to Courses fresh lands on the grid — reselect the course to
   // reach its detail view (Deadlines) again.
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
 
   // Inline Resources/Notes previews on the course detail page — a short list
@@ -1277,7 +1343,7 @@ const fs = require('fs');
     throw new Error('FAIL: "View all" (Resources) did not navigate to the Resources page');
   }
   await goToPage('courses');
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.waitForTimeout(200);
   await window.click('.course-detail-tab[data-course-tab="deadlines"]'); // selectCourse() always resets to Overview
   await window.waitForTimeout(150);
@@ -1338,7 +1404,7 @@ const fs = require('fs');
   // click() requires the target to be visible).
   await window.click('#course-detail-back');
   await window.waitForTimeout(150);
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.click('.course-detail-tab[data-course-tab="deadlines"]'); // selectCourse() always resets to Overview
   await window.waitForTimeout(300);
   const deadlineTitlesAfterDelete = await window.$$eval(
@@ -1369,7 +1435,7 @@ const fs = require('fs');
   const statCourses = await window.textContent('#stat-courses');
   const statResources = await window.textContent('#stat-resources');
   console.log('dashboard stats — courses:', statCourses, 'resources:', statResources);
-  if (statCourses !== '1') throw new Error(`FAIL: expected 1 course in the stat strip, got "${statCourses}"`);
+  if (Number(statCourses) < 1) throw new Error(`FAIL: expected at least 1 course in the stat strip, got "${statCourses}"`);
   if (Number(statResources) < 1) throw new Error(`FAIL: expected at least 1 resource in the stat strip, got "${statResources}"`);
 
   const dashboardCourseTexts = await window.$$eval('#dashboard-course-list li', (els) =>
@@ -1379,9 +1445,9 @@ const fs = require('fs');
   if (!dashboardCourseTexts.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error(`FAIL: dashboard did not list the course: ${JSON.stringify(dashboardCourseTexts)}`);
   }
-  const dashboardCourseAvatarText = await window.textContent('#dashboard-course-list .course-avatar');
-  if (dashboardCourseAvatarText.trim() !== 'V') {
-    throw new Error(`FAIL: expected course avatar initial "V", got "${dashboardCourseAvatarText}"`);
+  const dashboardCourseSwatches = await window.$$('#dashboard-course-list .dashboard-course-swatch');
+  if (dashboardCourseSwatches.length === 0) {
+    throw new Error('FAIL: dashboard course cards did not render their themed swatches');
   }
   await window.click('#dashboard-course-list li');
   await window.waitForTimeout(400);
@@ -1391,7 +1457,7 @@ const fs = require('fs');
     throw new Error('FAIL: clicking a dashboard "My courses" entry did not navigate to the Courses page');
   }
   const courseSelectedAfterCardClick = await window.evaluate(
-    () => document.querySelector('#course-list li.selected') !== null
+    () => !document.getElementById('courses-detail-view')?.hidden
   );
   if (!courseSelectedAfterCardClick) {
     throw new Error('FAIL: clicking a dashboard "My courses" entry did not select that course');
@@ -1414,16 +1480,16 @@ const fs = require('fs');
     els.map((e) => e.textContent)
   );
   console.log('dashboard upcoming-deadlines widget:', dashboardDeadlineTexts);
-  if (!dashboardDeadlineTexts.some((t) => t && t.includes('Homework 1 (revised)'))) {
-    throw new Error(`FAIL: dashboard did not show the upcoming deadline: ${JSON.stringify(dashboardDeadlineTexts)}`);
+  if (!dashboardDeadlineTexts.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error(`FAIL: dashboard did not show an upcoming deadline for the test course: ${JSON.stringify(dashboardDeadlineTexts)}`);
   }
 
   const dashboardActivityTexts = await window.$$eval('#dashboard-activity li', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('dashboard what-changed-today widget:', dashboardActivityTexts);
-  if (!dashboardActivityTexts.some((t) => t && t.includes('sample-lecture-notes.md'))) {
-    throw new Error(`FAIL: dashboard "what changed today" missing today's resource: ${JSON.stringify(dashboardActivityTexts)}`);
+  if (!dashboardActivityTexts.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error(`FAIL: dashboard "what changed today" did not show today's activity: ${JSON.stringify(dashboardActivityTexts)}`);
   }
 
   // Clicking a dashboard item opens it in place — no page navigation — per
@@ -1506,6 +1572,46 @@ const fs = require('fs');
   await window.waitForTimeout(200);
   await goToPage('dashboard');
 
+  const dashboardStructure = await window.evaluate(() => ({
+    courseFilter: !!document.querySelector('#dashboard-course-filter'),
+    oldDeadlineTabs: !!document.querySelector('#dashboard-upcoming-tabs'),
+    compactDeadlineRows: document.querySelectorAll('#dashboard-deadlines .dashboard-compact-row').length,
+    courseCells: document.querySelectorAll('#dashboard-course-list .dashboard-course-cell').length,
+    announcementList: !!document.querySelector('#dashboard-announcements'),
+    courseGridColumns: getComputedStyle(document.querySelector('#dashboard-course-list')).gridTemplateColumns.split(' ').length,
+  }));
+  console.log('dashboard continuous layout:', dashboardStructure);
+  if (!dashboardStructure.courseFilter || dashboardStructure.oldDeadlineTabs || dashboardStructure.compactDeadlineRows === 0 ||
+      !dashboardStructure.announcementList || dashboardStructure.courseGridColumns < 5) {
+    throw new Error('FAIL: dashboard did not render the continuous-layout structure');
+  }
+
+  // --- Calendar: six-week continuous month grid plus real view/filter controls. ---
+  await goToPage('calendar');
+  const calendarStructure = await window.evaluate(() => ({
+    cells: document.querySelectorAll('#calendar-grid .cal-cell').length,
+    miniDays: document.querySelectorAll('#calendar-mini-grid .mc-day').length,
+    filters: document.querySelectorAll('#calendar-type-filters input, #calendar-course-filters input').length,
+    sidebar: !!document.querySelector('#calendar-sidebar'),
+  }));
+  console.log('calendar continuous layout:', calendarStructure);
+  if (calendarStructure.cells !== 42 || calendarStructure.miniDays !== 42 || !calendarStructure.sidebar || calendarStructure.filters < 2) {
+    throw new Error(`FAIL: calendar did not render its six-week layout/controls: ${JSON.stringify(calendarStructure)}`);
+  }
+  await window.click('#calendar-view-week');
+  await window.waitForTimeout(150);
+  if (await window.isHidden('#calendar-week-view')) throw new Error('FAIL: week view did not become visible');
+  await window.click('#calendar-view-day');
+  await window.waitForTimeout(150);
+  if (await window.isHidden('#calendar-day-view')) throw new Error('FAIL: day view did not become visible');
+  await window.click('#calendar-view-month');
+  await window.waitForTimeout(150);
+  const checkedBefore = await window.isChecked('#calendar-type-filters input');
+  await window.click('#calendar-type-filters input');
+  await window.waitForTimeout(150);
+  const checkedAfter = await window.isChecked('#calendar-type-filters input');
+  if (checkedBefore === checkedAfter) throw new Error('FAIL: calendar type filter did not toggle');
+
   await window.screenshot({ path: path.join(__dirname, '..', 'verify-screenshot.png') });
   console.log('Screenshot saved to verify-screenshot.png');
 
@@ -1517,7 +1623,7 @@ const fs = require('fs');
   // right-click -> menu -> click path needs a manual check by the user.
   await window.evaluate((id) => window.atlas.deleteResource(id), markdownResourceId);
   await goToPage('resources'); // force a refresh
-  const resourcesAfterDelete = await window.$$eval('#all-resources-list li', (els) =>
+  const resourcesAfterDelete = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('resources after delete:', resourcesAfterDelete);
@@ -1528,7 +1634,7 @@ const fs = require('fs');
   await window.evaluate((id) => window.atlas.deleteCourse(id), courseId);
   await window.reload();
   await window.waitForTimeout(500);
-  const coursesAfterDelete = await window.$$eval('#course-list li', (els) =>
+  const coursesAfterDelete = await window.$$eval('#course-list [data-course-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('courses after delete:', coursesAfterDelete);
@@ -1544,10 +1650,10 @@ const fs = require('fs');
   await window.click('#add-course-toggle');
   await window.waitForTimeout(150);
   await window.fill('#course-name', 'Watch Test Course');
-  await window.selectOption('#course-term', 'Spring 27');
+  await window.fill('#course-term', 'Spring 27');
   await window.click('#course-form button[type="submit"]');
   await window.waitForTimeout(300);
-  await window.click('#course-list li.course-card');
+  await window.click('#course-list [data-course-id]');
   await window.click('.course-detail-tab[data-course-tab="files"]'); // Watched folders is its own tab now, not visible on the default Overview tab
   await window.waitForTimeout(200);
 
@@ -1573,7 +1679,7 @@ const fs = require('fs');
   // Chokidar's initial scan is async; poll briefly rather than a fixed sleep.
   let resourcesAfterWatch = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterWatch = await window.$$eval('#all-resources-list li', (els) => els.map((e) => e.textContent));
+    resourcesAfterWatch = await window.$$eval('#all-resources-list [data-resource-id]', (els) => els.map((e) => e.textContent));
     if (resourcesAfterWatch.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
     await window.waitForTimeout(300);
   }
@@ -1587,7 +1693,7 @@ const fs = require('fs');
   fs.writeFileSync(newFile, 'New notes dropped in while the folder was already being watched.');
   let resourcesAfterNewFile = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterNewFile = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterNewFile = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (resourcesAfterNewFile.some((t) => t && t.includes('week1-notes.txt'))) break;
@@ -1604,7 +1710,7 @@ const fs = require('fs');
   fs.unlinkSync(preExistingFile);
   let resourcesAfterSourceDelete = resourcesAfterNewFile;
   for (let i = 0; i < 10; i++) {
-    resourcesAfterSourceDelete = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterSourceDelete = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (!resourcesAfterSourceDelete.some((t) => t && t.includes('pre-existing-syllabus.txt'))) break;
@@ -1638,7 +1744,7 @@ const fs = require('fs');
 
   let resourcesAfterManualDrop = [];
   for (let i = 0; i < 10; i++) {
-    resourcesAfterManualDrop = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterManualDrop = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (resourcesAfterManualDrop.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;
@@ -1652,7 +1758,7 @@ const fs = require('fs');
   fs.unlinkSync(manuallyDroppedFile);
   let resourcesAfterManualStorageDelete = resourcesAfterManualDrop;
   for (let i = 0; i < 10; i++) {
-    resourcesAfterManualStorageDelete = await window.$$eval('#all-resources-list li', (els) =>
+    resourcesAfterManualStorageDelete = await window.$$eval('#all-resources-list [data-resource-id]', (els) =>
       els.map((e) => e.textContent)
     );
     if (!resourcesAfterManualStorageDelete.some((t) => t && t.includes('dropped-in-by-hand.txt'))) break;
@@ -1701,7 +1807,7 @@ const fs = require('fs');
 
   await window.click('#note-close');
   await window.waitForTimeout(300);
-  const imageNoteId = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
+  const imageNoteId = await window.$eval('#all-notes-list [data-note-id]', (el) => Number(el.dataset.noteId));
 
   // The exported .md file must link back to this course's own notes/note-images/
   // store via a relative path, not a per-note copy — no duplicated image bytes.
@@ -1762,7 +1868,7 @@ const fs = require('fs');
 
   await relaunchedWindow.click('.sidebar-nav-item[data-page="notes"]');
   await relaunchedWindow.waitForTimeout(300);
-  await relaunchedWindow.click(`li[data-note-id="${imageNoteId}"]`);
+  await relaunchedWindow.click(`[data-note-id="${imageNoteId}"]`);
   await relaunchedWindow.waitForTimeout(800);
   const imageLoadedAfterRelaunch = await relaunchedWindow.$eval(
     '.milkdown img',
