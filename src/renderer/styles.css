@@ -104,10 +104,10 @@ body {
 #window-controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
 #window-controls [hidden] { display: none; }
 /* Keep the controls grounded against normal page content while scrolling.
-   File previews are the one case where the surrounding surface is intentionally
-   dimmed; let that backdrop show through the control strip without moving the
-   controls behind the overlay or taking away their native window actions. */
-body:has(#preview-overlay:not([hidden])) #window-controls { background: transparent; }
+   When any Atlas overlay is open, let its backdrop show through the control
+   strip without moving the controls behind the overlay or taking away their
+   native window actions. */
+body:has([id$="-overlay"]:not([hidden])) #window-controls { background: transparent; }
 
 /* Minimal scrollbars everywhere — thin, no track background, rounded thumb.
    Firefox uses the standard properties; Chromium/Electron uses the WebKit
