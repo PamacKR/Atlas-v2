@@ -1292,6 +1292,44 @@ if (process.env.ATLAS_TEST_RESOURCES_FILTERS === '1') {
   });
 }
 
+if (process.env.ATLAS_TEST_COURSE_READINESS === '1') {
+  ipcMain.handle('test:seedCourseReadinessItems', () => {
+    const db = getDb();
+    const courseId = Number(
+      db.prepare("INSERT INTO courses (name, code, term, folder_name) VALUES ('Readiness verification course', 'VERIFY-READY', 'Test', 'readiness-verify')").run()
+        .lastInsertRowid
+    );
+    const fixtureDir = path.join(getDataDir(), 'readiness-fixtures');
+    fs.mkdirSync(fixtureDir, { recursive: true });
+    const readyPath = path.join(fixtureDir, 'ready.txt');
+    const failedPath = path.join(fixtureDir, 'failed.txt');
+    fs.writeFileSync(readyPath, 'Readable fixture text.');
+    fs.writeFileSync(failedPath, 'Retryable fixture text.');
+    const insertResource = db.prepare(
+      'INSERT INTO resources (course_id, title, kind, source, file_path, extraction_status, extraction_error, link_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    const readyId = Number(insertResource.run(courseId, 'Readable syllabus.txt', 'text', 'manual', readyPath, 'done', null, null).lastInsertRowid);
+    insertResource.run(courseId, 'Scanned reading.pdf', 'pdf', 'manual', path.join(fixtureDir, 'scanned.pdf'), 'empty', null, null);
+    insertResource.run(courseId, 'Broken handout.docx', 'docx', 'manual', failedPath, 'failed', 'The verification extractor failed.', null);
+    insertResource.run(courseId, 'Slides still processing.pptx', 'pptx', 'manual', path.join(fixtureDir, 'pending.pptx'), 'pending', null, null);
+    insertResource.run(courseId, 'Reference diagram.png', 'image', 'manual', path.join(fixtureDir, 'diagram.png'), 'unsupported', null, null);
+    insertResource.run(courseId, 'Professor video', 'link', 'classroom', 'https://example.com/video', 'unsupported', null, 'youTubeVideo');
+    db.prepare('INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, 1, ?, ?, ?)').run(
+      readyId,
+      'Part 1',
+      'Readable fixture text.',
+      'extracted'
+    );
+    db.prepare(
+      "INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path) VALUES (?, 'Typed lecture notes', 'Readable note text.', 0, NULL)"
+    ).run(courseId);
+    db.prepare(
+      "INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path) VALUES (?, 'Unreviewed handwritten scan', '', 1, ?)"
+    ).run(courseId, path.join(fixtureDir, 'handwritten.png'));
+    return courseId;
+  });
+}
+
 // `archived` param: false (default, and every existing caller that doesn't
 // pass one) returns only active courses, matching the behavior this handler
 // always had. Passing true switches to *only* archived courses instead — the
@@ -2053,6 +2091,139 @@ ipcMain.handle('resources:listByCourse', (_event, courseId: number) => {
     .all(courseId);
 });
 
+// Course readiness is a deterministic report of whether Atlas has usable text
+// for the external agent. It deliberately does not judge academic coverage or
+// comprehension, and it does not call an AI service.
+ipcMain.handle('courses:getReadiness', (_event, courseId: number) => {
+  const db = getDb();
+  const resources = db
+    .prepare(
+      `SELECT resources.id, resources.title, resources.kind, resources.source,
+              resources.extraction_status AS extractionStatus,
+              resources.extraction_error AS extractionError,
+              resources.ocr_text AS ocrText,
+              resources.remote_source AS remoteSource,
+              resources.link_kind AS linkKind,
+              (SELECT COUNT(*) FROM document_parts
+               WHERE document_parts.resource_id = resources.id) AS partCount
+       FROM resources
+       WHERE resources.course_id = ?
+       ORDER BY resources.added_at DESC`
+    )
+    .all(courseId) as {
+    id: number;
+    title: string;
+    kind: string;
+    source: string;
+    extractionStatus: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
+    extractionError: string | null;
+    ocrText: string | null;
+    remoteSource: 'drive' | 'gmail' | null;
+    linkKind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
+    partCount: number;
+  }[];
+  const notes = db
+    .prepare(
+      `SELECT id, title, content_markdown AS contentMarkdown, is_handwritten AS isHandwritten,
+              image_path AS imagePath, ocr_text AS ocrText
+       FROM notes
+       WHERE course_id = ?
+       ORDER BY updated_at DESC`
+    )
+    .all(courseId) as {
+    id: number;
+    title: string;
+    contentMarkdown: string;
+    isHandwritten: number;
+    imagePath: string | null;
+    ocrText: string | null;
+  }[];
+
+  type ReadinessStatus = 'ready' | 'needs_ocr' | 'pending' | 'failed' | 'unsupported' | 'external';
+  type ReadinessItem = {
+    id: number;
+    type: 'resource' | 'note';
+    title: string;
+    status: ReadinessStatus;
+    detail: string;
+    kind?: string;
+    source?: string;
+    canRetry?: boolean;
+  };
+  const counts: Record<ReadinessStatus, number> = {
+    ready: 0,
+    needs_ocr: 0,
+    pending: 0,
+    failed: 0,
+    unsupported: 0,
+    external: 0,
+  };
+  const issues: ReadinessItem[] = [];
+  const add = (item: ReadinessItem): void => {
+    counts[item.status] += 1;
+    if (item.status !== 'ready') issues.push(item);
+  };
+
+  for (const resource of resources) {
+    let status: ReadinessStatus;
+    let detail: string;
+    let canRetry = false;
+    if (resource.extractionStatus === 'done' && (resource.partCount > 0 || !!resource.ocrText?.trim())) {
+      status = 'ready';
+      detail = 'Text is available to the agent.';
+    } else if (resource.extractionStatus === 'pending') {
+      status = 'pending';
+      detail = 'Atlas is still extracting this file.';
+    } else if (resource.extractionStatus === 'empty') {
+      status = resource.kind === 'pdf' ? 'needs_ocr' : 'unsupported';
+      detail = resource.kind === 'pdf' ? 'No text layer was found. Run OCR and review the result.' : 'No readable text was found.';
+    } else if (resource.extractionStatus === 'failed') {
+      status = 'failed';
+      detail = resource.extractionError || 'Atlas could not extract text from this file.';
+      canRetry = !resource.remoteSource && ['pdf', 'pptx', 'xlsx', 'docx', 'text', 'markdown'].includes(resource.kind);
+    } else if (resource.kind === 'link' && resource.linkKind !== 'driveFile') {
+      status = 'external';
+      detail = 'External material; Atlas does not extract this link into course text.';
+    } else {
+      status = 'unsupported';
+      detail = 'This file type is not included in Atlas text extraction.';
+    }
+    add({
+      id: resource.id,
+      type: 'resource',
+      title: resource.title,
+      status,
+      detail,
+      kind: resource.kind,
+      source: resource.source,
+      canRetry,
+    });
+  }
+
+  for (const note of notes) {
+    if (note.contentMarkdown.trim() || note.ocrText?.trim()) {
+      add({ id: note.id, type: 'note', title: note.title, status: 'ready', detail: 'Note text is available to the agent.' });
+    } else if (note.isHandwritten && note.imagePath) {
+      add({
+        id: note.id,
+        type: 'note',
+        title: note.title,
+        status: 'needs_ocr',
+        detail: 'This scan has no accepted text yet. Run OCR or ask the external agent to inspect the scan.',
+      });
+    } else {
+      add({ id: note.id, type: 'note', title: note.title, status: 'unsupported', detail: 'This note does not contain text yet.' });
+    }
+  }
+
+  return {
+    total: resources.length + notes.length,
+    readable: counts.ready,
+    counts,
+    issues,
+  };
+});
+
 ipcMain.handle('resources:upload', async (_event, courseId: number) => {
   // Test hook: native OS file pickers can't be driven by Playwright, so
   // scripts/verify-app.js supplies a fixed path via this env var instead of
@@ -2129,6 +2300,28 @@ ipcMain.handle('resources:saveOcrText', (_event, resourceId: number, text: strin
     );
   })();
   rebuildSearchIndex();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resources:extractionUpdated', resourceId);
+});
+
+ipcMain.handle('resources:retryExtraction', (_event, resourceId: number) => {
+  const db = getDb();
+  const resource = db
+    .prepare('SELECT kind, file_path, remote_source FROM resources WHERE id = ?')
+    .get(resourceId) as { kind: string; file_path: string; remote_source: string | null } | undefined;
+  if (!resource) return { ok: false as const, error: 'Resource not found.' };
+  if (resource.remote_source) return { ok: false as const, error: 'Remote resources are retried during their next sync.' };
+  if (!EXTRACTABLE_KINDS.has(resource.kind)) return { ok: false as const, error: 'This file type cannot be extracted.' };
+  if (!fs.existsSync(resource.file_path)) return { ok: false as const, error: 'The original file is missing from Atlas storage.' };
+
+  db.transaction(() => {
+    db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resourceId);
+    db.prepare("UPDATE resources SET extraction_status = 'pending', extraction_error = NULL, extracted_at = NULL WHERE id = ?").run(
+      resourceId
+    );
+  })();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resources:extractionUpdated', resourceId);
+  scheduleExtraction(resourceId, resource.kind, resource.file_path);
+  return { ok: true as const };
 });
 
 ipcMain.handle('resources:setZoom', (_event, resourceId: number, zoom: number) => {

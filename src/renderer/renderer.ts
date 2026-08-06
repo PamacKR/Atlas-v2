@@ -40,6 +40,26 @@ interface Resource {
   link_kind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
 }
 
+type CourseReadinessStatus = 'ready' | 'needs_ocr' | 'pending' | 'failed' | 'unsupported' | 'external';
+
+interface CourseReadinessItem {
+  id: number;
+  type: 'resource' | 'note';
+  title: string;
+  status: CourseReadinessStatus;
+  detail: string;
+  kind?: string;
+  source?: string;
+  canRetry?: boolean;
+}
+
+interface CourseReadiness {
+  total: number;
+  readable: number;
+  counts: Record<CourseReadinessStatus, number>;
+  issues: CourseReadinessItem[];
+}
+
 interface ExtractionBackfillProgress {
   done: number;
   total: number;
@@ -332,6 +352,7 @@ interface AtlasApi {
     term: string
   ) => Promise<{ created: Course[]; skipped: number }>;
   listResources: (courseId: number) => Promise<Resource[]>;
+  getCourseReadiness: (courseId: number) => Promise<CourseReadiness>;
   uploadResource: (courseId: number) => Promise<Resource | null>;
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer) => Promise<Resource | null>;
   deleteCourse: (courseId: number) => Promise<void>;
@@ -342,7 +363,9 @@ interface AtlasApi {
   setResourceZoom: (resourceId: number, zoom: number) => Promise<void>;
   runResourceOcr: (resourceId: number) => Promise<string | null>;
   saveResourceOcrText: (resourceId: number, text: string) => Promise<void>;
+  retryResourceExtraction: (resourceId: number) => Promise<{ ok: true } | { ok: false; error: string }>;
   onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void) => void;
+  onExtractionUpdated: (handler: (resourceId: number) => void) => void;
   openResourceInGoogleDrive: (resourceId: number) => Promise<void>;
   onExtractionBackfillProgress: (handler: (progress: ExtractionBackfillProgress) => void) => void;
   onResourceDriveOpenStart: (handler: (resourceId: number) => void) => void;
@@ -3892,6 +3915,134 @@ function closeCourseEditModal(): void {
   document.getElementById('course-edit-overlay')!.hidden = true;
 }
 
+const READINESS_STATUS_LABELS: Record<CourseReadinessStatus, string> = {
+  ready: 'Readable',
+  needs_ocr: 'Needs OCR',
+  pending: 'Pending',
+  failed: 'Failed',
+  unsupported: 'Not text-extracted',
+  external: 'External',
+};
+
+function readinessSourceLabel(source: string | undefined): string {
+  if (source === 'classroom') return 'Classroom';
+  if (source === 'drive') return 'Drive';
+  if (source === 'local_folder') return 'Watched folder';
+  return 'Local';
+}
+
+function readinessKindLabel(kind: string | undefined): string {
+  if (!kind) return 'Item';
+  return kind === 'pptx' ? 'PPTX' : kind.toUpperCase();
+}
+
+async function renderCourseReadiness(courseId: number): Promise<void> {
+  const [readiness, resources, notes] = await Promise.all([
+    atlasApi.getCourseReadiness(courseId),
+    atlasApi.listResources(courseId),
+    atlasApi.listNotes(courseId),
+  ]);
+  if (!selectedCourse || selectedCourse.id !== courseId) return;
+
+  const summary = document.getElementById('course-readiness-summary')!;
+  summary.textContent = readiness.total
+    ? `${readiness.readable} of ${readiness.total} course materials have readable text for the agent.`
+    : 'No course materials have been added yet.';
+
+  const metrics = document.getElementById('course-readiness-metrics')!;
+  const otherCount = readiness.counts.unsupported + readiness.counts.external;
+  const metricDefinitions: Array<{ status: CourseReadinessStatus; label: string; count: number }> = [
+    { status: 'ready', label: 'Readable', count: readiness.counts.ready },
+    { status: 'needs_ocr', label: 'Needs OCR', count: readiness.counts.needs_ocr },
+    { status: 'pending', label: 'Pending', count: readiness.counts.pending },
+    { status: 'failed', label: 'Failed', count: readiness.counts.failed },
+    { status: 'unsupported', label: 'Other', count: otherCount },
+  ];
+  metrics.innerHTML = '';
+  for (const metric of metricDefinitions) {
+    const item = document.createElement('div');
+    item.className = `course-readiness-metric is-${metric.status}`;
+    item.innerHTML = `<span class="course-readiness-metric-count"></span><span class="course-readiness-metric-label"></span>`;
+    item.querySelector('.course-readiness-metric-count')!.textContent = String(metric.count);
+    item.querySelector('.course-readiness-metric-label')!.textContent = metric.label;
+    metrics.appendChild(item);
+  }
+
+  const issueList = document.getElementById('course-readiness-issues')!;
+  const empty = document.getElementById('course-readiness-empty')!;
+  issueList.innerHTML = '';
+  if (readiness.issues.length === 0) {
+    empty.hidden = false;
+    empty.textContent = readiness.total ? 'Everything in this course is currently readable by the agent.' : 'No course materials to check yet.';
+    return;
+  }
+  empty.hidden = true;
+
+  const resourceById = new Map(resources.map((resource) => [resource.id, resource]));
+  const noteById = new Map(notes.map((note) => [note.id, note]));
+  for (const issue of readiness.issues) {
+    const row = document.createElement('div');
+    row.className = 'course-readiness-item';
+
+    const indicator = document.createElement('span');
+    indicator.className = `course-readiness-indicator is-${issue.status}`;
+    indicator.setAttribute('aria-hidden', 'true');
+
+    const content = document.createElement('div');
+    content.className = 'course-readiness-item-content';
+    const title = document.createElement('strong');
+    title.className = 'course-readiness-item-title';
+    title.textContent = issue.title;
+    const meta = document.createElement('span');
+    meta.className = 'course-readiness-item-meta';
+    meta.textContent = `${issue.type === 'note' ? 'Note' : readinessKindLabel(issue.kind)} · ${readinessSourceLabel(issue.source)} · ${READINESS_STATUS_LABELS[issue.status]}`;
+    const detail = document.createElement('span');
+    detail.className = 'course-readiness-item-detail';
+    detail.textContent = issue.detail;
+    content.append(title, meta, detail);
+
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'link-button course-readiness-action';
+    if (issue.status === 'pending') {
+      action.hidden = true;
+    } else if (issue.type === 'resource' && issue.status === 'failed' && issue.canRetry) {
+      action.textContent = 'Retry extraction';
+      action.addEventListener('click', async () => {
+        action.disabled = true;
+        action.textContent = 'Retrying…';
+        const result = await atlasApi.retryResourceExtraction(issue.id);
+        if (!result.ok) {
+          action.disabled = false;
+          action.textContent = 'Retry extraction';
+          detail.textContent = result.error;
+          return;
+        }
+        await renderCourseReadiness(courseId);
+      });
+    } else if (issue.type === 'resource') {
+      action.textContent = issue.status === 'external'
+        ? 'Open link'
+        : issue.status === 'needs_ocr'
+          ? 'Open to run OCR'
+          : 'Open resource';
+      action.addEventListener('click', () => {
+        const resource = resourceById.get(issue.id);
+        if (resource) void openPreview(resource);
+      });
+    } else {
+      action.textContent = 'Open note';
+      action.addEventListener('click', () => {
+        const note = noteById.get(issue.id);
+        if (note) void openNoteEditor(note);
+      });
+    }
+
+    row.append(indicator, content, action);
+    issueList.appendChild(row);
+  }
+}
+
 // Phase 4 Part E fallback (phase4-spec.md §7) — for pasting into an AI tool
 // that can't use the MCP server (Part D) directly. Reveals the written file
 // in the OS file manager (main.ts's shell.showItemInFolder) since there's no
@@ -3951,6 +4102,7 @@ async function selectCourse(course: Course): Promise<void> {
   document.getElementById('course-detail-note-count')!.textContent = String(summary?.note_count ?? 0);
 
   await renderCourseDetailPreviews(course.id);
+  await renderCourseReadiness(course.id);
   await renderCourseDetailUpNext(course.id);
   await renderDeadlines();
   await renderWatchedFolders();
@@ -7043,7 +7195,10 @@ async function init(): Promise<void> {
     // re-sync) — refresh whatever's currently visible so it doesn't look
     // like the sync silently did nothing if they're already looking at it.
     if (currentPage === 'dashboard') void renderDashboard();
-    else if (currentPage === 'courses' && selectedCourse) void renderCourseDetailPreviews(selectedCourse.id);
+    else if (currentPage === 'courses' && selectedCourse) {
+      void renderCourseDetailPreviews(selectedCourse.id);
+      void renderCourseReadiness(selectedCourse.id);
+    }
     else if (currentPage === 'courses') void renderCourses();
   });
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
@@ -7167,6 +7322,15 @@ async function init(): Promise<void> {
     } else {
       el.textContent = `Done — ${progress.total} file${progress.total === 1 ? '' : 's'} read.`;
     }
+  });
+  atlasApi.onExtractionUpdated((resourceId) => {
+    const courseId = currentPage === 'courses' ? selectedCourse?.id : undefined;
+    if (courseId === undefined) return;
+    void atlasApi.listResources(courseId).then((resources) => {
+      if (selectedCourse?.id === courseId && resources.some((resource) => resource.id === resourceId)) {
+        void renderCourseReadiness(courseId);
+      }
+    });
   });
   wireCommandPalette();
   void loadShortcutOverrides();
@@ -7504,9 +7668,12 @@ async function init(): Promise<void> {
   // Fired by the main process when a watched folder picks up a new file —
   // the global Resources page isn't scoped to one course, so just refresh
   // it outright rather than checking which course the event was for.
-  atlasApi.onResourcesChanged(async () => {
+  atlasApi.onResourcesChanged(async (courseId) => {
     if (currentPage === 'resources') await renderResourcesPage();
-    else void renderDashboard();
+    else if (currentPage === 'courses' && selectedCourse?.id === courseId) {
+      await renderCourseDetailPreviews(courseId);
+      await renderCourseReadiness(courseId);
+    } else void renderDashboard();
   });
 
   const searchInput = document.getElementById('search-input') as HTMLInputElement;

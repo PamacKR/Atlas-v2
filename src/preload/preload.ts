@@ -329,6 +329,7 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('resources:browserUrl', resourceId),
   listResources: (courseId: number): Promise<Resource[]> =>
     ipcRenderer.invoke('resources:listByCourse', courseId),
+  getCourseReadiness: (courseId: number): Promise<unknown> => ipcRenderer.invoke('courses:getReadiness', courseId),
   uploadResource: (courseId: number): Promise<Resource | null> =>
     ipcRenderer.invoke('resources:upload', courseId),
   uploadResourceBuffer: (courseId: number, filename: string, buffer: ArrayBuffer): Promise<Resource | null> =>
@@ -343,6 +344,11 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('resources:runOcr', resourceId),
   saveResourceOcrText: (resourceId: number, text: string): Promise<void> =>
     ipcRenderer.invoke('resources:saveOcrText', resourceId, text),
+  retryResourceExtraction: (resourceId: number): Promise<{ ok: true } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('resources:retryExtraction', resourceId),
+  onExtractionUpdated: (handler: (resourceId: number) => void): void => {
+    ipcRenderer.on('resources:extractionUpdated', (_event, resourceId: number) => handler(resourceId));
+  },
   onResourceOcrProgress: (handler: (progress: ResourceOcrProgress) => void): void => {
     ipcRenderer.on('resources:ocrProgress', (_event, progress: ResourceOcrProgress) => handler(progress));
   },
@@ -466,6 +472,7 @@ contextBridge.exposeInMainWorld('atlas', {
     ipcRenderer.invoke('dashboard:unpinAnnouncement', announcementId),
   seedDashboardV2TestItems: (): Promise<number> => ipcRenderer.invoke('test:seedDashboardV2Items'),
   seedResourcesFilterTestItems: (): Promise<number> => ipcRenderer.invoke('test:seedResourcesFilterItems'),
+  seedCourseReadinessTestItems: (): Promise<number> => ipcRenderer.invoke('test:seedCourseReadinessItems'),
   getCourseSummaries: (archived = false): Promise<CourseSummary[]> =>
     ipcRenderer.invoke('dashboard:courseSummaries', archived),
   listAllResources: (): Promise<ResourceWithCourse[]> => ipcRenderer.invoke('resources:listAll'),

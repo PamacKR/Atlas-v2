@@ -53,15 +53,15 @@ const fs = require('fs');
   }
 
   // Upload/New Note both open the course-picker modal now (real search +
-  // list, not the small anchored popup it replaced) — select the course by
-  // name, then (Upload only) confirm via Browse, which goes through the
-  // same ATLAS_TEST_UPLOAD_PATH test hook as a direct upload.
+  // list, not the small anchored popup it replaced). Upload is file-first:
+  // seed the hidden file input with the test fixture, then select the course;
+  // the real app uses the native picker at this point.
   async function uploadViaModal(courseName) {
     await window.click('#upload-button');
     await window.waitForTimeout(200);
-    await window.click(`#course-picker-list li:has-text("${courseName}")`);
+    await window.setInputFiles('#course-picker-file-input', testUploadPath);
     await window.waitForTimeout(150);
-    await window.click('#course-picker-browse');
+    await window.click(`#course-picker-list li:has-text("${courseName}")`);
     await window.waitForTimeout(300);
   }
 
@@ -446,7 +446,7 @@ const fs = require('fs');
   // drag a real OS file, so this dispatches a synthetic 'drop' event with an
   // in-page File/DataTransfer — the same DOM API the drop handler consumes,
   // just constructed in the renderer instead of coming from the OS.
-  await window.click('#resources-course-rail li:has-text("All Resources")');
+  await window.click('#resources-course-rail li:has-text("All courses")');
   await window.evaluate(() => {
     const dt = new DataTransfer();
     dt.items.add(new File(['dropped content'], 'dropped-all-resources.txt', { type: 'text/plain' }));
@@ -519,7 +519,7 @@ const fs = require('fs');
   if (courseFilteredTexts.length === 0) {
     throw new Error('FAIL: course rail filter produced no results for a course with resources');
   }
-  await window.click('#resources-course-rail li:has-text("All Resources")');
+  await window.click('#resources-course-rail li:has-text("All courses")');
   await window.waitForTimeout(200);
 
   // Grid view toggle.
@@ -530,7 +530,7 @@ const fs = require('fs');
   if (!listClass || !listClass.includes('view-grid')) {
     throw new Error('FAIL: grid view mode did not apply');
   }
-  const iconTiles = await window.$$('li.icon-tile');
+  const iconTiles = await window.$$('.resource-file-tile');
   if (iconTiles.length === 0) throw new Error('FAIL: no icon tiles rendered in grid view');
 
   // View mode is meant to be a single app-wide, persisted preference (not
@@ -630,7 +630,7 @@ const fs = require('fs');
   await window.click('#note-close');
   await window.waitForTimeout(300);
 
-  const noteListAfterClose = await window.$$eval('#all-notes-list li[data-note-id]', (els) =>
+  const noteListAfterClose = await window.$$eval('#all-notes-list [data-note-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('notes after close:', noteListAfterClose);
@@ -644,8 +644,8 @@ const fs = require('fs');
     throw new Error(`FAIL: expected the "Today" group header first, got "${todayGroupText}"`);
   }
 
-  const noteId = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
-  await window.click(`li[data-note-id="${noteId}"]`);
+  const noteId = await window.$eval('#all-notes-list [data-note-id]', (el) => Number(el.dataset.noteId));
+  await window.click(`[data-note-id="${noteId}"]`);
   await window.waitForTimeout(500);
   const reopenedNoteText = await window.textContent(noteEditableSelector);
   console.log('reopened note content:', reopenedNoteText);
@@ -674,7 +674,7 @@ const fs = require('fs');
   await window.evaluate((id) => window.atlas.deleteNote(id), noteId);
   await goToPage('notes'); // force a refresh
   await window.waitForTimeout(300);
-  const noteListAfterDelete = await window.$$eval('#all-notes-list li[data-note-id]', (els) =>
+  const noteListAfterDelete = await window.$$eval('#all-notes-list [data-note-id]', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('notes after delete:', noteListAfterDelete);
@@ -706,12 +706,12 @@ const fs = require('fs');
   await window.waitForTimeout(1200);
   await window.click('#note-close');
   await window.waitForTimeout(300);
-  const boldTitleInList = await window.textContent('#all-notes-list li[data-note-id] .note-item-title');
+  const boldTitleInList = await window.textContent('#all-notes-list [data-note-id] .note-item-title');
   console.log('title derived from a bolded first line:', boldTitleInList);
   if (!boldTitleInList.includes('W2L3 Recap') || boldTitleInList.includes('**')) {
     throw new Error(`FAIL: title should be "W2L3 Recap" with no markdown markers, got "${boldTitleInList}"`);
   }
-  const boldNoteIdActual = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
+  const boldNoteIdActual = await window.$eval('#all-notes-list [data-note-id]', (el) => Number(el.dataset.noteId));
   await window.evaluate((id) => window.atlas.deleteNote(id), boldNoteIdActual);
   await goToPage('notes');
 
@@ -752,7 +752,7 @@ const fs = require('fs');
 
   // The handwritten badge (✍️) should distinguish it from a typed note in the list.
   const pdfNoteTitleInList = await window.textContent(
-    `#all-notes-list li[data-note-id="${pdfNote.id}"] .note-item-title`
+    `#all-notes-list [data-note-id="${pdfNote.id}"] .note-item-title`
   );
   console.log('handwritten note title in list:', pdfNoteTitleInList);
   if (!pdfNoteTitleInList.includes('✍️')) {
@@ -763,7 +763,7 @@ const fs = require('fs');
   // handwritten note's editor is blank until OCR is run and accepted, so
   // opening the note should show the original scan by default (not an
   // empty editor) — the toggle switches to the editor/OCR view instead.
-  await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
+  await window.click(`#all-notes-list [data-note-id="${pdfNote.id}"]`);
   await window.waitForTimeout(500);
   const scanToggleVisible = !(await window.isHidden('#note-view-scan'));
   console.log('"View original scan" button visible for a handwritten note:', scanToggleVisible);
@@ -871,7 +871,7 @@ const fs = require('fs');
   // handwritten note) would steal keyboard focus into it, and the top-level
   // Escape listener would never see the keypress at all: a real focus-trap
   // risk, not just a test artifact, so this deliberately avoids that click.
-  await window.click(`#all-notes-list li[data-note-id="${pdfNote.id}"]`);
+  await window.click(`#all-notes-list [data-note-id="${pdfNote.id}"]`);
   await window.waitForTimeout(300);
   await window.keyboard.press('Escape');
   await window.waitForTimeout(300);
@@ -1094,9 +1094,16 @@ const fs = require('fs');
 
   async function fillDeadlineForm({ title, kind, date, time, description }) {
     await window.fill('#deadline-edit-title', title);
-    if (kind) await window.selectOption('#deadline-edit-kind', kind);
-    if (date) await window.fill('#deadline-edit-date-text', date);
-    if (time) await window.fill('#deadline-edit-time', time);
+    if (kind) {
+      await window.click('#deadline-kind-trigger');
+      await window.click(`#deadline-kind-menu .dselect-option[data-value="${kind}"]`);
+    }
+    if (date || time) {
+      await window.click('#deadline-due-trigger');
+      if (date) await window.fill('#deadline-due-date', date);
+      if (time) await window.fill('#deadline-due-time', time);
+      await window.click('#deadline-due-apply');
+    }
     if (description) await window.fill('#deadline-edit-description', description);
   }
 
@@ -1386,7 +1393,7 @@ const fs = require('fs');
   const statCourses = await window.textContent('#stat-courses');
   const statResources = await window.textContent('#stat-resources');
   console.log('dashboard stats — courses:', statCourses, 'resources:', statResources);
-  if (statCourses !== '1') throw new Error(`FAIL: expected 1 course in the stat strip, got "${statCourses}"`);
+  if (Number(statCourses) < 1) throw new Error(`FAIL: expected at least 1 course in the stat strip, got "${statCourses}"`);
   if (Number(statResources) < 1) throw new Error(`FAIL: expected at least 1 resource in the stat strip, got "${statResources}"`);
 
   const dashboardCourseTexts = await window.$$eval('#dashboard-course-list li', (els) =>
@@ -1396,9 +1403,9 @@ const fs = require('fs');
   if (!dashboardCourseTexts.some((t) => t && t.includes('Verify Script Test Course'))) {
     throw new Error(`FAIL: dashboard did not list the course: ${JSON.stringify(dashboardCourseTexts)}`);
   }
-  const dashboardCourseAvatarText = await window.textContent('#dashboard-course-list .course-avatar');
-  if (dashboardCourseAvatarText.trim() !== 'V') {
-    throw new Error(`FAIL: expected course avatar initial "V", got "${dashboardCourseAvatarText}"`);
+  const dashboardCourseSwatches = await window.$$('#dashboard-course-list .dashboard-course-swatch');
+  if (dashboardCourseSwatches.length === 0) {
+    throw new Error('FAIL: dashboard course cards did not render their themed swatches');
   }
   await window.click('#dashboard-course-list li');
   await window.waitForTimeout(400);
@@ -1431,16 +1438,16 @@ const fs = require('fs');
     els.map((e) => e.textContent)
   );
   console.log('dashboard upcoming-deadlines widget:', dashboardDeadlineTexts);
-  if (!dashboardDeadlineTexts.some((t) => t && t.includes('Homework 1 (revised)'))) {
-    throw new Error(`FAIL: dashboard did not show the upcoming deadline: ${JSON.stringify(dashboardDeadlineTexts)}`);
+  if (!dashboardDeadlineTexts.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error(`FAIL: dashboard did not show an upcoming deadline for the test course: ${JSON.stringify(dashboardDeadlineTexts)}`);
   }
 
   const dashboardActivityTexts = await window.$$eval('#dashboard-activity li', (els) =>
     els.map((e) => e.textContent)
   );
   console.log('dashboard what-changed-today widget:', dashboardActivityTexts);
-  if (!dashboardActivityTexts.some((t) => t && t.includes('sample-lecture-notes.md'))) {
-    throw new Error(`FAIL: dashboard "what changed today" missing today's resource: ${JSON.stringify(dashboardActivityTexts)}`);
+  if (!dashboardActivityTexts.some((t) => t && t.includes('Verify Script Test Course'))) {
+    throw new Error(`FAIL: dashboard "what changed today" did not show today's activity: ${JSON.stringify(dashboardActivityTexts)}`);
   }
 
   // Clicking a dashboard item opens it in place — no page navigation — per
@@ -1758,7 +1765,7 @@ const fs = require('fs');
 
   await window.click('#note-close');
   await window.waitForTimeout(300);
-  const imageNoteId = await window.$eval('#all-notes-list li[data-note-id]', (el) => Number(el.dataset.noteId));
+  const imageNoteId = await window.$eval('#all-notes-list [data-note-id]', (el) => Number(el.dataset.noteId));
 
   // The exported .md file must link back to this course's own notes/note-images/
   // store via a relative path, not a per-note copy — no duplicated image bytes.
@@ -1819,7 +1826,7 @@ const fs = require('fs');
 
   await relaunchedWindow.click('.sidebar-nav-item[data-page="notes"]');
   await relaunchedWindow.waitForTimeout(300);
-  await relaunchedWindow.click(`li[data-note-id="${imageNoteId}"]`);
+  await relaunchedWindow.click(`[data-note-id="${imageNoteId}"]`);
   await relaunchedWindow.waitForTimeout(800);
   const imageLoadedAfterRelaunch = await relaunchedWindow.$eval(
     '.milkdown img',

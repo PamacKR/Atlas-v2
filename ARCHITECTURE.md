@@ -181,6 +181,17 @@ Not a sync adapter in the OAuth/API sense — this is a **local-file-to-local-fi
 
 The Context Builder (PRD section 16) is a query layer over the canonical database: given a task (assignment help, exam revision, lecture summary, etc.) and a current course, it retrieves the relevant subset of resources, notes, assignments, and the course's AI profile (section 19) — it does not dump everything, and it never writes AI-inferred data back into the canonical store as fact (section 17).
 
+### Per-course agent readiness (built 2026-08-06)
+
+The course-detail Overview includes an **Agent readiness** section that reports technical text availability, not comprehension, study progress, or an AI-generated judgment. `courses:getReadiness` aggregates the existing canonical state rather than adding a second readiness database:
+
+- A resource is **readable** when its extraction status is `done` and it has at least one `document_parts` row or accepted `ocr_text`. A typed note is readable when it contains text; a handwritten note is readable once it has accepted OCR or user-entered content.
+- A scanned PDF with `extraction_status = 'empty'`, or a handwritten scan with no accepted text, is **needs OCR**. The UI sends the user to the existing reviewed OCR flow rather than silently running or saving OCR.
+- `pending` means extraction is still running. `failed` preserves the stored extraction error. Local failures for extractable kinds can be reset to `pending` and retried through `resources:retryExtraction`; remote failures remain tied to their next source sync rather than incorrectly passing through the local-file extractor.
+- Unsupported file kinds and external Classroom links are reported separately from genuine failures. They are not silently counted as readable, but neither are external links or image/archives presented as parser errors.
+
+The renderer shows the course total, five compact counts (Readable, Needs OCR, Pending, Failed, Other), and an unboxed issue list with the material type/source, reason, and the appropriate action. The section refreshes from `resources:extractionUpdated`, `resources:changed`, and Classroom change events, so a completed extraction or OCR save appears without navigation or relaunch. This is intentionally a deterministic local feature: Atlas does not call an LLM or infer whether the user has actually studied the material. The later reading/coverage-tracking idea remains a separate product decision.
+
 ## 6. Runtime AI integration: local MCP server
 
 Atlas exposes its Context Builder to whichever AI coding agent the user is running via a **local MCP (Model Context Protocol) server** bundled with the app, rather than only generating static context files. MCP is itself a model/vendor-agnostic protocol — any MCP-capable client (Claude Code or others) can connect to the same server without Atlas needing to know or care which one it is.
