@@ -18,6 +18,8 @@ const fs = require('fs');
     await window.waitForSelector(`#course-list [data-course-id="${courseId}"]`);
     await window.click(`#course-list [data-course-id="${courseId}"]`);
     await window.waitForSelector('.course-detail-tab[data-course-tab="readiness"]');
+    const courseTabOrder = await window.$$eval('.course-detail-tab:not([hidden])', (tabs) => tabs.map((tab) => tab.dataset.courseTab));
+    if (courseTabOrder.indexOf('readiness') !== courseTabOrder.indexOf('files') + 1) throw new Error(`Readiness tab was not placed after Files: ${courseTabOrder.join(', ')}`);
     if (await window.isHidden('[data-course-tab-panel="overview"]')) throw new Error('Overview panel was not active after opening a course.');
     await window.click('.course-detail-tab[data-course-tab="readiness"]');
     if (await window.isHidden('[data-course-tab-panel="readiness"]')) throw new Error('Readiness tab did not activate its panel.');
