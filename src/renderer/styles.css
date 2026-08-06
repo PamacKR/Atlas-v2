@@ -95,7 +95,7 @@ body {
 #main-area { position: relative; }
 #app-shell { --sidebar-width: 220px; }
 #app-shell:has(#sidebar.collapsed) { --sidebar-width: 64px; }
-#window-chrome { position: fixed; top: 0; right: 0; left: var(--sidebar-width); z-index: 1000; height: 32px; pointer-events: none; }
+#window-chrome { position: fixed; top: 0; right: 0; left: var(--sidebar-width); z-index: 1000; height: 32px; pointer-events: none; transition: opacity var(--transition); }
 #window-drag-region { position: absolute; inset: 0; pointer-events: auto; -webkit-app-region: drag; }
 #window-controls { position: absolute; top: 0; right: 0; display: flex; align-items: stretch; height: 32px; pointer-events: auto; -webkit-app-region: no-drag; background: var(--bg); }
 #window-controls button { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 32px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-muted); cursor: pointer; -webkit-app-region: no-drag; transition: color var(--transition), background var(--transition); }
@@ -103,6 +103,10 @@ body {
 #window-controls #window-close:hover, #window-controls #window-close:focus-visible { background: var(--urgent); color: #fff; }
 #window-controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
 #window-controls [hidden] { display: none; }
+/* The custom chrome sits above the renderer so it can always receive native
+   window actions. When an Atlas overlay is open, blend it with the same
+   dimmed atmosphere instead of leaving a bright, detached strip at the top. */
+body:has([id$="-overlay"]:not([hidden])) #window-chrome { opacity: .42; }
 
 /* Minimal scrollbars everywhere — thin, no track background, rounded thumb.
    Firefox uses the standard properties; Chromium/Electron uses the WebKit
