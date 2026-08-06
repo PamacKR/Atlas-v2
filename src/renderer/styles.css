@@ -5351,12 +5351,13 @@ button#classroom-connect-confirm {
 #courses-detail-view #deadlines-section .view-toggle button { border: 0; background: transparent; color: var(--text-faint); }
 
 /* Course readiness: a compact, continuous report of whether Atlas has
-   usable text for the external agent. It is intentionally an unboxed
-   section, matching the course-detail mockup's resource/notes language. */
+   usable text for the external agent. It has its own course-detail tab, so
+   the report starts at the tab panel's content edge rather than adding a
+   second divider beneath Overview's widgets. */
 #courses-detail-view .course-readiness-section {
-  margin-top: var(--space-7);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--rule);
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 #courses-detail-view .course-readiness-header { align-items: flex-start; margin-bottom: var(--space-4); }
 #courses-detail-view .course-readiness-header h3 { margin: 0; color: var(--text-faint); font-size: var(--text-xs); font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
@@ -5403,6 +5404,26 @@ button#classroom-connect-confirm {
 #courses-detail-view .course-readiness-indicator.is-external { background: var(--text-faint); }
 #courses-detail-view .course-readiness-item-content { display: grid; min-width: 0; gap: 1px; }
 #courses-detail-view .course-readiness-item-title { overflow: hidden; color: var(--text); font-size: var(--text-sm); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+#courses-detail-view .course-readiness-item-title-action {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+#courses-detail-view .course-readiness-item-title-action:hover,
+#courses-detail-view .course-readiness-item-title-action:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  outline: none;
+}
 #courses-detail-view .course-readiness-item-meta { overflow: hidden; color: var(--text-faint); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
 #courses-detail-view .course-readiness-item-detail { color: var(--text-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
 #courses-detail-view .course-readiness-action { flex: 0 0 auto; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-sm); cursor: pointer; white-space: nowrap; }

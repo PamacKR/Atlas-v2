@@ -183,12 +183,13 @@
           <p id="course-detail-export-status" class="muted" hidden></p>
 
           <!-- Tabbed layout (replaces the old single long-scroll page) —
-               Overview/Deadlines/Files always shown; Announcements/
+               Overview/Readiness/Deadlines/Files always shown; Announcements/
                Assignments/Classwork tabs only appear once the course is
                connected to Classroom (toggled in renderer.ts). -->
           <div id="course-detail-tabs" class="course-tabs-row">
             <div class="course-tabs">
             <button class="course-detail-tab active" type="button" data-course-tab="overview">Overview</button>
+            <button class="course-detail-tab" type="button" data-course-tab="readiness">Readiness</button>
             <button class="course-detail-tab" type="button" data-course-tab="deadlines">Deadlines</button>
             <button class="course-detail-tab" type="button" data-course-tab="announcements" id="course-tab-announcements" hidden>Announcements</button>
             <button class="course-detail-tab" type="button" data-course-tab="assignments" id="course-tab-assignments" hidden>Assignments</button>
@@ -222,6 +223,17 @@
               </div>
             </div>
 
+            <section id="course-classroom-section" class="course-classroom-status">
+              <h4>Classroom</h4>
+              <div id="course-classroom-connected" hidden>
+                <p class="muted">Connected to <span id="course-classroom-name"></span></p>
+                <button id="course-classroom-disconnect" type="button" class="link-button">Disconnect</button>
+              </div>
+              <button id="course-classroom-connect" type="button">Connect to Classroom…</button>
+            </section>
+          </div>
+
+          <div class="course-detail-tab-panel" data-course-tab-panel="readiness" hidden>
             <section id="course-readiness-section" class="course-readiness-section">
               <div class="resources-header course-readiness-header">
                 <div>
@@ -232,15 +244,6 @@
               <div id="course-readiness-metrics" class="course-readiness-metrics" aria-label="Course readiness summary"></div>
               <div id="course-readiness-issues" class="course-readiness-issues"></div>
               <p id="course-readiness-empty" class="muted" hidden></p>
-            </section>
-
-            <section id="course-classroom-section" class="course-classroom-status">
-              <h4>Classroom</h4>
-              <div id="course-classroom-connected" hidden>
-                <p class="muted">Connected to <span id="course-classroom-name"></span></p>
-                <button id="course-classroom-disconnect" type="button" class="link-button">Disconnect</button>
-              </div>
-              <button id="course-classroom-connect" type="button">Connect to Classroom…</button>
             </section>
           </div>
 

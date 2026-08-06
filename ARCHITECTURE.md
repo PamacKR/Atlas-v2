@@ -183,7 +183,7 @@ The Context Builder (PRD section 16) is a query layer over the canonical databas
 
 ### Per-course agent readiness (built 2026-08-06)
 
-The course-detail Overview includes an **Agent readiness** section that reports technical text availability, not comprehension, study progress, or an AI-generated judgment. `courses:getReadiness` aggregates the existing canonical state rather than adding a second readiness database:
+The course-detail **Readiness** tab includes an **Agent readiness** section that reports technical text availability, not comprehension, study progress, or an AI-generated judgment. `courses:getReadiness` aggregates the existing canonical state rather than adding a second readiness database:
 
 - A resource is **readable** when its extraction status is `done` and it has at least one `document_parts` row or accepted `ocr_text`. A typed note is readable when it contains text; a handwritten note is readable once it has accepted OCR or user-entered content.
 - A scanned PDF with `extraction_status = 'empty'`, or a handwritten scan with no accepted text, is **needs OCR**. The UI sends the user to the existing reviewed OCR flow rather than silently running or saving OCR.

@@ -17,7 +17,10 @@ const fs = require('fs');
     await window.click('.sidebar-nav-item[data-page="courses"]');
     await window.waitForSelector(`#course-list [data-course-id="${courseId}"]`);
     await window.click(`#course-list [data-course-id="${courseId}"]`);
-    await window.waitForSelector('#course-readiness-section');
+    await window.waitForSelector('.course-detail-tab[data-course-tab="readiness"]');
+    if (await window.isHidden('[data-course-tab-panel="overview"]')) throw new Error('Overview panel was not active after opening a course.');
+    await window.click('.course-detail-tab[data-course-tab="readiness"]');
+    if (await window.isHidden('[data-course-tab-panel="readiness"]')) throw new Error('Readiness tab did not activate its panel.');
     await window.waitForFunction(() => document.querySelector('#course-readiness-summary')?.textContent?.includes('2 of 8'));
 
     const state = await window.evaluate(() => ({
@@ -38,6 +41,18 @@ const fs = require('fs');
     }
     if (!state.metricGrid || state.sectionBorder === 'rgba(0, 0, 0, 0)') throw new Error('Readiness section did not receive themed layout styles');
     if (!(await window.isHidden('#course-readiness-empty'))) throw new Error('Empty readiness state was shown with unresolved issues');
+
+    const titleAction = window.locator('.course-readiness-item-title-action').first();
+    if (await titleAction.count() === 0) throw new Error('Readiness issues did not expose a clickable title action.');
+    await titleAction.hover();
+    const titleActionState = await titleAction.evaluate((element) => ({
+      cursor: getComputedStyle(element).cursor,
+      color: getComputedStyle(element).color,
+    }));
+    if (titleActionState.cursor !== 'pointer') throw new Error(`Readiness title did not expose a pointer cursor: ${titleActionState.cursor}`);
+    await titleAction.click();
+    await window.waitForSelector('#preview-overlay:not([hidden])');
+    await window.click('#preview-close');
 
     await window.click('#course-readiness-issues button:text("Retry extraction")');
     await window.waitForFunction(() => document.querySelector('#course-readiness-issues')?.textContent?.includes('Broken handout.docx'), null, { timeout: 3000 });

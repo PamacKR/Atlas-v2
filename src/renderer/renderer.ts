@@ -3990,8 +3990,11 @@ async function renderCourseReadiness(courseId: number): Promise<void> {
 
     const content = document.createElement('div');
     content.className = 'course-readiness-item-content';
-    const title = document.createElement('strong');
-    title.className = 'course-readiness-item-title';
+    const canOpenReadinessTarget = (issue.type === 'resource' && !['failed', 'pending'].includes(issue.status)) || issue.type === 'note';
+    const title = document.createElement(canOpenReadinessTarget ? 'button' : 'strong');
+    title.className = canOpenReadinessTarget
+      ? 'course-readiness-item-title course-readiness-item-title-action'
+      : 'course-readiness-item-title';
     title.textContent = issue.title;
     const meta = document.createElement('span');
     meta.className = 'course-readiness-item-meta';
@@ -4000,6 +4003,19 @@ async function renderCourseReadiness(courseId: number): Promise<void> {
     detail.className = 'course-readiness-item-detail';
     detail.textContent = issue.detail;
     content.append(title, meta, detail);
+
+    if (title instanceof HTMLButtonElement) {
+      title.type = 'button';
+      title.addEventListener('click', () => {
+        if (issue.type === 'resource') {
+          const resource = resourceById.get(issue.id);
+          if (resource) void openPreview(resource);
+        } else {
+          const note = noteById.get(issue.id);
+          if (note) void openNoteEditor(note);
+        }
+      });
+    }
 
     const action = document.createElement('button');
     action.type = 'button';
@@ -5434,6 +5450,7 @@ function registerAppShortcuts(): void {
 
     // Course detail tabs
     { id: 'courseTab.overview', label: 'Course tab: Overview', group: 'Course detail', defaultBinding: 'Alt+1', when: courseDetailVisible, run: () => setCourseDetailTab('overview') },
+    { id: 'courseTab.readiness', label: 'Course tab: Readiness', group: 'Course detail', defaultBinding: 'Alt+7', when: courseDetailVisible, run: () => setCourseDetailTab('readiness') },
     { id: 'courseTab.deadlines', label: 'Course tab: Deadlines', group: 'Course detail', defaultBinding: 'Alt+2', when: courseDetailVisible, run: () => setCourseDetailTab('deadlines') },
     {
       id: 'courseTab.announcements',
