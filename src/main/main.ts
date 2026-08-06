@@ -814,6 +814,9 @@ function createWindow(): void {
     x: savedState?.x,
     y: savedState?.y,
     frame: false,
+    // Keep the native taskbar icon aligned with the Atlas mark while the
+    // renderer uses the theme-specific SVG variant.
+    icon: path.join(__dirname, 'assets', 'icons', 'atlas.png'),
     // Hidden by default to save screen space (per user request) — Alt still
     // reveals it temporarily, Electron/Chromium's standard behavior for an
     // auto-hidden menu bar on Windows/Linux. No effect on macOS, which never

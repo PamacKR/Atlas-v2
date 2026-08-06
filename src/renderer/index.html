@@ -9,7 +9,10 @@
 <body>
   <div id="app-shell">
     <nav id="sidebar">
-      <div id="sidebar-brand" class="wordmark"><span class="wm-a">A</span><span class="wm-rest">tlas</span></div>
+      <div id="sidebar-brand" class="wordmark">
+        <img id="sidebar-brand-logo" class="atlas-logo" data-atlas-logo src="assets/atlas-logo-dark.svg" alt="Atlas" />
+        <span class="wm-rest">Atlas</span>
+      </div>
       <div class="sidebar-nav-list">
       <button class="sidebar-nav-item nav-item active" type="button" data-page="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-7h6v7"/></svg></span><span class="nav-label">Dashboard</span></button>
       <button class="sidebar-nav-item nav-item" type="button" data-page="courses"><span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg></span><span class="nav-label">Courses</span></button>
@@ -550,6 +553,10 @@
           <div class="settings-panel" data-settings-panel="about" hidden>
             <section class="settings-section">
               <h2>About Atlas</h2>
+              <div class="settings-about-brand">
+                <img id="settings-about-logo" class="atlas-logo" data-atlas-logo src="assets/atlas-logo-dark.svg" alt="Atlas logo" />
+                <span>Atlas</span>
+              </div>
               <p id="settings-about-description">Atlas is your single academic knowledge base — courses, resources, notes, and deadlines pulled automatically from Google Classroom and Drive, local folders, and manual uploads, all kept in one searchable place. Atlas doesn't reason or generate anything itself: it's the source of truth an AI agent (like Claude Code, connected via MCP) reads from and writes back to, for studying, planning, and assignment help.</p>
               <p id="settings-about-version" class="muted"></p>
             </section>

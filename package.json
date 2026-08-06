@@ -24,13 +24,15 @@
     "appId": "com.atlas.desktop",
     "productName": "Atlas",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "assets"
     },
     "asarUnpack": [
       "**/*.node"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "icons/atlas.ico"
     },
     "nsis": {
       "oneClick": false,
