@@ -10,6 +10,8 @@ Read `AGENTS.md`, this current-session section, `open-questions.md`, and `DESIGN
 
 The first performance measurement pass is complete; the benchmark and its recorded baseline are documented below. No performance fix has been implemented yet.
 
+The detailed implementation sequence is now recorded in `performance-plan.md`. Phase 0, measurement and baseline, is complete; all implementation phases remain pending.
+
 ## Current session — 2026-08-06
 
 The personal-use UI overhaul is complete on `ui-overhaul-v2`; the earlier statements below that no implementation exists or that the overhaul is still in progress are historical and superseded by this section. Public-release polish remains intentionally deferred.
