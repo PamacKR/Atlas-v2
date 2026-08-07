@@ -1,7 +1,8 @@
 // Copies non-TypeScript assets (SQL schema, renderer HTML/CSS, vendored OCR
 // data) into dist/ after tsc build, since tsc only compiles .ts files. The
-// notes editor's own CSS (@milkdown/crepe) is bundled by esbuild instead
-// (build-renderer.js), since it's imported directly from renderer.ts.
+// notes editor's own CSS (@milkdown/crepe) is bundled into its lazy feature
+// bundle by esbuild (build-renderer.js), rather than loaded by the first-use
+// renderer shell.
 const fs = require('fs');
 const path = require('path');
 

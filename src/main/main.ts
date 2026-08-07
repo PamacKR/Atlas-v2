@@ -862,6 +862,8 @@ function stopWatchingCourseStorage(courseId: number): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let localServerReady: Promise<void> = Promise.resolve();
+let resolveLocalServerReady: (() => void) | null = null;
 
 type AtlasChangeEntity = 'course' | 'resource' | 'note' | 'deadline' | 'sync';
 type AtlasChangeAction = 'created' | 'updated' | 'deleted';
@@ -987,16 +989,33 @@ function createWindow(): void {
 // that Alt happened to reveal.
 Menu.setApplicationMenu(null);
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   const db = getDb(); // initializes DB + schema in Downloads/Atlas on first launch
   // Create the window before waiting for the loopback browser server. The
   // BrowserWindow icon and Atlas App User Model ID can then reach Windows
   // immediately instead of leaving electron.exe's icon visible during the
   // server's startup handshake.
   createWindow();
-  createScheduledBackupIfDue();
-  setInterval(createScheduledBackupIfDue, 60 * 60 * 1000);
-  await startLocalServer(); // backs "Open in browser" — see localServer.ts
+  localServerReady = new Promise<void>((resolve) => {
+    resolveLocalServerReady = resolve;
+  });
+
+  // Everything below is repair, watching, indexing, sync, extraction, or
+  // file maintenance. Let the renderer reach its first usable page before
+  // doing that work. URL handlers await localServerReady when needed.
+  setImmediate(async () => {
+    setTimeout(() => {
+      createScheduledBackupIfDue();
+      setInterval(createScheduledBackupIfDue, 60 * 60 * 1000);
+    }, 0);
+    try {
+      await startLocalServer();
+    } catch (error) {
+      console.error('Local browser server failed to start:', error);
+    } finally {
+      resolveLocalServerReady?.();
+      resolveLocalServerReady = null;
+    }
 
   const watchedFolders = db.prepare('SELECT * FROM watched_folders').all() as {
     id: number;
@@ -1056,6 +1075,8 @@ app.whenReady().then(async () => {
   }[]) {
     ensureCourseMemoryFile(course.folder_name, course.name);
   }
+
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1455,6 +1476,7 @@ if (process.env.ATLAS_TEST_COURSE_READINESS === '1') {
     db.prepare(
       "INSERT INTO notes (course_id, title, content_markdown, is_handwritten, image_path) VALUES (?, 'Unreviewed handwritten scan', '', 1, ?)"
     ).run(courseId, path.join(fixtureDir, 'handwritten.png'));
+    sendAtlasChange({ entity: 'course', action: 'created', id: courseId, courseId });
     return courseId;
   });
 }
@@ -2224,7 +2246,10 @@ ipcMain.handle('app:setSetting', (_event, key: string, value: string) => {
   );
 });
 
-ipcMain.handle('resources:browserUrl', (_event, resourceId: number) => getResourceBrowserUrl(resourceId));
+ipcMain.handle('resources:browserUrl', async (_event, resourceId: number) => {
+  await localServerReady;
+  return getResourceBrowserUrl(resourceId);
+});
 
 ipcMain.handle('resources:listByCourse', (_event, courseId: number) => {
   const db = getDb();
@@ -2526,7 +2551,13 @@ ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
   const menu = Menu.buildFromTemplate([
     {
       label: isLink ? 'Open link' : 'Open in browser',
-      click: () => shell.openExternal(isLink ? resource.file_path : getResourceBrowserUrl(resourceId)),
+      click: () => {
+        if (isLink) {
+          void shell.openExternal(resource.file_path);
+        } else {
+          void localServerReady.then(() => shell.openExternal(getResourceBrowserUrl(resourceId)));
+        }
+      },
     },
     // Drive can open the same PDF/image files Atlas previews locally, along
     // with Office files where Drive provides a richer native viewer.
@@ -2971,7 +3002,7 @@ ipcMain.handle('notes:delete', (_event, noteId: number) => {
 // a blob: URL only lives as long as the renderer process that created it,
 // so it went dead on every app restart and could never work in the
 // read-only browser view at all (a separate process/origin entirely).
-ipcMain.handle('notes:saveImage', (_event, courseId: number, buffer: ArrayBuffer, extension: string) => {
+ipcMain.handle('notes:saveImage', async (_event, courseId: number, buffer: ArrayBuffer, extension: string) => {
   const db = getDb();
   const course = db.prepare('SELECT folder_name FROM courses WHERE id = ?').get(courseId) as
     | { folder_name: string }
@@ -2983,10 +3014,14 @@ ipcMain.handle('notes:saveImage', (_event, courseId: number, buffer: ArrayBuffer
   const safeExt = /^\.[a-zA-Z0-9]+$/.test(extension) ? extension : '';
   const filename = `${randomUUID()}${safeExt}`;
   fs.writeFileSync(path.join(dir, filename), Buffer.from(buffer));
+  await localServerReady;
   return getNoteImageUrl(courseId, filename);
 });
 
-ipcMain.handle('notes:browserUrl', (_event, noteId: number) => getNoteBrowserUrl(noteId));
+ipcMain.handle('notes:browserUrl', async (_event, noteId: number) => {
+  await localServerReady;
+  return getNoteBrowserUrl(noteId);
+});
 
 // Read-only in the browser, deliberately — an editable browser copy would
 // mean two live editing surfaces (the app's Crepe instance and the browser
@@ -2995,7 +3030,10 @@ ipcMain.handle('notes:browserUrl', (_event, noteId: number) => getNoteBrowserUrl
 // role "Open in browser" plays for resources.
 ipcMain.on('notes:contextMenu', (event, noteId: number) => {
   const menu = Menu.buildFromTemplate([
-    { label: 'Open in browser', click: () => shell.openExternal(getNoteBrowserUrl(noteId)) },
+    {
+      label: 'Open in browser',
+      click: () => void localServerReady.then(() => shell.openExternal(getNoteBrowserUrl(noteId))),
+    },
     { type: 'separator' },
     {
       label: 'Delete',

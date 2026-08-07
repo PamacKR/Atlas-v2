@@ -448,23 +448,6 @@ interface AtlasApi {
   listAllNotes: () => Promise<NoteWithCourse[]>;
 }
 
-// This file is bundled by esbuild (scripts/build-renderer.js), not compiled
-// directly by tsc, specifically so npm packages like @milkdown/crepe can be
-// `import`ed here despite the renderer having no module system at runtime
-// (contextIsolation: true, nodeIntegration: false — no `require`, and a
-// plain <script> tag has no `exports` object either). esbuild resolves and
-// inlines everything into one browser-ready IIFE. `window.atlas` still goes
-// through a cast rather than a `declare global` purely to keep this diff
-// small, not because of any remaining module-system constraint.
-//
-// Editor choice: Milkdown/Crepe, not Toast UI Editor (tried first) — Toast
-// UI's WYSIWYG mode doesn't support typing markdown shortcuts ("- ", "1. ",
-// "---") to create real lists/dividers live, and its toolbar buttons don't
-// show an active state for the current selection (e.g. Bold doesn't
-// highlight when the cursor is in bold text). Both are core to how the user
-// actually works (bullet-heavy notes, Notion-like typing feel) and verified
-// working correctly in Crepe before switching. Crepe also bundles KaTeX math
-// rendering out of the box, which the user needs for academic notes.
 import { ShortcutRegistry, ShortcutAction, normalizeBinding, RESERVED_BINDINGS } from './shortcuts';
 import {
   PaletteCommandDefinition,
@@ -474,19 +457,58 @@ import {
   rankPaletteCommands,
   scorePaletteText,
 } from './command-palette';
-import { Crepe } from '@milkdown/crepe';
-import { $prose } from '@milkdown/kit/utils';
-import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import '@milkdown/crepe/theme/common/style.css';
-// Crepe's frame/frame-dark theme files are just `--crepe-*` custom
-// properties on `.milkdown` — both variable sets are inlined directly in
-// styles.css instead (scoped by :root[data-theme='light']), so the editor
-// genuinely follows Atlas's own theme toggle rather than a statically
-// imported, permanently-dark stylesheet.
 
 const atlasApi: AtlasApi = (window as any).atlas;
-GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', document.baseURI).toString();
+
+type AtlasNoteEditor = {
+  destroy(): Promise<unknown>;
+  getMarkdown(): string;
+};
+
+type AtlasNoteEditorApi = {
+  create(options: {
+    root: HTMLElement;
+    defaultValue: string;
+    courseId: number | null;
+    saveImage: (file: File) => Promise<string>;
+    onMarkdownUpdated: () => void;
+  }): Promise<AtlasNoteEditor>;
+};
+
+type AtlasPdfRendererApi = {
+  renderPdfInto(container: HTMLElement, data: Uint8Array): Promise<void>;
+};
+
+const loadedRendererFeatures = new Map<string, Promise<void>>();
+
+function loadRendererFeature(feature: 'note-editor' | 'pdf-renderer'): Promise<void> {
+  const existing = loadedRendererFeatures.get(feature);
+  if (existing) return existing;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    let stylesheetReady = Promise.resolve();
+    if (feature === 'note-editor') {
+      const stylesheet = document.createElement('link');
+      stylesheet.rel = 'stylesheet';
+      stylesheet.href = `${feature}.css`;
+      stylesheet.dataset.rendererFeature = feature;
+      stylesheetReady = new Promise<void>((styleResolve, styleReject) => {
+        stylesheet.onload = () => styleResolve();
+        stylesheet.onerror = () => styleReject(new Error(`Could not load Atlas renderer styles: ${feature}`));
+      });
+      document.head.appendChild(stylesheet);
+    }
+
+    const script = document.createElement('script');
+    script.src = `${feature}.js`;
+    script.async = true;
+    script.onload = () => void stylesheetReady.then(resolve, reject);
+    script.onerror = () => reject(new Error(`Could not load Atlas renderer feature: ${feature}`));
+    document.head.appendChild(script);
+  });
+  loadedRendererFeatures.set(feature, promise);
+  return promise;
+}
 
 const ICON_EXTENSION_MAP: Record<string, string> = {
   pdf: 'pdf',
@@ -581,6 +603,41 @@ function beginPageRender(page: AppPage): number {
 
 function isCurrentPageRender(page: AppPage, generation: number): boolean {
   return currentPage === page && pageRenderGeneration[page] === generation;
+}
+
+// A short-lived read-through cache coalesces overlapping page/palette reads
+// without becoming a second source of truth. Any canonical mutation bumps the
+// version and drops every cached value before the visible refresh starts.
+type CachedRendererRead = { version: number; value?: unknown; promise?: Promise<unknown> };
+let rendererDataVersion = 0;
+const rendererReadCache = new Map<string, CachedRendererRead>();
+
+function invalidateRendererReadCache(): void {
+  rendererDataVersion++;
+  rendererReadCache.clear();
+}
+
+async function cachedRendererRead<T>(key: string, read: () => Promise<T>): Promise<T> {
+  const current = rendererReadCache.get(key);
+  if (current?.version === rendererDataVersion) {
+    if (current.promise) return current.promise as Promise<T>;
+    return current.value as T;
+  }
+
+  const version = rendererDataVersion;
+  const promise = read().then((value) => {
+    const entry = rendererReadCache.get(key);
+    if (version === rendererDataVersion && entry?.promise === promise) {
+      rendererReadCache.set(key, { version, value });
+    }
+    return value;
+  }).catch((error) => {
+    const entry = rendererReadCache.get(key);
+    if (entry?.promise === promise) rendererReadCache.delete(key);
+    throw error;
+  });
+  rendererReadCache.set(key, { version, promise });
+  return promise;
 }
 
 function showPage(page: AppPage): void {
@@ -854,7 +911,7 @@ async function renderCourses(): Promise<void> {
   const generation = beginPageRender('courses');
   const list = document.getElementById('course-list')!;
   const emptyState = document.getElementById('course-list-empty')!;
-  const allSummaries = await atlasApi.getCourseSummaries(showArchivedCourses);
+  const allSummaries = await cachedRendererRead(`course-summaries:${showArchivedCourses}`, () => atlasApi.getCourseSummaries(showArchivedCourses));
   updateCourseToolbar(allSummaries);
   let courses = semesterFilter ? allSummaries.filter((course) => course.term === semesterFilter) : allSummaries;
   courses = [...courses].sort((a, b) => compareCourseSummaries(a, b, courseSort));
@@ -864,7 +921,7 @@ async function renderCourses(): Promise<void> {
   list.innerHTML = '';
 
   const deadlinesByCourse = new Map<number, Deadline[]>();
-  const allDeadlines = await atlasApi.listAllDeadlinesWithCourse();
+  const allDeadlines = await cachedRendererRead('deadlines:all', () => atlasApi.listAllDeadlinesWithCourse());
   if (!isCurrentPageRender('courses', generation)) return;
   for (const deadline of allDeadlines) {
     const deadlines = deadlinesByCourse.get(deadline.course_id) ?? [];
@@ -1268,8 +1325,10 @@ function renderResourcesSourceFilter(): void {
 
 async function renderResourcesPage(): Promise<void> {
   const generation = beginPageRender('resources');
-  const courses = await atlasApi.listCourses();
-  const allResources = await atlasApi.listAllResources();
+  const [courses, allResources] = await Promise.all([
+    cachedRendererRead('courses:all', () => atlasApi.listCourses()),
+    cachedRendererRead('resources:all', () => atlasApi.listAllResources()),
+  ]);
   if (!isCurrentPageRender('resources', generation)) return;
   renderResourcesRail(courses, allResources);
   renderResourcesSourceFilter();
@@ -1511,9 +1570,10 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
 
 async function renderNotesPage(): Promise<void> {
   const generation = beginPageRender('notes');
-  const courses = await atlasApi.listCourses();
-
-  const allNotes = await atlasApi.listAllNotes();
+  const [courses, allNotes] = await Promise.all([
+    cachedRendererRead('courses:all', () => atlasApi.listCourses()),
+    cachedRendererRead('notes:all', () => atlasApi.listAllNotes()),
+  ]);
   if (!isCurrentPageRender('notes', generation)) return;
   const rail = document.getElementById('notes-course-rail')!;
   rail.innerHTML = '';
@@ -2681,7 +2741,7 @@ function formatDueTime(value: string): string {
 async function renderCalendarPage(): Promise<void> {
   const generation = beginPageRender('calendar');
   const [deadlines, announcements] = await Promise.all([
-    atlasApi.listAllDeadlinesWithCourse(),
+    cachedRendererRead('deadlines:all', () => atlasApi.listAllDeadlinesWithCourse()),
     atlasApi.listAllAnnouncementsWithCourse(),
   ]);
   const events: CalendarEvent[] = [
@@ -3495,7 +3555,7 @@ async function goToDashboardActivityItem(item: DashboardActivityItem): Promise<v
   }
 }
 
-let noteEditorInstance: Crepe | null = null;
+let noteEditorInstance: AtlasNoteEditor | null = null;
 let currentNoteId: number | null = null;
 // Tracks whether the currently-open note has a course yet — drives the
 // "Assign to course" button's visibility (see openNoteEditor). NULL means
@@ -3577,28 +3637,6 @@ function scheduleNoteSave(): void {
 // `storedMarks` so the next character typed comes out bold — the same
 // mechanism as clicking Bold then typing. Once real text exists, this
 // stops touching the node, so it never fights a manual Ctrl+B afterward.
-const autoboldHeadingPlugin = $prose(
-  () =>
-    new Plugin({
-      key: new PluginKey('atlas-autobold-heading'),
-      appendTransaction: (transactions, _oldState, newState) => {
-        if (!transactions.some((tr) => tr.docChanged)) return null;
-
-        const headingType = newState.schema.nodes.heading;
-        const strongType = newState.schema.marks.strong;
-        if (!headingType || !strongType) return null;
-
-        const parent = newState.selection.$from.parent;
-        if (parent.type !== headingType || parent.content.size !== 0) return null;
-
-        const stored = newState.storedMarks ?? newState.selection.$from.marks();
-        if (strongType.isInSet(stored)) return null;
-
-        return newState.tr.setStoredMarks([strongType.create()]);
-      },
-    })
-);
-
 async function flushPendingNoteSave(): Promise<void> {
   if (noteSaveTimer) {
     clearTimeout(noteSaveTimer);
@@ -3645,40 +3683,19 @@ async function mountNoteEditor(note: Note): Promise<void> {
     return atlasApi.saveNoteImage(note.course_id, buffer, extension);
   };
 
-  const crepe = new Crepe({
+  await loadRendererFeature('note-editor');
+  const editorApi = (window as any).atlasNoteEditor as AtlasNoteEditorApi;
+  noteEditorInstance = await editorApi.create({
     root,
     defaultValue: note.content_markdown,
-    featureConfigs: {
-      [Crepe.Feature.ImageBlock]: {
-        onUpload: saveImage,
-        inlineOnUpload: saveImage,
-        blockOnUpload: saveImage,
-      },
-      // Shorter, search/scan-friendly labels in the slash menu — "H1"
-      // instead of "Heading 1", per the user's request. Only the heading
-      // entries change; everything else keeps Crepe's defaults.
-      [Crepe.Feature.BlockEdit]: {
-        textGroup: {
-          h1: { label: 'H1' },
-          h2: { label: 'H2' },
-          h3: { label: 'H3' },
-          h4: { label: 'H4' },
-          h5: { label: 'H5' },
-          h6: { label: 'H6' },
-        },
-      },
-    },
+    courseId: note.course_id,
+    saveImage,
+    onMarkdownUpdated: scheduleNoteSave,
   });
-  crepe.editor.use(autoboldHeadingPlugin);
-  crepe.on((listener) => {
-    listener.markdownUpdated(() => scheduleNoteSave());
-  });
-  await crepe.create();
-  noteEditorInstance = crepe;
   // Baseline for the open/close no-op check above — captured from Crepe's
   // own output post-mount, after whatever normalization it just did, not
   // the raw value passed in.
-  noteContentAtOpen = crepe.getMarkdown();
+  noteContentAtOpen = noteEditorInstance.getMarkdown();
   // A second, fixed baseline for closeNoteEditor()'s discard-if-untouched
   // check — see its own declaration comment for why this can't just reuse
   // noteContentAtOpen.
@@ -3805,49 +3822,9 @@ function toggleNoteTrueFullscreen(): void {
 }
 
 async function renderPdfInto(container: HTMLElement, data: Uint8Array): Promise<void> {
-  container.classList.add('pdf-preview-body');
-  container.innerHTML = '<p class="pdf-preview-status muted">Loading PDF…</p>';
-
-  try {
-    const pdf = await getDocument({ data: new Uint8Array(data) }).promise;
-    const pages = document.createElement('div');
-    pages.className = 'pdf-preview-pages';
-    const availableWidth = Math.max(320, container.clientWidth - 2 * 26);
-
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-      const page = await pdf.getPage(pageNumber);
-      const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(1.35, availableWidth / baseViewport.width);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Could not create a PDF canvas.');
-
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.ceil(viewport.width * pixelRatio);
-      canvas.height = Math.ceil(viewport.height * pixelRatio);
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
-      canvas.setAttribute('aria-label', `PDF page ${pageNumber} of ${pdf.numPages}`);
-
-      const pageSurface = document.createElement('div');
-      pageSurface.className = 'pdf-preview-page';
-      pageSurface.appendChild(canvas);
-      pages.appendChild(pageSurface);
-
-      await page.render({
-        canvas,
-        canvasContext: context,
-        viewport,
-        transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
-      }).promise;
-    }
-
-    container.replaceChildren(pages);
-  } catch (error) {
-    console.error('PDF preview render failed:', error);
-    container.innerHTML = '<p class="muted pdf-preview-status">Could not render this PDF in Atlas. Use Open in browser for the original file.</p>';
-  }
+  await loadRendererFeature('pdf-renderer');
+  const pdfRenderer = (window as any).atlasPdfRenderer as AtlasPdfRendererApi;
+  await pdfRenderer.renderPdfInto(container, data);
 }
 
 // Renders a scan preview (image or PDF) into a plain container — same two
@@ -7809,7 +7786,10 @@ async function init(): Promise<void> {
   // All canonical CRUD mutations use the same event shape. Queue refreshes so
   // a burst from a folder watcher or sync cannot render over itself with
   // stale intermediate data.
-  atlasApi.onAtlasChanged((change) => queueVisibleChangeRefresh(change));
+  atlasApi.onAtlasChanged((change) => {
+    invalidateRendererReadCache();
+    queueVisibleChangeRefresh(change);
+  });
 
   const searchInput = document.getElementById('search-input') as HTMLInputElement;
   const searchBox = document.getElementById('search-box')!;

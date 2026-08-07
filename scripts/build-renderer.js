@@ -13,12 +13,15 @@
 // needs a `file` loader for those, and emits both a sibling renderer.css and
 // the font files into dist/renderer/ alongside renderer.js.
 const esbuild = require('esbuild');
+const fs = require('fs');
 const path = require('path');
 
-esbuild.buildSync({
-  entryPoints: [path.join(__dirname, '..', 'src/renderer/renderer.ts')],
+for (const staleFile of ['renderer.css', 'renderer.css.map']) {
+  fs.rmSync(path.join(__dirname, '..', 'dist/renderer', staleFile), { force: true });
+}
+
+const commonOptions = {
   bundle: true,
-  outfile: path.join(__dirname, '..', 'dist/renderer/renderer.js'),
   platform: 'browser',
   format: 'iife',
   target: 'es2022',
@@ -37,4 +40,16 @@ esbuild.buildSync({
     __VUE_PROD_DEVTOOLS__: 'false',
     __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
   },
-});
+};
+
+for (const [entry, output] of [
+  ['renderer.ts', 'renderer.js'],
+  ['note-editor.ts', 'note-editor.js'],
+  ['pdf-renderer.ts', 'pdf-renderer.js'],
+]) {
+  esbuild.buildSync({
+    ...commonOptions,
+    entryPoints: [path.join(__dirname, '..', 'src/renderer', entry)],
+    outfile: path.join(__dirname, '..', 'dist/renderer', output),
+  });
+}
