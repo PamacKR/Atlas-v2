@@ -280,7 +280,15 @@ type Preview =
   | { type: 'link'; url: string }
   | { type: 'unsupported'; reason?: string };
 
+interface AtlasChange {
+  entity: 'course' | 'resource' | 'note' | 'deadline' | 'sync';
+  action: 'created' | 'updated' | 'deleted';
+  id: number;
+  courseId?: number | null;
+}
+
 interface AtlasApi {
+  onAtlasChanged: (handler: (change: AtlasChange) => void) => void;
   listCourses: () => Promise<Course[]>;
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
@@ -383,7 +391,6 @@ interface AtlasApi {
   removeWatchedFolder: (folderId: number) => Promise<void>;
   showFolderContextMenu: (folderId: number) => void;
   onFolderContextMenuRemove: (handler: (folderId: number) => void) => void;
-  onResourcesChanged: (handler: (courseId: number) => void) => void;
   listNotes: (courseId: number) => Promise<Note[]>;
   createNote: (courseId: number) => Promise<Note>;
   createUnsortedNote: () => Promise<Note>;
@@ -1750,6 +1757,88 @@ async function renderDashboard(): Promise<void> {
     renderDashboardResources(),
     renderDashboardActivity(),
   ]);
+}
+
+let visibleChangeRefresh: Promise<void> = Promise.resolve();
+
+function queueVisibleChangeRefresh(change: AtlasChange): void {
+  visibleChangeRefresh = visibleChangeRefresh
+    .then(() => refreshVisibleSurfaceForChange(change))
+    .catch((error) => console.error('Atlas change refresh failed:', error));
+}
+
+async function refreshVisibleSurfaceForChange(change: AtlasChange): Promise<void> {
+  // A sync can change several entity types at once. Refresh only the page the
+  // user can currently see; showPage() will load the other pages from the DB
+  // when the user visits them.
+  if (change.entity === 'sync') {
+    if (currentPage === 'dashboard') await renderDashboard();
+    else if (currentPage === 'courses') {
+      if (selectedCourse) {
+        await Promise.all([
+          renderCourseDetailPreviews(selectedCourse.id),
+          renderCourseReadiness(selectedCourse.id),
+          renderDeadlines(),
+          renderCourseClassroomSection(selectedCourse),
+        ]);
+      } else await renderCourses();
+    } else if (currentPage === 'resources') await renderResourcesPage();
+    else if (currentPage === 'notes') await renderNotesPage();
+    else if (currentPage === 'calendar') await renderCalendarPage();
+    return;
+  }
+
+  if (change.entity === 'course') {
+    if (currentPage === 'courses') {
+      if (selectedCourse?.id === change.id && change.action !== 'deleted') {
+        const courses = await atlasApi.listCourses();
+        const updated = courses.find((course) => course.id === change.id);
+        if (updated) {
+          selectedCourse = updated;
+          document.getElementById('course-detail-heading')!.textContent = updated.name;
+          document.getElementById('course-detail-meta')!.textContent = [updated.code, updated.term]
+            .filter((part): part is string => !!part)
+            .join(' · ');
+          await renderCourseClassroomSection(updated);
+        } else {
+          backToCourseList();
+        }
+      }
+      await renderCourses();
+    } else if (currentPage === 'dashboard') await renderDashboard();
+    else if (currentPage === 'resources') await renderResourcesPage();
+    else if (currentPage === 'notes') await renderNotesPage();
+    else if (currentPage === 'calendar') await renderCalendarPage();
+    return;
+  }
+
+  if (change.entity === 'resource') {
+    if (currentPage === 'resources') await renderResourcesPage();
+    else if (currentPage === 'courses' && change.courseId !== undefined && selectedCourse?.id === change.courseId) {
+      const courseId = change.courseId;
+      await Promise.all([
+        renderCourseDetailPreviews(courseId),
+        renderCourseReadiness(courseId),
+      ]);
+    } else if (currentPage === 'dashboard') await renderDashboard();
+    return;
+  }
+
+  if (change.entity === 'note') {
+    if (currentPage === 'notes') await renderNotesPage();
+    else if (currentPage === 'courses' && change.courseId !== undefined && selectedCourse?.id === change.courseId) {
+      await renderCourseDetailPreviews(change.courseId);
+    } else if (currentPage === 'dashboard') await renderDashboard();
+    return;
+  }
+
+  if (change.entity === 'deadline') {
+    if (currentPage === 'calendar') await renderCalendarPage();
+    else if (currentPage === 'courses' && change.courseId !== undefined && selectedCourse?.id === change.courseId) {
+      await renderDeadlines();
+    }
+    else if (currentPage === 'dashboard') await renderDashboard();
+  }
 }
 
 // Google Drive: connect/disconnect, pick the one "inbox" folder to scan, and
@@ -3645,7 +3734,7 @@ async function closeNoteEditor(): Promise<void> {
 
   // Refresh whichever view could now be showing a stale title/timestamp for
   // this note — same currentPage-gated refresh pattern already used for
-  // resources (see the resources:changed handler in init()).
+  // resources (the visible-change event handler in init() keeps this surface fresh).
   if (currentPage === 'notes') await renderNotesPage();
   else if (currentPage === 'dashboard') await renderDashboard();
   else if (currentPage === 'courses' && selectedCourse) await renderCourseDetailPreviews(selectedCourse.id);
@@ -7211,16 +7300,6 @@ async function init(): Promise<void> {
 
   atlasApi.onClassroomChanged(() => {
     void renderClassroomPendingStatus();
-    // A course's coursework can land moments after the user confirms its
-    // mapping (see classroom:mapCourseToExisting/mapCourseToNew's immediate
-    // re-sync) — refresh whatever's currently visible so it doesn't look
-    // like the sync silently did nothing if they're already looking at it.
-    if (currentPage === 'dashboard') void renderDashboard();
-    else if (currentPage === 'courses' && selectedCourse) {
-      void renderCourseDetailPreviews(selectedCourse.id);
-      void renderCourseReadiness(selectedCourse.id);
-    }
-    else if (currentPage === 'courses') void renderCourses();
   });
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
     const isCollapsed = document.getElementById('sidebar')!.classList.contains('collapsed');
@@ -7686,16 +7765,10 @@ async function init(): Promise<void> {
     await renderWatchedFolders();
   });
 
-  // Fired by the main process when a watched folder picks up a new file —
-  // the global Resources page isn't scoped to one course, so just refresh
-  // it outright rather than checking which course the event was for.
-  atlasApi.onResourcesChanged(async (courseId) => {
-    if (currentPage === 'resources') await renderResourcesPage();
-    else if (currentPage === 'courses' && selectedCourse?.id === courseId) {
-      await renderCourseDetailPreviews(courseId);
-      await renderCourseReadiness(courseId);
-    } else void renderDashboard();
-  });
+  // All canonical CRUD mutations use the same event shape. Queue refreshes so
+  // a burst from a folder watcher or sync cannot render over itself with
+  // stale intermediate data.
+  atlasApi.onAtlasChanged((change) => queueVisibleChangeRefresh(change));
 
   const searchInput = document.getElementById('search-input') as HTMLInputElement;
   const searchBox = document.getElementById('search-box')!;

@@ -459,8 +459,11 @@ function importFileIntoCourse(
     );
 
   rebuildSearchIndex();
-  scheduleExtraction(Number(insertResult.lastInsertRowid), kindFromExtension(originalFilename), destPath);
-  return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
+  const resourceId = Number(insertResult.lastInsertRowid);
+  scheduleExtraction(resourceId, kindFromExtension(originalFilename), destPath);
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
+  sendAtlasChange({ entity: 'resource', action: 'created', id: resourceId, courseId });
+  return resource;
 }
 
 // Drag-and-drop upload: the renderer only has the dropped File's contents
@@ -503,8 +506,11 @@ function importBufferIntoCourse(
     );
 
   rebuildSearchIndex();
-  scheduleExtraction(Number(insertResult.lastInsertRowid), kindFromExtension(originalFilename), destPath);
-  return db.prepare('SELECT * FROM resources WHERE id = ?').get(insertResult.lastInsertRowid);
+  const resourceId = Number(insertResult.lastInsertRowid);
+  scheduleExtraction(resourceId, kindFromExtension(originalFilename), destPath);
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
+  sendAtlasChange({ entity: 'resource', action: 'created', id: resourceId, courseId });
+  return resource;
 }
 
 // One chokidar watcher per watched folder, keyed by watched_folders.id, so a
@@ -568,7 +574,6 @@ function startWatchingFolder(folderId: number, courseId: number, folderPath: str
     if (already) return; // already imported in a previous watch session
 
     importFileIntoCourse(courseId, filePath, 'local_folder', filePath);
-    if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
   });
 
   // Mirror deletion: if the source file disappears from the watched folder,
@@ -584,7 +589,7 @@ function startWatchingFolder(folderId: number, courseId: number, folderPath: str
     fs.rmSync(resource.file_path, { force: true });
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
     rebuildSearchIndex();
-    if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
+    sendAtlasChange({ entity: 'resource', action: 'deleted', id: resource.id, courseId });
   });
 
   activeWatchers.set(folderId, watcher);
@@ -731,7 +736,7 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
       .run(courseId, path.basename(filePath), kind, filePath, path.basename(filePath));
     rebuildSearchIndex();
     scheduleExtraction(Number(insertResult.lastInsertRowid), kind, filePath);
-    if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
+    sendAtlasChange({ entity: 'resource', action: 'created', id: Number(insertResult.lastInsertRowid), courseId });
   });
 
   watcher.on('unlink', (filePath) => {
@@ -745,7 +750,7 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
 
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
     rebuildSearchIndex();
-    if (mainWindow) mainWindow.webContents.send('resources:changed', courseId);
+    sendAtlasChange({ entity: 'resource', action: 'deleted', id: resource.id, courseId });
   });
 
   activeCourseStorageWatchers.set(courseId, watcher);
@@ -760,6 +765,24 @@ function stopWatchingCourseStorage(courseId: number): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+
+type AtlasChangeEntity = 'course' | 'resource' | 'note' | 'deadline' | 'sync';
+type AtlasChangeAction = 'created' | 'updated' | 'deleted';
+
+interface AtlasChange {
+  entity: AtlasChangeEntity;
+  action: AtlasChangeAction;
+  id: number;
+  courseId?: number | null;
+}
+
+// Database mutations can happen from renderer IPC, file watchers, or a
+// background sync. Keeping one small notification shape gives the renderer a
+// reliable freshness signal without making every caller know which page is
+// currently visible.
+function sendAtlasChange(change: AtlasChange): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('atlas:changed', change);
+}
 
 function sendWindowMaximizedState(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1374,13 +1397,17 @@ ipcMain.handle('dashboard:courseSummaries', (_event, archived = false) => {
 ipcMain.handle('courses:update', (_event, courseId: number, name: string, code: string | null, term: string | null) => {
   const db = getDb();
   db.prepare('UPDATE courses SET name = ?, code = ?, term = ? WHERE id = ?').run(name, code, term, courseId);
-  return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  sendAtlasChange({ entity: 'course', action: 'updated', id: courseId, courseId });
+  return course;
 });
 
 ipcMain.handle('courses:setArchived', (_event, courseId: number, archived: boolean) => {
   const db = getDb();
   db.prepare('UPDATE courses SET archived = ? WHERE id = ?').run(archived ? 1 : 0, courseId);
-  return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  sendAtlasChange({ entity: 'course', action: 'updated', id: courseId, courseId });
+  return course;
 });
 
 // Phase 4 Part E (phase4-spec.md §7) — a plain-Markdown dump of one course's
@@ -1523,7 +1550,9 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
   startWatchingCourseStorage(Number(courseId), folderName);
   ensureCourseMemoryFile(folderName, name);
 
-  return db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+  sendAtlasChange({ entity: 'course', action: 'created', id: Number(courseId), courseId: Number(courseId) });
+  return course;
 });
 
 // --- Google Drive connection (Phase 3, open-questions.md #19) ---
@@ -1727,7 +1756,7 @@ ipcMain.handle('sync:nowAll', async () => {
 
 // Scans the configured Drive folder and, if anything new turned up, tells
 // the renderer to refresh its pending-files count/badge — same push-event
-// pattern as resources:changed/notes:changed. Called once at launch, then
+// pattern as the renderer's atlas:changed freshness event. Called once at launch, then
 // on whatever interval the user's configured (see applySyncSchedule
 // above — 20s by default, matching the prior hardcoded behavior), and once
 // immediately after the user sets/changes the folder so the pending list
@@ -1825,7 +1854,10 @@ ipcMain.handle('classroom:disconnect', () => {
 async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: ClassroomSyncError[] }> {
   try {
     const { changed, errors } = await scanClassroom();
-    if (changed && mainWindow) mainWindow.webContents.send('classroom:changed');
+    if (changed && mainWindow) {
+      mainWindow.webContents.send('classroom:changed');
+      sendAtlasChange({ entity: 'sync', action: 'updated', id: 0 });
+    }
     if (errors.length > 0) {
       console.error('Google Classroom sync errors:', errors);
       recordSyncResult('classroom', true, `${errors.length} course(s) failed: ${errors.map((e) => e.courseName || e.message).join(', ')}`);
@@ -1862,7 +1894,7 @@ async function runRemoteExtractionAndNotify(): Promise<void> {
     });
     if (changed) {
       rebuildSearchIndex();
-      if (mainWindow) mainWindow.webContents.send('resources:changed');
+      sendAtlasChange({ entity: 'sync', action: 'updated', id: 0 });
     }
     if (capped) {
       console.warn('Remote attachment link-following stopped early: per-course discovery cap reached.');
@@ -1922,6 +1954,7 @@ ipcMain.handle(
     ensureCourseMemoryFile(folderName, name);
 
     removePendingClassroomCourse(classroomCourseId);
+    sendAtlasChange({ entity: 'course', action: 'created', id: Number(courseId), courseId: Number(courseId) });
     const { errors } = await scanClassroomAndNotify();
     return { course: db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId), errors };
   }
@@ -1961,6 +1994,7 @@ ipcMain.handle('classroom:disconnectCourse', (_event, atlasCourseId: number) => 
   });
   run(atlasCourseId);
   rebuildSearchIndex();
+  sendAtlasChange({ entity: 'sync', action: 'updated', id: 0, courseId: atlasCourseId });
 });
 
 // Backs the course-detail Announcements/Assignments/Classwork sections —
@@ -2067,7 +2101,9 @@ ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidat
     startWatchingCourseStorage(Number(courseId), folderName);
     ensureCourseMemoryFile(folderName, candidate.title);
 
-    created.push(db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId));
+    const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
+    created.push(course);
+    sendAtlasChange({ entity: 'course', action: 'created', id: Number(courseId), courseId: Number(courseId) });
   }
   return { created, skipped };
 });
@@ -2448,6 +2484,7 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
   }
   db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
   rebuildSearchIndex();
+  sendAtlasChange({ entity: 'course', action: 'deleted', id: courseId, courseId });
 });
 
 // --- IPC: local folder watching ---
@@ -2515,7 +2552,7 @@ ipcMain.on('folders:contextMenu', (event, folderId: number) => {
 ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   const db = getDb();
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
-    | { file_path: string; drive_preview_file_id: string | null }
+    | { file_path: string; drive_preview_file_id: string | null; course_id: number }
     | undefined;
   if (resource) fs.rmSync(resource.file_path, { force: true });
   // Best-effort, not awaited — deleting the resource locally must succeed
@@ -2524,6 +2561,7 @@ ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   if (resource?.drive_preview_file_id) void deletePreviewCopy(resource.drive_preview_file_id);
   db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
   rebuildSearchIndex();
+  if (resource) sendAtlasChange({ entity: 'resource', action: 'deleted', id: resourceId, courseId: resource.course_id });
 });
 
 // Course row has no "open in default app" equivalent — just Archive/Unarchive
@@ -2660,7 +2698,9 @@ ipcMain.handle('notes:create', (_event, courseId: number) => {
   const noteId = Number(insertResult.lastInsertRowid);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  sendAtlasChange({ entity: 'note', action: 'created', id: noteId, courseId });
+  return note;
 });
 
 // Quick capture (phase5-spec.md-equivalent shortcut work, 2026-07-29): the
@@ -2679,12 +2719,14 @@ function createUnsortedNote(): { id: number; course_id: number | null; title: st
     .run();
   const noteId = Number(insertResult.lastInsertRowid);
   rebuildSearchIndex();
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId) as {
+  const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId) as {
     id: number;
     course_id: number | null;
     title: string;
     content_markdown: string;
   };
+  sendAtlasChange({ entity: 'note', action: 'created', id: noteId, courseId: null });
+  return note;
 }
 
 ipcMain.handle('notes:createUnsorted', () => createUnsortedNote());
@@ -2698,7 +2740,9 @@ ipcMain.handle('notes:assignCourse', (_event, noteId: number, courseId: number) 
   db.prepare('UPDATE notes SET course_id = ? WHERE id = ?').run(courseId, noteId);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  sendAtlasChange({ entity: 'note', action: 'updated', id: noteId, courseId });
+  return note;
 });
 
 // Google-Docs-style default title: the first non-empty line, with common
@@ -2765,6 +2809,10 @@ ipcMain.handle('notes:updateContent', (_event, noteId: number, contentMarkdown: 
   }
   exportNoteToFile(noteId);
   rebuildSearchIndex();
+  const updatedNote = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(noteId) as
+    | { course_id: number | null }
+    | undefined;
+  sendAtlasChange({ entity: 'note', action: 'updated', id: noteId, courseId: updatedNote?.course_id ?? null });
   return { title: title ?? null };
 });
 
@@ -2775,16 +2823,21 @@ ipcMain.handle('notes:updateTitle', (_event, noteId: number, title: string) => {
   ).run(title || 'Untitled', noteId);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
+  const updatedNote = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(noteId) as
+    | { course_id: number | null }
+    | undefined;
+  sendAtlasChange({ entity: 'note', action: 'updated', id: noteId, courseId: updatedNote?.course_id ?? null });
 });
 
 ipcMain.handle('notes:delete', (_event, noteId: number) => {
   const db = getDb();
   const note = db.prepare('SELECT exported_path FROM notes WHERE id = ?').get(noteId) as
-    | { exported_path: string | null }
+    | { exported_path: string | null; course_id: number | null }
     | undefined;
   if (note?.exported_path) removeNoteExport(note.exported_path);
   db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
   rebuildSearchIndex();
+  if (note) sendAtlasChange({ entity: 'note', action: 'deleted', id: noteId, courseId: note.course_id });
 });
 
 // Images embedded in note content: copied into a stable, Atlas-owned
@@ -2870,7 +2923,9 @@ function finishScanImport(
   const noteId = Number(insertResult.lastInsertRowid);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  sendAtlasChange({ entity: 'note', action: 'created', id: noteId, courseId });
+  return note;
 }
 
 function importScanFileIntoNote(courseId: number, sourcePath: string): unknown {
@@ -2932,7 +2987,9 @@ function importTypedNoteFromBuffer(courseId: number, buffer: Buffer, driveFileId
   const noteId = Number(insertResult.lastInsertRowid);
   exportNoteToFile(noteId);
   rebuildSearchIndex();
-  return db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  sendAtlasChange({ entity: 'note', action: 'created', id: noteId, courseId });
+  return note;
 }
 
 ipcMain.handle('notes:importScan', async (_event, courseId: number) => {
@@ -3153,7 +3210,10 @@ ipcMain.handle(
         'INSERT INTO deadlines (course_id, title, kind, due_at, description, stale_import) VALUES (?, ?, ?, ?, ?, ?)'
       )
       .run(courseId, title, kind, dueAt, description, staleImport);
-    return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(insertResult.lastInsertRowid);
+    const deadlineId = Number(insertResult.lastInsertRowid);
+    const deadline = db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId);
+    sendAtlasChange({ entity: 'deadline', action: 'created', id: deadlineId, courseId });
+    return deadline;
   }
 );
 
@@ -3201,6 +3261,10 @@ ipcMain.handle(
     db.prepare(
       'UPDATE deadlines SET title = ?, kind = ?, due_at = ?, description = ?, local_overrides = ? WHERE id = ?'
     ).run(title, kind, dueAt, description, serializeOverrides(overrides), deadlineId);
+    const deadline = db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId) as
+      | { course_id: number }
+      | undefined;
+    sendAtlasChange({ entity: 'deadline', action: 'updated', id: deadlineId, courseId: deadline?.course_id });
     return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId);
   }
 );
@@ -3243,17 +3307,29 @@ ipcMain.handle('deadlines:resetClassroomOverrides', (_event, deadlineId: number)
   db.prepare(
     'UPDATE deadlines SET title = COALESCE(classroom_title, title), due_at = classroom_due_at, local_overrides = NULL WHERE id = ?'
   ).run(deadlineId);
+  const deadline = db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId) as
+    | { course_id: number }
+    | undefined;
+  sendAtlasChange({ entity: 'deadline', action: 'updated', id: deadlineId, courseId: deadline?.course_id });
   return db.prepare('SELECT * FROM deadlines WHERE id = ?').get(deadlineId);
 });
 
 ipcMain.handle('deadlines:setCompleted', (_event, deadlineId: number, completed: boolean) => {
   const db = getDb();
   db.prepare('UPDATE deadlines SET completed = ? WHERE id = ?').run(completed ? 1 : 0, deadlineId);
+  const deadline = db.prepare('SELECT course_id FROM deadlines WHERE id = ?').get(deadlineId) as
+    | { course_id: number }
+    | undefined;
+  if (deadline) sendAtlasChange({ entity: 'deadline', action: 'updated', id: deadlineId, courseId: deadline.course_id });
 });
 
 ipcMain.handle('deadlines:delete', (_event, deadlineId: number) => {
   const db = getDb();
+  const deadline = db.prepare('SELECT course_id FROM deadlines WHERE id = ?').get(deadlineId) as
+    | { course_id: number }
+    | undefined;
   db.prepare('DELETE FROM deadlines WHERE id = ?').run(deadlineId);
+  if (deadline) sendAtlasChange({ entity: 'deadline', action: 'deleted', id: deadlineId, courseId: deadline.course_id });
 });
 
 ipcMain.on('deadlines:contextMenu', (event, deadlineId: number) => {

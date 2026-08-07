@@ -2,15 +2,19 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-06 (personal-use UI overhaul complete on `ui-overhaul-v2`; performance and responsiveness is now the next focused workstream.)
+**Last updated:** 2026-08-07 (personal-use UI overhaul complete on `ui-overhaul-v2`; performance and responsiveness is now the next focused workstream.)
 
 ## Next session — start here
 
 Read `AGENTS.md`, this current-session section, `open-questions.md`, and `DESIGN.md` in that order. `DESIGN.md` is the cross-page implementation contract for the active UI overhaul; use the page mockup plus `controls-a.html` and `overlays-a.html` for every UI pass.
 
-The first performance measurement pass is complete; the benchmark and its recorded baseline are documented below. No performance fix has been implemented yet.
+The first performance measurement pass is complete; the benchmark and its recorded baseline are documented below. The first Phase 1 freshness slice is now implemented and tested; targeted indexing and startup work remain pending.
 
 The detailed implementation sequence is now recorded in `performance-plan.md`. Phase 0, measurement and baseline, is complete; all implementation phases remain pending.
+
+## Current session — 2026-08-07
+
+- **Performance Phase 1 freshness slice:** added a single typed `atlas:changed` event path from main-process mutations through preload to the renderer. Course creation/update/archive/delete, local resource creation/deletion and watcher changes, note creation/assignment/content/title/deletion/imports, deadline creation/update/completion/reset/deletion, Ashoka course imports, Classroom sync/disconnect, and remote extraction changes now notify the renderer consistently. The renderer queues those notifications and refreshes only the visible owning surface; hidden pages are loaded normally when visited. The obsolete resource-only event path was removed. A focused real-Electron verifier, `npm run verify:mutation-freshness`, passes for resource creation/deletion, note creation/title updates, and deadline creation without navigation or relaunch. This is the first Phase 1 slice, not the whole performance phase: targeted search-index updates, backgrounding slow mirror/extraction work, startup shortening, and render-generation protection remain to be implemented.
 
 ## Current session — 2026-08-06
 

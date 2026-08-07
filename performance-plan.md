@@ -1,7 +1,7 @@
 # Atlas performance and responsiveness plan
 
-**Status:** Planning complete; measurement baseline complete; implementation not started
-**Last updated:** 2026-08-06
+**Status:** Planning complete; measurement baseline complete; Phase 1 implementation in progress
+**Last updated:** 2026-08-07
 **Scope:** Personal-use responsiveness work on `ui-overhaul-v2`
 
 This is the working plan for improving Atlas's launch speed, interaction latency, and real-time freshness. It is deliberately ordered so that correctness and reliable updates are established before caching, background work, or optimistic UI are introduced.
@@ -106,6 +106,24 @@ No production performance code was changed in this phase.
 ### Phase 1 — Establish reliable mutation freshness `[ ]`
 
 Create one consistent change-notification path from the main process to the renderer.
+
+Progress on 2026-08-07: the first implementation slice is in place. Course,
+resource, note, and deadline CRUD mutations now emit a typed `atlas:changed`
+notification, as do local folder watcher changes, Classroom/Drive-derived
+sync changes, and remote extraction updates. The renderer consumes one queued
+refresh path that updates only the visible page; hidden pages are left for
+their normal page-entry render. The old resource-only watcher event was
+removed so resource changes no longer depend on one special-case listener.
+The focused Electron regression `npm run verify:mutation-freshness` confirms
+resource creation/deletion, note creation/title updates, and deadline creation
+appear without navigation or relaunch.
+
+Still remaining before this phase is complete: add the same focused coverage
+for extraction/OCR and Classroom/Drive mutations, exercise deadline completion
+and course-detail refreshes, and add generation protection so a slow refresh
+cannot paint over a newer page state. Those generation and duplicate-render
+changes overlap with the next renderer-work phase and will be kept explicit
+rather than silently treating this first slice as the whole phase.
 
 It should cover course, note, resource, deadline, extraction, OCR, Classroom, and Drive changes. Each notification should identify what changed and which record or course was affected.
 
