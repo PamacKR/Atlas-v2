@@ -565,6 +565,23 @@ let ashokaReviewCandidates: AshokaCourseCandidate[] = [];
 type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'calendar' | 'settings';
 let currentPage: AppPage = 'dashboard';
 let dashboardCourseFilterId: number | null = null;
+const pageRenderGeneration: Record<AppPage, number> = {
+  dashboard: 0,
+  courses: 0,
+  resources: 0,
+  notes: 0,
+  calendar: 0,
+  settings: 0,
+};
+
+function beginPageRender(page: AppPage): number {
+  pageRenderGeneration[page]++;
+  return pageRenderGeneration[page];
+}
+
+function isCurrentPageRender(page: AppPage, generation: number): boolean {
+  return currentPage === page && pageRenderGeneration[page] === generation;
+}
 
 function showPage(page: AppPage): void {
   currentPage = page;
@@ -610,10 +627,11 @@ function setSettingsTab(tab: string): void {
 }
 
 async function renderSettingsPage(): Promise<void> {
+  const syncStatus = await atlasApi.getSyncStatus();
   await Promise.all([
-    renderSyncStatus(),
-    renderDriveStatus(),
-    renderClassroomStatus(),
+    renderSyncStatus(syncStatus),
+    renderDriveStatus(syncStatus),
+    renderClassroomStatus(syncStatus),
     renderSettingsAbout(),
     renderSettingsShortcuts(),
     renderSettingsStorage(),
@@ -688,8 +706,8 @@ function formatRelativeTime(iso: string | null): string {
   return `${diffDays}d ago`;
 }
 
-async function renderSyncStatus(): Promise<void> {
-  const status = await atlasApi.getSyncStatus();
+async function renderSyncStatus(status?: SyncStatus): Promise<void> {
+  status ??= await atlasApi.getSyncStatus();
   for (const source of ['drive', 'classroom'] as const) {
     const info = status[source];
     const value = info.mode === 'interval' ? `interval:${info.intervalSeconds}` : info.mode;
@@ -833,7 +851,7 @@ function updateCourseToolbar(courses: CourseSummary[]): void {
 }
 
 async function renderCourses(): Promise<void> {
-  void renderDashboard();
+  const generation = beginPageRender('courses');
   const list = document.getElementById('course-list')!;
   const emptyState = document.getElementById('course-list-empty')!;
   const allSummaries = await atlasApi.getCourseSummaries(showArchivedCourses);
@@ -846,7 +864,13 @@ async function renderCourses(): Promise<void> {
   list.innerHTML = '';
 
   const deadlinesByCourse = new Map<number, Deadline[]>();
-  await Promise.all(courses.map(async (course) => deadlinesByCourse.set(course.id, await atlasApi.listDeadlines(course.id))));
+  const allDeadlines = await atlasApi.listAllDeadlinesWithCourse();
+  if (!isCurrentPageRender('courses', generation)) return;
+  for (const deadline of allDeadlines) {
+    const deadlines = deadlinesByCourse.get(deadline.course_id) ?? [];
+    deadlines.push(deadline);
+    deadlinesByCourse.set(deadline.course_id, deadlines);
+  }
   const groupedCourses = new Map<string, CourseSummary[]>();
   for (const course of courses) {
     const term = course.term || 'No term';
@@ -1243,9 +1267,10 @@ function renderResourcesSourceFilter(): void {
 }
 
 async function renderResourcesPage(): Promise<void> {
-  void renderDashboard();
+  const generation = beginPageRender('resources');
   const courses = await atlasApi.listCourses();
   const allResources = await atlasApi.listAllResources();
+  if (!isCurrentPageRender('resources', generation)) return;
   renderResourcesRail(courses, allResources);
   renderResourcesSourceFilter();
   document.getElementById('resources-page-count')!.textContent = String(allResources.length);
@@ -1485,10 +1510,11 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
 }
 
 async function renderNotesPage(): Promise<void> {
-  void renderDashboard();
+  const generation = beginPageRender('notes');
   const courses = await atlasApi.listCourses();
 
   const allNotes = await atlasApi.listAllNotes();
+  if (!isCurrentPageRender('notes', generation)) return;
   const rail = document.getElementById('notes-course-rail')!;
   rail.innerHTML = '';
   const options = [{ id: null, name: 'All notes', count: allNotes.length }, ...courses.map((course) => ({ id: course.id, name: course.name, count: allNotes.filter((note) => note.course_id === course.id).length }))];
@@ -1695,7 +1721,6 @@ function makeDeadlineCheckbox(deadline: Deadline): HTMLInputElement {
 }
 
 async function renderDeadlines(): Promise<void> {
-  void renderDashboard();
   // Deadline edits/resets/deletes never navigate away from whatever page is
   // currently showing (modals layer on top), so Calendar needs an explicit
   // nudge here or it keeps showing stale data until the user flips months.
@@ -1847,10 +1872,16 @@ async function refreshVisibleSurfaceForChange(change: AtlasChange): Promise<void
 // Resource/Note type per file (or in bulk) before anything gets copied into
 // local managed storage; "Atlas owns the data" (AGENTS.md) still holds once
 // something's tagged, Drive is just the inbox.
-async function renderDriveStatus(): Promise<void> {
+interface SourceRenderContext {
+  connected: boolean;
+  authRequired: boolean;
+  folder: DriveFolder | null;
+}
+
+async function renderDriveStatus(syncStatus?: SyncStatus): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
-  const syncStatus = await atlasApi.getSyncStatus();
-  const authRequired = syncStatus.drive.authRequired;
+  const syncStatusValue = syncStatus ?? (await atlasApi.getSyncStatus());
+  const authRequired = syncStatusValue.drive.authRequired;
   const status = document.getElementById('drive-status')!;
   const connectButton = document.getElementById('drive-connect-button') as HTMLButtonElement;
   const disconnectButton = document.getElementById('drive-disconnect-button') as HTMLButtonElement;
@@ -1864,19 +1895,23 @@ async function renderDriveStatus(): Promise<void> {
   hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Drive to watch a folder and open Office files in Drive.';
   (document.getElementById('drive-folder-form') as HTMLElement).hidden = !connected;
 
-  if (connected) {
-    const folder = await atlasApi.getDriveFolder();
+  const folder = connected ? await atlasApi.getDriveFolder() : null;
+  if (folder) {
     const input = document.getElementById('drive-folder-input') as HTMLInputElement;
     if (folder) input.value = folder.name;
   }
 
-  await renderDrivePendingStatus();
+  await renderDrivePendingStatus({ connected, authRequired, folder });
 }
 
-async function renderDrivePendingStatus(): Promise<void> {
-  const connected = await atlasApi.isDriveConnected();
-  const authRequired = (await atlasApi.getSyncStatus()).drive.authRequired;
-  const folder = connected ? await atlasApi.getDriveFolder() : null;
+async function renderDrivePendingStatus(context?: SourceRenderContext): Promise<void> {
+  const resolved = context ?? {
+    connected: await atlasApi.isDriveConnected(),
+    authRequired: (await atlasApi.getSyncStatus()).drive.authRequired,
+    folder: null,
+  };
+  const { connected, authRequired } = resolved;
+  const folder = resolved.folder ?? (connected ? await atlasApi.getDriveFolder() : null);
   const pendingStatus = document.getElementById('drive-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('drive-review-button') as HTMLButtonElement;
 
@@ -2118,10 +2153,10 @@ function toggleDriveReviewSelectAll(): void {
 // a course-mapping review panel. Once a Classroom course is mapped to an
 // Atlas course, its coursework/announcements import automatically on future
 // syncs — only which course a Classroom course maps to is gated here.
-async function renderClassroomStatus(): Promise<void> {
+async function renderClassroomStatus(syncStatus?: SyncStatus): Promise<void> {
   const connected = await atlasApi.isClassroomConnected();
-  const syncStatus = await atlasApi.getSyncStatus();
-  const authRequired = syncStatus.classroom.authRequired;
+  const syncStatusValue = syncStatus ?? (await atlasApi.getSyncStatus());
+  const authRequired = syncStatusValue.classroom.authRequired;
   const status = document.getElementById('classroom-status')!;
   const connectButton = document.getElementById('classroom-connect-button') as HTMLButtonElement;
   const disconnectButton = document.getElementById('classroom-disconnect-button') as HTMLButtonElement;
@@ -2134,12 +2169,16 @@ async function renderClassroomStatus(): Promise<void> {
   disconnectButton.hidden = !connected;
   hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Classroom to bring in courses, deadlines, and announcements.';
 
-  await renderClassroomPendingStatus();
+  await renderClassroomPendingStatus({ connected, authRequired, folder: null });
 }
 
-async function renderClassroomPendingStatus(): Promise<void> {
-  const connected = await atlasApi.isClassroomConnected();
-  const authRequired = (await atlasApi.getSyncStatus()).classroom.authRequired;
+async function renderClassroomPendingStatus(context?: SourceRenderContext): Promise<void> {
+  const resolved = context ?? {
+    connected: await atlasApi.isClassroomConnected(),
+    authRequired: (await atlasApi.getSyncStatus()).classroom.authRequired,
+    folder: null,
+  };
+  const { connected, authRequired } = resolved;
   const pendingStatus = document.getElementById('classroom-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('classroom-review-button') as HTMLButtonElement;
 
@@ -2640,6 +2679,7 @@ function formatDueTime(value: string): string {
 }
 
 async function renderCalendarPage(): Promise<void> {
+  const generation = beginPageRender('calendar');
   const [deadlines, announcements] = await Promise.all([
     atlasApi.listAllDeadlinesWithCourse(),
     atlasApi.listAllAnnouncementsWithCourse(),
@@ -2802,7 +2842,7 @@ function renderSyncConfigSelect(source: 'drive' | 'classroom', value: string): v
   root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
     menu.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
-    void atlasApi.setSyncConfig(source, option.dataset.value!).then(renderSyncStatus);
+    void atlasApi.setSyncConfig(source, option.dataset.value!).then(() => renderSyncStatus());
   }));
 }
 
@@ -4539,8 +4579,8 @@ function setViewMode(mode: 'list' | 'grid', persist = true): void {
   // toggles drive the same shared `viewMode` preference.
   document.getElementById('deadline-view-list-toggle')!.classList.toggle('active', mode === 'list');
   document.getElementById('deadline-view-grid-toggle')!.classList.toggle('active', mode === 'grid');
-  void renderResourcesPage();
-  void renderDeadlines();
+  if (currentPage === 'resources') void renderResourcesPage();
+  if (currentPage === 'courses' && selectedCourse) void renderDeadlines();
   if (persist) atlasApi.setSetting('viewMode', mode);
 }
 
@@ -6988,30 +7028,31 @@ function wireWindowControls(): void {
 
 async function init(): Promise<void> {
   wireWindowControls();
-  const savedTheme = await atlasApi.getSetting('theme');
+  const [savedTheme, savedAccentColor, savedSidebarCollapsed, savedViewMode, savedSemesterFilter] = await Promise.all([
+    atlasApi.getSetting('theme'),
+    atlasApi.getSetting('accentColor'),
+    atlasApi.getSetting('sidebarCollapsed'),
+    atlasApi.getSetting('viewMode'),
+    atlasApi.getSetting('semesterFilter'),
+  ]);
   applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 
   renderAccentSwatches();
-  const savedAccentColor = await atlasApi.getSetting('accentColor');
   applyAccentColor(savedAccentColor && ACCENT_COLORS.includes(savedAccentColor) ? savedAccentColor : DEFAULT_ACCENT_COLOR);
 
-  const savedSidebarCollapsed = await atlasApi.getSetting('sidebarCollapsed');
   if (savedSidebarCollapsed === '1') setSidebarCollapsed(true, false);
 
-  const savedViewMode = await atlasApi.getSetting('viewMode');
   // 'icons' is the pre-rename persisted value (view mode was called "list |
   // icons" before being relabeled "list | grid" to match the Courses page's
   // own wording) — still honored so an existing saved preference isn't
   // silently reset back to list on the next launch.
   if (savedViewMode === 'grid' || savedViewMode === 'icons') setViewMode('grid', false);
 
-  const savedSemesterFilter = await atlasApi.getSetting('semesterFilter');
   if (savedSemesterFilter) {
     semesterFilter = savedSemesterFilter;
   }
 
-  await renderCourses();
-  await renderDashboard();
+  await Promise.all([renderCourses(), renderDashboard()]);
 
   const form = document.getElementById('course-form') as HTMLFormElement;
   const addCourseToggle = document.getElementById('add-course-toggle') as HTMLButtonElement;

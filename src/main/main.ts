@@ -176,6 +176,93 @@ function rebuildSearchIndex(): void {
   }
 }
 
+function removeSearchIndexRow(entityType: string, entityId: number): void {
+  getDb().prepare('DELETE FROM search_index WHERE entity_type = ? AND entity_id = ?').run(entityType, entityId);
+}
+
+function upsertSearchIndexRow(
+  entityType: string,
+  entityId: number,
+  courseId: number | null,
+  title: string,
+  body: string
+): void {
+  const db = getDb();
+  removeSearchIndexRow(entityType, entityId);
+  db.prepare('INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES (?, ?, ?, ?, ?)').run(
+    entityType,
+    entityId,
+    courseId,
+    title,
+    body
+  );
+}
+
+function resourceSearchBody(resource: {
+  kind: string;
+  file_path: string;
+  ocr_text: string | null;
+}): string {
+  if (resource.kind === 'text' || resource.kind === 'markdown') {
+    try {
+      return fs.readFileSync(resource.file_path, 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+  return resource.ocr_text ?? '';
+}
+
+function updateSearchIndexForResource(resourceId: number): void {
+  const resource = getDb()
+    .prepare('SELECT id, course_id, title, kind, file_path, ocr_text FROM resources WHERE id = ?')
+    .get(resourceId) as
+    | { id: number; course_id: number; title: string; kind: string; file_path: string; ocr_text: string | null }
+    | undefined;
+  if (!resource) {
+    removeSearchIndexRow('resource', resourceId);
+    return;
+  }
+  upsertSearchIndexRow('resource', resource.id, resource.course_id, resource.title, resourceSearchBody(resource));
+}
+
+function updateSearchIndexForNote(noteId: number): void {
+  const note = getDb()
+    .prepare('SELECT id, course_id, title, content_markdown FROM notes WHERE id = ?')
+    .get(noteId) as
+    | { id: number; course_id: number | null; title: string; content_markdown: string }
+    | undefined;
+  if (!note) {
+    removeSearchIndexRow('note', noteId);
+    return;
+  }
+  upsertSearchIndexRow('note', note.id, note.course_id, note.title, note.content_markdown);
+}
+
+function updateSearchIndexForDocumentParts(resourceId: number): void {
+  const db = getDb();
+  const parts = db
+    .prepare('SELECT id, label, text, resource_id FROM document_parts WHERE resource_id = ?')
+    .all(resourceId) as { id: number; label: string; text: string; resource_id: number }[];
+  const course = db.prepare('SELECT course_id FROM resources WHERE id = ?').get(resourceId) as
+    | { course_id: number }
+    | undefined;
+  for (const part of parts) {
+    upsertSearchIndexRow('document_part', part.id, course?.course_id ?? null, part.label, part.text);
+  }
+}
+
+function removeSearchIndexDocumentPartsForResource(resourceId: number): void {
+  const partIds = getDb()
+    .prepare('SELECT id FROM document_parts WHERE resource_id = ?')
+    .all(resourceId) as { id: number }[];
+  for (const part of partIds) removeSearchIndexRow('document_part', part.id);
+}
+
+function removeSearchIndexForCourse(courseId: number): void {
+  getDb().prepare('DELETE FROM search_index WHERE course_id = ?').run(courseId);
+}
+
 // A full rebuild is correct-by-construction (see rebuildSearchIndex's own
 // comment above) but stopped being free once Phase 4's page-aware extraction
 // pushed indexed rows into the thousands (phase6-spec.md §5 — 3,443 rows
@@ -262,6 +349,9 @@ function scheduleExtraction(resourceId: number, kind: string, filePath: string):
     db.prepare("UPDATE resources SET extraction_status = 'unsupported', extracted_at = datetime('now') WHERE id = ?").run(
       resourceId
     );
+    updateSearchIndexForResource(resourceId);
+    const courseId = (db.prepare('SELECT course_id FROM resources WHERE id = ?').get(resourceId) as { course_id: number } | undefined)?.course_id;
+    sendAtlasChange({ entity: 'resource', action: 'updated', id: resourceId, courseId });
     return;
   }
 
@@ -270,6 +360,7 @@ function scheduleExtraction(resourceId: number, kind: string, filePath: string):
     const insertPart = db2.prepare(
       'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
     );
+    removeSearchIndexDocumentPartsForResource(resourceId);
     db2.transaction(() => {
       db2.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resourceId);
       for (const part of result.parts) {
@@ -281,7 +372,10 @@ function scheduleExtraction(resourceId: number, kind: string, filePath: string):
         )
         .run(result.status, result.error ?? null, resourceId);
     })();
-    rebuildSearchIndex();
+    updateSearchIndexForResource(resourceId);
+    updateSearchIndexForDocumentParts(resourceId);
+    const courseId = (db2.prepare('SELECT course_id FROM resources WHERE id = ?').get(resourceId) as { course_id: number } | undefined)?.course_id;
+    sendAtlasChange({ entity: 'resource', action: 'updated', id: resourceId, courseId });
     if (mainWindow) mainWindow.webContents.send('resources:extractionUpdated', resourceId);
   });
 }
@@ -458,8 +552,8 @@ function importFileIntoCourse(
       watchSourcePath
     );
 
-  rebuildSearchIndex();
   const resourceId = Number(insertResult.lastInsertRowid);
+  updateSearchIndexForResource(resourceId);
   scheduleExtraction(resourceId, kindFromExtension(originalFilename), destPath);
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
   sendAtlasChange({ entity: 'resource', action: 'created', id: resourceId, courseId });
@@ -505,8 +599,8 @@ function importBufferIntoCourse(
       driveFileId
     );
 
-  rebuildSearchIndex();
   const resourceId = Number(insertResult.lastInsertRowid);
+  updateSearchIndexForResource(resourceId);
   scheduleExtraction(resourceId, kindFromExtension(originalFilename), destPath);
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
   sendAtlasChange({ entity: 'resource', action: 'created', id: resourceId, courseId });
@@ -541,15 +635,14 @@ function reconcileWatchedFolder(courseId: number, folderPath: string): void {
   // this function's sibling functions correctly still do unconditionally
   // (those only run once, in response to a real user action, not in a
   // per-folder/per-course startup loop).
-  let changed = false;
   for (const resource of resources) {
     if (!resource.watch_source_path.startsWith(normalizedFolder)) continue;
     if (fs.existsSync(resource.watch_source_path)) continue;
+    removeSearchIndexDocumentPartsForResource(resource.id);
     fs.rmSync(resource.file_path, { force: true });
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
-    changed = true;
+    removeSearchIndexRow('resource', resource.id);
   }
-  if (changed) rebuildSearchIndex();
 }
 
 function startWatchingFolder(folderId: number, courseId: number, folderPath: string): void {
@@ -586,9 +679,13 @@ function startWatchingFolder(folderId: number, courseId: number, folderPath: str
       | undefined;
     if (!resource) return;
 
-    fs.rmSync(resource.file_path, { force: true });
+    const courseId = (db
+      .prepare('SELECT course_id FROM resources WHERE id = ?')
+      .get(resource.id) as { course_id: number } | undefined)?.course_id;
+    removeSearchIndexDocumentPartsForResource(resource.id);
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
-    rebuildSearchIndex();
+    removeSearchIndexRow('resource', resource.id);
+    fs.rmSync(resource.file_path, { force: true });
     sendAtlasChange({ entity: 'resource', action: 'deleted', id: resource.id, courseId });
   });
 
@@ -671,7 +768,6 @@ function repairClassroomResourceAddedAtOnce(): void {
   db.prepare(
     "INSERT INTO app_settings (key, value) VALUES ('classroom_resource_added_at_repaired', '1') ON CONFLICT(key) DO UPDATE SET value = '1'"
   ).run();
-  rebuildSearchIndex();
 }
 
 function reconcileCourseStorage(courseId: number): void {
@@ -692,13 +788,12 @@ function reconcileCourseStorage(courseId: number): void {
   // per course at every launch, and an unconditional rebuild here meant one
   // full index rebuild per course, back to back, before the window could
   // respond to anything.
-  let changed = false;
   for (const resource of resources) {
     if (fs.existsSync(resource.file_path)) continue;
+    removeSearchIndexDocumentPartsForResource(resource.id);
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
-    changed = true;
+    removeSearchIndexRow('resource', resource.id);
   }
-  if (changed) rebuildSearchIndex();
 }
 
 function startWatchingCourseStorage(courseId: number, folderName: string): void {
@@ -734,9 +829,10 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
          VALUES (?, ?, ?, 'manual', ?, ?)`
       )
       .run(courseId, path.basename(filePath), kind, filePath, path.basename(filePath));
-    rebuildSearchIndex();
+    const resourceId = Number(insertResult.lastInsertRowid);
+    updateSearchIndexForResource(resourceId);
     scheduleExtraction(Number(insertResult.lastInsertRowid), kind, filePath);
-    sendAtlasChange({ entity: 'resource', action: 'created', id: Number(insertResult.lastInsertRowid), courseId });
+    sendAtlasChange({ entity: 'resource', action: 'created', id: resourceId, courseId });
   });
 
   watcher.on('unlink', (filePath) => {
@@ -748,8 +844,9 @@ function startWatchingCourseStorage(courseId: number, folderName: string): void 
       | undefined;
     if (!resource) return;
 
+    removeSearchIndexDocumentPartsForResource(resource.id);
     db.prepare('DELETE FROM resources WHERE id = ?').run(resource.id);
-    rebuildSearchIndex();
+    removeSearchIndexRow('resource', resource.id);
     sendAtlasChange({ entity: 'resource', action: 'deleted', id: resource.id, courseId });
   });
 
@@ -2332,6 +2429,7 @@ ipcMain.handle('resources:saveOcrText', (_event, resourceId: number, text: strin
     'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
   );
   const pages = text.split(OCR_PAGE_SEPARATOR).map((t) => t.trim());
+  removeSearchIndexDocumentPartsForResource(resourceId);
   db.transaction(() => {
     db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'ocr'").run(resourceId);
     let ordinal = 1;
@@ -2344,7 +2442,8 @@ ipcMain.handle('resources:saveOcrText', (_event, resourceId: number, text: strin
       resourceId
     );
   })();
-  rebuildSearchIndex();
+  updateSearchIndexForResource(resourceId);
+  updateSearchIndexForDocumentParts(resourceId);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('resources:extractionUpdated', resourceId);
 });
 
@@ -2475,16 +2574,23 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
   // the recursive rmSync below fires an 'unlink' per file, racing the
   // cascade-delete below for no benefit.
   stopWatchingCourseStorage(courseId);
-  // Remove the course's files from disk; the resources rows cascade-delete
-  // via the FK (foreign_keys pragma is on, see db/database.ts).
-  if (course) {
-    const courseFilesDir = path.join(getFilesDir(), course.folder_name);
-    fs.rmSync(courseFilesDir, { recursive: true, force: true });
-    deleteCourseMemoryFile(course.folder_name);
-  }
+  // Remove the course's files from disk after the database mutation. The
+  // database is the user-visible source of truth, while the potentially
+  // large recursive cleanup is safe to finish in the background.
+  const courseFilesDir = course ? path.join(getFilesDir(), course.folder_name) : null;
   db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
-  rebuildSearchIndex();
+  removeSearchIndexForCourse(courseId);
   sendAtlasChange({ entity: 'course', action: 'deleted', id: courseId, courseId });
+  if (course && courseFilesDir) {
+    setImmediate(() => {
+      try {
+        fs.rmSync(courseFilesDir, { recursive: true, force: true });
+        deleteCourseMemoryFile(course.folder_name);
+      } catch (error) {
+        console.error(`Failed to clean up deleted course ${courseId}:`, error);
+      }
+    });
+  }
 });
 
 // --- IPC: local folder watching ---
@@ -2554,14 +2660,17 @@ ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
     | { file_path: string; drive_preview_file_id: string | null; course_id: number }
     | undefined;
-  if (resource) fs.rmSync(resource.file_path, { force: true });
   // Best-effort, not awaited — deleting the resource locally must succeed
   // regardless of whether Drive is reachable right now; a stray leftover
   // file in the preview folder is a cosmetic issue, not a data-loss one.
   if (resource?.drive_preview_file_id) void deletePreviewCopy(resource.drive_preview_file_id);
+  removeSearchIndexDocumentPartsForResource(resourceId);
   db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
-  rebuildSearchIndex();
+  removeSearchIndexRow('resource', resourceId);
   if (resource) sendAtlasChange({ entity: 'resource', action: 'deleted', id: resourceId, courseId: resource.course_id });
+  if (resource) {
+    setImmediate(() => fs.rmSync(resource.file_path, { force: true }));
+  }
 });
 
 // Course row has no "open in default app" equivalent — just Archive/Unarchive
@@ -2690,14 +2799,28 @@ function exportNoteToFile(noteId: number): void {
   db.prepare('UPDATE notes SET exported_path = ? WHERE id = ?').run(desiredPath, noteId);
 }
 
+// Mirroring a note to disk is useful for portability, but it should not hold
+// up the database mutation or the renderer's immediate refresh. Queue it on
+// the next event-loop turn so the note appears responsive while preserving
+// the same eventual on-disk mirror.
+function scheduleNoteExport(noteId: number): void {
+  setImmediate(() => {
+    try {
+      exportNoteToFile(noteId);
+    } catch (error) {
+      console.error(`Failed to export note ${noteId}:`, error);
+    }
+  });
+}
+
 ipcMain.handle('notes:create', (_event, courseId: number) => {
   const db = getDb();
   const insertResult = db
     .prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (?, 'Untitled', '')")
     .run(courseId);
   const noteId = Number(insertResult.lastInsertRowid);
-  exportNoteToFile(noteId);
-  rebuildSearchIndex();
+  scheduleNoteExport(noteId);
+  updateSearchIndexForNote(noteId);
   const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
   sendAtlasChange({ entity: 'note', action: 'created', id: noteId, courseId });
   return note;
@@ -2718,7 +2841,7 @@ function createUnsortedNote(): { id: number; course_id: number | null; title: st
     .prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (NULL, 'Untitled', '')")
     .run();
   const noteId = Number(insertResult.lastInsertRowid);
-  rebuildSearchIndex();
+  updateSearchIndexForNote(noteId);
   const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId) as {
     id: number;
     course_id: number | null;
@@ -2738,8 +2861,8 @@ ipcMain.handle('notes:createUnsorted', () => createUnsortedNote());
 ipcMain.handle('notes:assignCourse', (_event, noteId: number, courseId: number) => {
   const db = getDb();
   db.prepare('UPDATE notes SET course_id = ? WHERE id = ?').run(courseId, noteId);
-  exportNoteToFile(noteId);
-  rebuildSearchIndex();
+  scheduleNoteExport(noteId);
+  updateSearchIndexForNote(noteId);
   const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
   sendAtlasChange({ entity: 'note', action: 'updated', id: noteId, courseId });
   return note;
@@ -2807,8 +2930,8 @@ ipcMain.handle('notes:updateContent', (_event, noteId: number, contentMarkdown: 
       noteId
     );
   }
-  exportNoteToFile(noteId);
-  rebuildSearchIndex();
+  scheduleNoteExport(noteId);
+  updateSearchIndexForNote(noteId);
   const updatedNote = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(noteId) as
     | { course_id: number | null }
     | undefined;
@@ -2821,8 +2944,8 @@ ipcMain.handle('notes:updateTitle', (_event, noteId: number, title: string) => {
   db.prepare(
     "UPDATE notes SET title = ?, title_is_manual = 1, updated_at = datetime('now') WHERE id = ?"
   ).run(title || 'Untitled', noteId);
-  exportNoteToFile(noteId);
-  rebuildSearchIndex();
+  scheduleNoteExport(noteId);
+  updateSearchIndexForNote(noteId);
   const updatedNote = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(noteId) as
     | { course_id: number | null }
     | undefined;
@@ -2834,9 +2957,11 @@ ipcMain.handle('notes:delete', (_event, noteId: number) => {
   const note = db.prepare('SELECT exported_path FROM notes WHERE id = ?').get(noteId) as
     | { exported_path: string | null; course_id: number | null }
     | undefined;
-  if (note?.exported_path) removeNoteExport(note.exported_path);
   db.prepare('DELETE FROM notes WHERE id = ?').run(noteId);
-  rebuildSearchIndex();
+  removeSearchIndexRow('note', noteId);
+  if (note?.exported_path) {
+    setImmediate(() => removeNoteExport(note.exported_path!));
+  }
   if (note) sendAtlasChange({ entity: 'note', action: 'deleted', id: noteId, courseId: note.course_id });
 });
 
@@ -2921,8 +3046,8 @@ function finishScanImport(
     )
     .run(courseId, titleGuess || 'Untitled scan', destPath, driveFileId);
   const noteId = Number(insertResult.lastInsertRowid);
-  exportNoteToFile(noteId);
-  rebuildSearchIndex();
+  scheduleNoteExport(noteId);
+  updateSearchIndexForNote(noteId);
   const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
   sendAtlasChange({ entity: 'note', action: 'created', id: noteId, courseId });
   return note;
@@ -2985,8 +3110,8 @@ function importTypedNoteFromBuffer(courseId: number, buffer: Buffer, driveFileId
     .prepare('INSERT INTO notes (course_id, title, content_markdown, drive_file_id) VALUES (?, ?, ?, ?)')
     .run(courseId, title, content, driveFileId);
   const noteId = Number(insertResult.lastInsertRowid);
-  exportNoteToFile(noteId);
-  rebuildSearchIndex();
+  scheduleNoteExport(noteId);
+  updateSearchIndexForNote(noteId);
   const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
   sendAtlasChange({ entity: 'note', action: 'created', id: noteId, courseId });
   return note;
