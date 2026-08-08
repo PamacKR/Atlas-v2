@@ -112,14 +112,20 @@ function cssRgb(hex) {
 
     const lightAmber = snapshots.light[ACCENTS[0]];
     const lightBlue = snapshots.light['#3b82f6'];
-    for (const key of ['bg', 'panel', 'hover', 'text', 'muted', 'faint', 'rule', 'strongRule', 'soft', 'softStrong', 'accentRule', 'settingsNavBackground', 'settingsRowBorder']) {
-      assert(lightAmber[key] !== lightBlue[key], `Light ${key} did not change between amber and blue: ${lightAmber[key]}`);
+    for (const key of ['bg', 'panel', 'hover', 'text', 'muted', 'faint', 'rule', 'strongRule', 'settingsRowBorder']) {
+      assert(lightAmber[key] === lightBlue[key], `Light neutral ${key} changed between amber and blue: ${lightAmber[key]} vs ${lightBlue[key]}`);
+    }
+    for (const key of ['soft', 'softStrong', 'accentRule', 'settingsNavBackground']) {
+      assert(lightAmber[key] !== lightBlue[key], `Light accent state ${key} did not change between amber and blue: ${lightAmber[key]}`);
     }
 
     const darkAmber = snapshots.dark[ACCENTS[0]];
     const darkBlue = snapshots.dark['#3b82f6'];
-    for (const key of ['bg', 'panel', 'hover', 'text', 'muted', 'faint', 'rule', 'strongRule', 'soft', 'softStrong', 'accentRule']) {
-      assert(darkAmber[key] !== darkBlue[key], `Dark ${key} did not change between amber and blue: ${darkAmber[key]}`);
+    for (const key of ['bg', 'panel', 'hover', 'text', 'muted', 'faint', 'rule', 'strongRule']) {
+      assert(darkAmber[key] === darkBlue[key], `Dark neutral ${key} changed between amber and blue: ${darkAmber[key]} vs ${darkBlue[key]}`);
+    }
+    for (const key of ['soft', 'softStrong', 'accentRule', 'settingsNavBackground']) {
+      assert(darkAmber[key] !== darkBlue[key], `Dark accent state ${key} did not change between amber and blue: ${darkAmber[key]}`);
     }
 
     assert(lightAmber.urgent === lightBlue.urgent && lightAmber.good === lightBlue.good, 'Light semantic status colours changed with the accent');

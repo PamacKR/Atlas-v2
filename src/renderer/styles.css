@@ -16,25 +16,29 @@
      shared surface/text/rule tokens below so a non-amber accent cannot leave
      warm amber residue behind in quiet UI areas. */
   --neutral-bg: #101214;
+  --neutral-hover: #1a1e22;
   --neutral-panel: #171a1e;
   --neutral-text: #eceff2;
   --neutral-muted: #909aa4;
   --neutral-faint: #626c76;
   --neutral-rule: #252b31;
   --neutral-rule-strong: #343c44;
-  --bg: color-mix(in srgb, var(--accent) 2%, var(--neutral-bg));
-  --bg-hover: color-mix(in srgb, var(--accent) 8%, var(--bg));
-  --bg-panel: color-mix(in srgb, var(--accent) 1%, var(--neutral-panel));
-  --text: color-mix(in srgb, var(--accent) 2%, var(--neutral-text));
-  --text-muted: color-mix(in srgb, var(--accent) 5%, var(--neutral-muted));
-  --text-faint: color-mix(in srgb, var(--accent) 7%, var(--neutral-faint));
-  --rule: color-mix(in srgb, var(--accent) 14%, var(--neutral-rule));
-  --rule-strong: color-mix(in srgb, var(--accent) 22%, var(--neutral-rule-strong));
+  /* The original amber theme kept the canvas, panels, text, and dividers
+     neutral. Keep that same balance for every swatch; the accent belongs in
+     active, focused, selected, and solid action states below. */
+  --bg: var(--neutral-bg);
+  --bg-hover: var(--neutral-hover);
+  --bg-panel: var(--neutral-panel);
+  --text: var(--neutral-text);
+  --text-muted: var(--neutral-muted);
+  --text-faint: var(--neutral-faint);
+  --rule: var(--neutral-rule);
+  --rule-strong: var(--neutral-rule-strong);
   --accent: #d9a441;
   --accent-foreground: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg));
-  --accent-soft-strong: color-mix(in srgb, var(--accent) 24%, var(--bg));
-  --accent-rule: color-mix(in srgb, var(--accent) 42%, var(--rule));
+  --accent-soft: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --accent-rule: color-mix(in srgb, var(--accent) 24%, var(--rule));
   --urgent: #e0574a;
   --good: #3ba55d;
   --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
@@ -74,6 +78,7 @@
 
 :root[data-theme='light'] {
   --neutral-bg: #f7f9fb;
+  --neutral-hover: #eef2f5;
   --neutral-panel: #ffffff;
   --neutral-text: #20252b;
   --neutral-muted: #68727d;
