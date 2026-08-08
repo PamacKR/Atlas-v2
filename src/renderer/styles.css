@@ -3726,6 +3726,9 @@ button#classroom-connect-confirm {
 
 .wordmark .atlas-logo {
   margin-right: 10px;
+  /* Keep the Atlas wordmark's optical alignment while centering the larger
+     mark on the same fixed icon rail as the navigation icons. */
+  transform: translateX(-3px);
 }
 
 .wordmark .wm-rest {

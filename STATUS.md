@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-07 (personal-use UI overhaul complete on `ui-overhaul-v2`; performance and responsiveness is now the next focused workstream.)
+**Last updated:** 2026-08-08 (personal-use UI overhaul complete on `ui-overhaul-v2`; performance and responsiveness is now the next focused workstream.)
 
 ## Next session — start here
 
@@ -11,6 +11,10 @@ Read `AGENTS.md`, this current-session section, `open-questions.md`, and `DESIGN
 The performance measurement pass and implementation phases are complete; the benchmark comparison and regression results are documented below.
 
 The detailed implementation sequence is now recorded in `performance-plan.md`. Phases 0–8 are complete for the personal-use scope.
+
+## Current session — 2026-08-08
+
+- **Sidebar logo centering:** kept the Atlas wordmark in its existing aligned position while removing the logo mark's separate 3px rightward optical offset. The larger mark now shares the navigation icons' fixed x-axis in both expanded and collapsed sidebar states; the focused branding assertions were updated to guard that geometry.
 
 ## Current session — 2026-08-07
 
