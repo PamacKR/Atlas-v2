@@ -102,7 +102,7 @@ Added 2026-07-29. With the functional product essentially complete, this phase i
 These are intentionally recorded as ideas, not committed work or a new Phase 7:
 
 - Command Palette follow-up: broader real-use review with long names and large result lists, advanced target expressions such as deadline date/status/course filters, more overlay-stacking combinations, real connected Drive/Classroom testing, and additional aliases based on the user's natural phrasing.
-- [x] Accent colour coverage cleanup: selected accents now derive the shared neutral surface, text, divider, hover, soft-surface, border, focus, drag/drop, checked-control, and selected-navigation tokens in both themes. Solid accent controls use a contrast-aware foreground, while semantic status, course, source, preview, overlay, and logo colours remain independent. `npm run verify:accent-colors` covers all five swatches, both themes, persistence, representative controls, and screenshots.
+- Accent colour coverage bug: changing the accent currently updates solid boxes and checkbox controls, but some smaller tinted surfaces, subtle highlights, and tiny accent-derived areas still retain the old/default tint. Audit and fix this later during public-release polish.
 
 ## Explicitly out of scope for V1
 

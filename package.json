@@ -13,7 +13,6 @@
     "verify:command-palette": "npm run build && node scripts/verify-command-palette.js",
     "verify:pdf-preview": "npm run build && node scripts/verify-pdf-preview.js",
     "verify:resources-filters": "npm run build && node scripts/verify-resources-filters.js",
-    "verify:accent-colors": "npm run build && node scripts/verify-accent-colors.js",
     "verify:readiness": "npm run build && node scripts/verify-readiness.js",
     "verify:mutation-freshness": "npm run build && node scripts/verify-mutation-freshness.js",
     "verify:search-index": "npm run build && node scripts/verify-search-index.js",
