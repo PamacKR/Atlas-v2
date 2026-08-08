@@ -2391,6 +2391,14 @@ form#course-form button {
 #master-delete-overlay { position: fixed; inset: 0; z-index: 81; align-items: center; justify-content: center; background: rgba(0,0,0,.62); }
 #master-delete-overlay:not([hidden]) { display: flex; }
 #master-delete-panel.overlay-panel { width: min(520px, calc(100vw - (var(--space-6) * 2))); max-width: none; padding: 0; background: var(--bg-panel); border-color: var(--rule-strong); border-radius: var(--radius-lg); box-shadow: 0 24px 64px rgba(0,0,0,.5); overflow: hidden; }
+#master-delete-panel .overlay-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--rule); }
+#master-delete-panel .overlay-header-titles { min-width: 0; }
+#master-delete-panel .overlay-header h3 { margin: 0; color: var(--text); font-size: var(--text-lg); font-weight: 600; }
+#master-delete-panel .overlay-header .sub { margin-top: 1px; color: var(--text-faint); font-size: var(--text-sm); }
+#master-delete-panel .overlay-header-actions { display: flex; flex-shrink: 0; }
+#master-delete-panel .overlay-header-actions button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); cursor: pointer; transition: color var(--transition), background var(--transition); }
+#master-delete-panel .overlay-header-actions button:hover, #master-delete-panel .overlay-header-actions button:focus-visible { color: var(--urgent); background: rgba(224,87,74,.12); outline: none; }
+#master-delete-panel .overlay-header-actions svg { width: 16px; height: 16px; }
 .master-delete-body { display: grid; gap: var(--space-4); padding: var(--space-5); }
 .master-delete-body p { margin: 0; color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
 .master-delete-body label { color: var(--text); font-size: var(--text-sm); }
