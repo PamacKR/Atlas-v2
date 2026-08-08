@@ -280,7 +280,15 @@ type Preview =
   | { type: 'link'; url: string }
   | { type: 'unsupported'; reason?: string };
 
+interface AtlasChange {
+  entity: 'course' | 'resource' | 'note' | 'deadline' | 'sync';
+  action: 'created' | 'updated' | 'deleted';
+  id: number;
+  courseId?: number | null;
+}
+
 interface AtlasApi {
+  onAtlasChanged: (handler: (change: AtlasChange) => void) => void;
   listCourses: () => Promise<Course[]>;
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
@@ -383,7 +391,6 @@ interface AtlasApi {
   removeWatchedFolder: (folderId: number) => Promise<void>;
   showFolderContextMenu: (folderId: number) => void;
   onFolderContextMenuRemove: (handler: (folderId: number) => void) => void;
-  onResourcesChanged: (handler: (courseId: number) => void) => void;
   listNotes: (courseId: number) => Promise<Note[]>;
   createNote: (courseId: number) => Promise<Note>;
   createUnsortedNote: () => Promise<Note>;
@@ -441,23 +448,6 @@ interface AtlasApi {
   listAllNotes: () => Promise<NoteWithCourse[]>;
 }
 
-// This file is bundled by esbuild (scripts/build-renderer.js), not compiled
-// directly by tsc, specifically so npm packages like @milkdown/crepe can be
-// `import`ed here despite the renderer having no module system at runtime
-// (contextIsolation: true, nodeIntegration: false — no `require`, and a
-// plain <script> tag has no `exports` object either). esbuild resolves and
-// inlines everything into one browser-ready IIFE. `window.atlas` still goes
-// through a cast rather than a `declare global` purely to keep this diff
-// small, not because of any remaining module-system constraint.
-//
-// Editor choice: Milkdown/Crepe, not Toast UI Editor (tried first) — Toast
-// UI's WYSIWYG mode doesn't support typing markdown shortcuts ("- ", "1. ",
-// "---") to create real lists/dividers live, and its toolbar buttons don't
-// show an active state for the current selection (e.g. Bold doesn't
-// highlight when the cursor is in bold text). Both are core to how the user
-// actually works (bullet-heavy notes, Notion-like typing feel) and verified
-// working correctly in Crepe before switching. Crepe also bundles KaTeX math
-// rendering out of the box, which the user needs for academic notes.
 import { ShortcutRegistry, ShortcutAction, normalizeBinding, RESERVED_BINDINGS } from './shortcuts';
 import {
   PaletteCommandDefinition,
@@ -467,19 +457,58 @@ import {
   rankPaletteCommands,
   scorePaletteText,
 } from './command-palette';
-import { Crepe } from '@milkdown/crepe';
-import { $prose } from '@milkdown/kit/utils';
-import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import '@milkdown/crepe/theme/common/style.css';
-// Crepe's frame/frame-dark theme files are just `--crepe-*` custom
-// properties on `.milkdown` — both variable sets are inlined directly in
-// styles.css instead (scoped by :root[data-theme='light']), so the editor
-// genuinely follows Atlas's own theme toggle rather than a statically
-// imported, permanently-dark stylesheet.
 
 const atlasApi: AtlasApi = (window as any).atlas;
-GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', document.baseURI).toString();
+
+type AtlasNoteEditor = {
+  destroy(): Promise<unknown>;
+  getMarkdown(): string;
+};
+
+type AtlasNoteEditorApi = {
+  create(options: {
+    root: HTMLElement;
+    defaultValue: string;
+    courseId: number | null;
+    saveImage: (file: File) => Promise<string>;
+    onMarkdownUpdated: () => void;
+  }): Promise<AtlasNoteEditor>;
+};
+
+type AtlasPdfRendererApi = {
+  renderPdfInto(container: HTMLElement, data: Uint8Array): Promise<void>;
+};
+
+const loadedRendererFeatures = new Map<string, Promise<void>>();
+
+function loadRendererFeature(feature: 'note-editor' | 'pdf-renderer'): Promise<void> {
+  const existing = loadedRendererFeatures.get(feature);
+  if (existing) return existing;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    let stylesheetReady = Promise.resolve();
+    if (feature === 'note-editor') {
+      const stylesheet = document.createElement('link');
+      stylesheet.rel = 'stylesheet';
+      stylesheet.href = `${feature}.css`;
+      stylesheet.dataset.rendererFeature = feature;
+      stylesheetReady = new Promise<void>((styleResolve, styleReject) => {
+        stylesheet.onload = () => styleResolve();
+        stylesheet.onerror = () => styleReject(new Error(`Could not load Atlas renderer styles: ${feature}`));
+      });
+      document.head.appendChild(stylesheet);
+    }
+
+    const script = document.createElement('script');
+    script.src = `${feature}.js`;
+    script.async = true;
+    script.onload = () => void stylesheetReady.then(resolve, reject);
+    script.onerror = () => reject(new Error(`Could not load Atlas renderer feature: ${feature}`));
+    document.head.appendChild(script);
+  });
+  loadedRendererFeatures.set(feature, promise);
+  return promise;
+}
 
 const ICON_EXTENSION_MAP: Record<string, string> = {
   pdf: 'pdf',
@@ -558,6 +587,58 @@ let ashokaReviewCandidates: AshokaCourseCandidate[] = [];
 type AppPage = 'dashboard' | 'courses' | 'resources' | 'notes' | 'calendar' | 'settings';
 let currentPage: AppPage = 'dashboard';
 let dashboardCourseFilterId: number | null = null;
+const pageRenderGeneration: Record<AppPage, number> = {
+  dashboard: 0,
+  courses: 0,
+  resources: 0,
+  notes: 0,
+  calendar: 0,
+  settings: 0,
+};
+
+function beginPageRender(page: AppPage): number {
+  pageRenderGeneration[page]++;
+  return pageRenderGeneration[page];
+}
+
+function isCurrentPageRender(page: AppPage, generation: number): boolean {
+  return currentPage === page && pageRenderGeneration[page] === generation;
+}
+
+// A short-lived read-through cache coalesces overlapping page/palette reads
+// without becoming a second source of truth. Any canonical mutation bumps the
+// version and drops every cached value before the visible refresh starts.
+type CachedRendererRead = { version: number; value?: unknown; promise?: Promise<unknown> };
+let rendererDataVersion = 0;
+const rendererReadCache = new Map<string, CachedRendererRead>();
+
+function invalidateRendererReadCache(): void {
+  rendererDataVersion++;
+  rendererReadCache.clear();
+}
+
+async function cachedRendererRead<T>(key: string, read: () => Promise<T>): Promise<T> {
+  const current = rendererReadCache.get(key);
+  if (current?.version === rendererDataVersion) {
+    if (current.promise) return current.promise as Promise<T>;
+    return current.value as T;
+  }
+
+  const version = rendererDataVersion;
+  const promise = read().then((value) => {
+    const entry = rendererReadCache.get(key);
+    if (version === rendererDataVersion && entry?.promise === promise) {
+      rendererReadCache.set(key, { version, value });
+    }
+    return value;
+  }).catch((error) => {
+    const entry = rendererReadCache.get(key);
+    if (entry?.promise === promise) rendererReadCache.delete(key);
+    throw error;
+  });
+  rendererReadCache.set(key, { version, promise });
+  return promise;
+}
 
 function showPage(page: AppPage): void {
   currentPage = page;
@@ -603,10 +684,11 @@ function setSettingsTab(tab: string): void {
 }
 
 async function renderSettingsPage(): Promise<void> {
+  const syncStatus = await atlasApi.getSyncStatus();
   await Promise.all([
-    renderSyncStatus(),
-    renderDriveStatus(),
-    renderClassroomStatus(),
+    renderSyncStatus(syncStatus),
+    renderDriveStatus(syncStatus),
+    renderClassroomStatus(syncStatus),
     renderSettingsAbout(),
     renderSettingsShortcuts(),
     renderSettingsStorage(),
@@ -681,8 +763,8 @@ function formatRelativeTime(iso: string | null): string {
   return `${diffDays}d ago`;
 }
 
-async function renderSyncStatus(): Promise<void> {
-  const status = await atlasApi.getSyncStatus();
+async function renderSyncStatus(status?: SyncStatus): Promise<void> {
+  status ??= await atlasApi.getSyncStatus();
   for (const source of ['drive', 'classroom'] as const) {
     const info = status[source];
     const value = info.mode === 'interval' ? `interval:${info.intervalSeconds}` : info.mode;
@@ -826,10 +908,10 @@ function updateCourseToolbar(courses: CourseSummary[]): void {
 }
 
 async function renderCourses(): Promise<void> {
-  void renderDashboard();
+  const generation = beginPageRender('courses');
   const list = document.getElementById('course-list')!;
   const emptyState = document.getElementById('course-list-empty')!;
-  const allSummaries = await atlasApi.getCourseSummaries(showArchivedCourses);
+  const allSummaries = await cachedRendererRead(`course-summaries:${showArchivedCourses}`, () => atlasApi.getCourseSummaries(showArchivedCourses));
   updateCourseToolbar(allSummaries);
   let courses = semesterFilter ? allSummaries.filter((course) => course.term === semesterFilter) : allSummaries;
   courses = [...courses].sort((a, b) => compareCourseSummaries(a, b, courseSort));
@@ -839,7 +921,13 @@ async function renderCourses(): Promise<void> {
   list.innerHTML = '';
 
   const deadlinesByCourse = new Map<number, Deadline[]>();
-  await Promise.all(courses.map(async (course) => deadlinesByCourse.set(course.id, await atlasApi.listDeadlines(course.id))));
+  const allDeadlines = await cachedRendererRead('deadlines:all', () => atlasApi.listAllDeadlinesWithCourse());
+  if (!isCurrentPageRender('courses', generation)) return;
+  for (const deadline of allDeadlines) {
+    const deadlines = deadlinesByCourse.get(deadline.course_id) ?? [];
+    deadlines.push(deadline);
+    deadlinesByCourse.set(deadline.course_id, deadlines);
+  }
   const groupedCourses = new Map<string, CourseSummary[]>();
   for (const course of courses) {
     const term = course.term || 'No term';
@@ -1236,9 +1324,12 @@ function renderResourcesSourceFilter(): void {
 }
 
 async function renderResourcesPage(): Promise<void> {
-  void renderDashboard();
-  const courses = await atlasApi.listCourses();
-  const allResources = await atlasApi.listAllResources();
+  const generation = beginPageRender('resources');
+  const [courses, allResources] = await Promise.all([
+    cachedRendererRead('courses:all', () => atlasApi.listCourses()),
+    cachedRendererRead('resources:all', () => atlasApi.listAllResources()),
+  ]);
+  if (!isCurrentPageRender('resources', generation)) return;
   renderResourcesRail(courses, allResources);
   renderResourcesSourceFilter();
   document.getElementById('resources-page-count')!.textContent = String(allResources.length);
@@ -1478,10 +1569,12 @@ function renderAllNotesList(notes: NoteWithCourse[]): void {
 }
 
 async function renderNotesPage(): Promise<void> {
-  void renderDashboard();
-  const courses = await atlasApi.listCourses();
-
-  const allNotes = await atlasApi.listAllNotes();
+  const generation = beginPageRender('notes');
+  const [courses, allNotes] = await Promise.all([
+    cachedRendererRead('courses:all', () => atlasApi.listCourses()),
+    cachedRendererRead('notes:all', () => atlasApi.listAllNotes()),
+  ]);
+  if (!isCurrentPageRender('notes', generation)) return;
   const rail = document.getElementById('notes-course-rail')!;
   rail.innerHTML = '';
   const options = [{ id: null, name: 'All notes', count: allNotes.length }, ...courses.map((course) => ({ id: course.id, name: course.name, count: allNotes.filter((note) => note.course_id === course.id).length }))];
@@ -1688,7 +1781,6 @@ function makeDeadlineCheckbox(deadline: Deadline): HTMLInputElement {
 }
 
 async function renderDeadlines(): Promise<void> {
-  void renderDashboard();
   // Deadline edits/resets/deletes never navigate away from whatever page is
   // currently showing (modals layer on top), so Calendar needs an explicit
   // nudge here or it keeps showing stale data until the user flips months.
@@ -1752,16 +1844,104 @@ async function renderDashboard(): Promise<void> {
   ]);
 }
 
+let visibleChangeRefresh: Promise<void> = Promise.resolve();
+
+function queueVisibleChangeRefresh(change: AtlasChange): void {
+  visibleChangeRefresh = visibleChangeRefresh
+    .then(() => refreshVisibleSurfaceForChange(change))
+    .catch((error) => console.error('Atlas change refresh failed:', error));
+}
+
+async function refreshVisibleSurfaceForChange(change: AtlasChange): Promise<void> {
+  // A sync can change several entity types at once. Refresh only the page the
+  // user can currently see; showPage() will load the other pages from the DB
+  // when the user visits them.
+  if (change.entity === 'sync') {
+    if (currentPage === 'dashboard') await renderDashboard();
+    else if (currentPage === 'courses') {
+      if (selectedCourse) {
+        await Promise.all([
+          renderCourseDetailPreviews(selectedCourse.id),
+          renderCourseReadiness(selectedCourse.id),
+          renderDeadlines(),
+          renderCourseClassroomSection(selectedCourse),
+        ]);
+      } else await renderCourses();
+    } else if (currentPage === 'resources') await renderResourcesPage();
+    else if (currentPage === 'notes') await renderNotesPage();
+    else if (currentPage === 'calendar') await renderCalendarPage();
+    return;
+  }
+
+  if (change.entity === 'course') {
+    if (currentPage === 'courses') {
+      if (selectedCourse?.id === change.id && change.action !== 'deleted') {
+        const courses = await atlasApi.listCourses();
+        const updated = courses.find((course) => course.id === change.id);
+        if (updated) {
+          selectedCourse = updated;
+          document.getElementById('course-detail-heading')!.textContent = updated.name;
+          document.getElementById('course-detail-meta')!.textContent = [updated.code, updated.term]
+            .filter((part): part is string => !!part)
+            .join(' · ');
+          await renderCourseClassroomSection(updated);
+        } else {
+          backToCourseList();
+        }
+      }
+      await renderCourses();
+    } else if (currentPage === 'dashboard') await renderDashboard();
+    else if (currentPage === 'resources') await renderResourcesPage();
+    else if (currentPage === 'notes') await renderNotesPage();
+    else if (currentPage === 'calendar') await renderCalendarPage();
+    return;
+  }
+
+  if (change.entity === 'resource') {
+    if (currentPage === 'resources') await renderResourcesPage();
+    else if (currentPage === 'courses' && change.courseId !== undefined && selectedCourse?.id === change.courseId) {
+      const courseId = change.courseId;
+      await Promise.all([
+        renderCourseDetailPreviews(courseId),
+        renderCourseReadiness(courseId),
+      ]);
+    } else if (currentPage === 'dashboard') await renderDashboard();
+    return;
+  }
+
+  if (change.entity === 'note') {
+    if (currentPage === 'notes') await renderNotesPage();
+    else if (currentPage === 'courses' && change.courseId !== undefined && selectedCourse?.id === change.courseId) {
+      await renderCourseDetailPreviews(change.courseId);
+    } else if (currentPage === 'dashboard') await renderDashboard();
+    return;
+  }
+
+  if (change.entity === 'deadline') {
+    if (currentPage === 'calendar') await renderCalendarPage();
+    else if (currentPage === 'courses' && change.courseId !== undefined && selectedCourse?.id === change.courseId) {
+      await renderDeadlines();
+    }
+    else if (currentPage === 'dashboard') await renderDashboard();
+  }
+}
+
 // Google Drive: connect/disconnect, pick the one "inbox" folder to scan, and
 // review new files it finds (Phase 3, open-questions.md #19). Files
 // aren't imported automatically — the user assigns a course and a
 // Resource/Note type per file (or in bulk) before anything gets copied into
 // local managed storage; "Atlas owns the data" (AGENTS.md) still holds once
 // something's tagged, Drive is just the inbox.
-async function renderDriveStatus(): Promise<void> {
+interface SourceRenderContext {
+  connected: boolean;
+  authRequired: boolean;
+  folder: DriveFolder | null;
+}
+
+async function renderDriveStatus(syncStatus?: SyncStatus): Promise<void> {
   const connected = await atlasApi.isDriveConnected();
-  const syncStatus = await atlasApi.getSyncStatus();
-  const authRequired = syncStatus.drive.authRequired;
+  const syncStatusValue = syncStatus ?? (await atlasApi.getSyncStatus());
+  const authRequired = syncStatusValue.drive.authRequired;
   const status = document.getElementById('drive-status')!;
   const connectButton = document.getElementById('drive-connect-button') as HTMLButtonElement;
   const disconnectButton = document.getElementById('drive-disconnect-button') as HTMLButtonElement;
@@ -1775,19 +1955,23 @@ async function renderDriveStatus(): Promise<void> {
   hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Drive to watch a folder and open Office files in Drive.';
   (document.getElementById('drive-folder-form') as HTMLElement).hidden = !connected;
 
-  if (connected) {
-    const folder = await atlasApi.getDriveFolder();
+  const folder = connected ? await atlasApi.getDriveFolder() : null;
+  if (folder) {
     const input = document.getElementById('drive-folder-input') as HTMLInputElement;
     if (folder) input.value = folder.name;
   }
 
-  await renderDrivePendingStatus();
+  await renderDrivePendingStatus({ connected, authRequired, folder });
 }
 
-async function renderDrivePendingStatus(): Promise<void> {
-  const connected = await atlasApi.isDriveConnected();
-  const authRequired = (await atlasApi.getSyncStatus()).drive.authRequired;
-  const folder = connected ? await atlasApi.getDriveFolder() : null;
+async function renderDrivePendingStatus(context?: SourceRenderContext): Promise<void> {
+  const resolved = context ?? {
+    connected: await atlasApi.isDriveConnected(),
+    authRequired: (await atlasApi.getSyncStatus()).drive.authRequired,
+    folder: null,
+  };
+  const { connected, authRequired } = resolved;
+  const folder = resolved.folder ?? (connected ? await atlasApi.getDriveFolder() : null);
   const pendingStatus = document.getElementById('drive-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('drive-review-button') as HTMLButtonElement;
 
@@ -2029,10 +2213,10 @@ function toggleDriveReviewSelectAll(): void {
 // a course-mapping review panel. Once a Classroom course is mapped to an
 // Atlas course, its coursework/announcements import automatically on future
 // syncs — only which course a Classroom course maps to is gated here.
-async function renderClassroomStatus(): Promise<void> {
+async function renderClassroomStatus(syncStatus?: SyncStatus): Promise<void> {
   const connected = await atlasApi.isClassroomConnected();
-  const syncStatus = await atlasApi.getSyncStatus();
-  const authRequired = syncStatus.classroom.authRequired;
+  const syncStatusValue = syncStatus ?? (await atlasApi.getSyncStatus());
+  const authRequired = syncStatusValue.classroom.authRequired;
   const status = document.getElementById('classroom-status')!;
   const connectButton = document.getElementById('classroom-connect-button') as HTMLButtonElement;
   const disconnectButton = document.getElementById('classroom-disconnect-button') as HTMLButtonElement;
@@ -2045,12 +2229,16 @@ async function renderClassroomStatus(): Promise<void> {
   disconnectButton.hidden = !connected;
   hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Classroom to bring in courses, deadlines, and announcements.';
 
-  await renderClassroomPendingStatus();
+  await renderClassroomPendingStatus({ connected, authRequired, folder: null });
 }
 
-async function renderClassroomPendingStatus(): Promise<void> {
-  const connected = await atlasApi.isClassroomConnected();
-  const authRequired = (await atlasApi.getSyncStatus()).classroom.authRequired;
+async function renderClassroomPendingStatus(context?: SourceRenderContext): Promise<void> {
+  const resolved = context ?? {
+    connected: await atlasApi.isClassroomConnected(),
+    authRequired: (await atlasApi.getSyncStatus()).classroom.authRequired,
+    folder: null,
+  };
+  const { connected, authRequired } = resolved;
   const pendingStatus = document.getElementById('classroom-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('classroom-review-button') as HTMLButtonElement;
 
@@ -2551,8 +2739,9 @@ function formatDueTime(value: string): string {
 }
 
 async function renderCalendarPage(): Promise<void> {
+  const generation = beginPageRender('calendar');
   const [deadlines, announcements] = await Promise.all([
-    atlasApi.listAllDeadlinesWithCourse(),
+    cachedRendererRead('deadlines:all', () => atlasApi.listAllDeadlinesWithCourse()),
     atlasApi.listAllAnnouncementsWithCourse(),
   ]);
   const events: CalendarEvent[] = [
@@ -2713,7 +2902,7 @@ function renderSyncConfigSelect(source: 'drive' | 'classroom', value: string): v
   root.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
     menu.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
-    void atlasApi.setSyncConfig(source, option.dataset.value!).then(renderSyncStatus);
+    void atlasApi.setSyncConfig(source, option.dataset.value!).then(() => renderSyncStatus());
   }));
 }
 
@@ -3366,7 +3555,7 @@ async function goToDashboardActivityItem(item: DashboardActivityItem): Promise<v
   }
 }
 
-let noteEditorInstance: Crepe | null = null;
+let noteEditorInstance: AtlasNoteEditor | null = null;
 let currentNoteId: number | null = null;
 // Tracks whether the currently-open note has a course yet — drives the
 // "Assign to course" button's visibility (see openNoteEditor). NULL means
@@ -3448,28 +3637,6 @@ function scheduleNoteSave(): void {
 // `storedMarks` so the next character typed comes out bold — the same
 // mechanism as clicking Bold then typing. Once real text exists, this
 // stops touching the node, so it never fights a manual Ctrl+B afterward.
-const autoboldHeadingPlugin = $prose(
-  () =>
-    new Plugin({
-      key: new PluginKey('atlas-autobold-heading'),
-      appendTransaction: (transactions, _oldState, newState) => {
-        if (!transactions.some((tr) => tr.docChanged)) return null;
-
-        const headingType = newState.schema.nodes.heading;
-        const strongType = newState.schema.marks.strong;
-        if (!headingType || !strongType) return null;
-
-        const parent = newState.selection.$from.parent;
-        if (parent.type !== headingType || parent.content.size !== 0) return null;
-
-        const stored = newState.storedMarks ?? newState.selection.$from.marks();
-        if (strongType.isInSet(stored)) return null;
-
-        return newState.tr.setStoredMarks([strongType.create()]);
-      },
-    })
-);
-
 async function flushPendingNoteSave(): Promise<void> {
   if (noteSaveTimer) {
     clearTimeout(noteSaveTimer);
@@ -3516,40 +3683,19 @@ async function mountNoteEditor(note: Note): Promise<void> {
     return atlasApi.saveNoteImage(note.course_id, buffer, extension);
   };
 
-  const crepe = new Crepe({
+  await loadRendererFeature('note-editor');
+  const editorApi = (window as any).atlasNoteEditor as AtlasNoteEditorApi;
+  noteEditorInstance = await editorApi.create({
     root,
     defaultValue: note.content_markdown,
-    featureConfigs: {
-      [Crepe.Feature.ImageBlock]: {
-        onUpload: saveImage,
-        inlineOnUpload: saveImage,
-        blockOnUpload: saveImage,
-      },
-      // Shorter, search/scan-friendly labels in the slash menu — "H1"
-      // instead of "Heading 1", per the user's request. Only the heading
-      // entries change; everything else keeps Crepe's defaults.
-      [Crepe.Feature.BlockEdit]: {
-        textGroup: {
-          h1: { label: 'H1' },
-          h2: { label: 'H2' },
-          h3: { label: 'H3' },
-          h4: { label: 'H4' },
-          h5: { label: 'H5' },
-          h6: { label: 'H6' },
-        },
-      },
-    },
+    courseId: note.course_id,
+    saveImage,
+    onMarkdownUpdated: scheduleNoteSave,
   });
-  crepe.editor.use(autoboldHeadingPlugin);
-  crepe.on((listener) => {
-    listener.markdownUpdated(() => scheduleNoteSave());
-  });
-  await crepe.create();
-  noteEditorInstance = crepe;
   // Baseline for the open/close no-op check above — captured from Crepe's
   // own output post-mount, after whatever normalization it just did, not
   // the raw value passed in.
-  noteContentAtOpen = crepe.getMarkdown();
+  noteContentAtOpen = noteEditorInstance.getMarkdown();
   // A second, fixed baseline for closeNoteEditor()'s discard-if-untouched
   // check — see its own declaration comment for why this can't just reuse
   // noteContentAtOpen.
@@ -3645,7 +3791,7 @@ async function closeNoteEditor(): Promise<void> {
 
   // Refresh whichever view could now be showing a stale title/timestamp for
   // this note — same currentPage-gated refresh pattern already used for
-  // resources (see the resources:changed handler in init()).
+  // resources (the visible-change event handler in init() keeps this surface fresh).
   if (currentPage === 'notes') await renderNotesPage();
   else if (currentPage === 'dashboard') await renderDashboard();
   else if (currentPage === 'courses' && selectedCourse) await renderCourseDetailPreviews(selectedCourse.id);
@@ -3676,49 +3822,9 @@ function toggleNoteTrueFullscreen(): void {
 }
 
 async function renderPdfInto(container: HTMLElement, data: Uint8Array): Promise<void> {
-  container.classList.add('pdf-preview-body');
-  container.innerHTML = '<p class="pdf-preview-status muted">Loading PDF…</p>';
-
-  try {
-    const pdf = await getDocument({ data: new Uint8Array(data) }).promise;
-    const pages = document.createElement('div');
-    pages.className = 'pdf-preview-pages';
-    const availableWidth = Math.max(320, container.clientWidth - 2 * 26);
-
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-      const page = await pdf.getPage(pageNumber);
-      const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(1.35, availableWidth / baseViewport.width);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Could not create a PDF canvas.');
-
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.ceil(viewport.width * pixelRatio);
-      canvas.height = Math.ceil(viewport.height * pixelRatio);
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
-      canvas.setAttribute('aria-label', `PDF page ${pageNumber} of ${pdf.numPages}`);
-
-      const pageSurface = document.createElement('div');
-      pageSurface.className = 'pdf-preview-page';
-      pageSurface.appendChild(canvas);
-      pages.appendChild(pageSurface);
-
-      await page.render({
-        canvas,
-        canvasContext: context,
-        viewport,
-        transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
-      }).promise;
-    }
-
-    container.replaceChildren(pages);
-  } catch (error) {
-    console.error('PDF preview render failed:', error);
-    container.innerHTML = '<p class="muted pdf-preview-status">Could not render this PDF in Atlas. Use Open in browser for the original file.</p>';
-  }
+  await loadRendererFeature('pdf-renderer');
+  const pdfRenderer = (window as any).atlasPdfRenderer as AtlasPdfRendererApi;
+  await pdfRenderer.renderPdfInto(container, data);
 }
 
 // Renders a scan preview (image or PDF) into a plain container — same two
@@ -4450,8 +4556,8 @@ function setViewMode(mode: 'list' | 'grid', persist = true): void {
   // toggles drive the same shared `viewMode` preference.
   document.getElementById('deadline-view-list-toggle')!.classList.toggle('active', mode === 'list');
   document.getElementById('deadline-view-grid-toggle')!.classList.toggle('active', mode === 'grid');
-  void renderResourcesPage();
-  void renderDeadlines();
+  if (currentPage === 'resources') void renderResourcesPage();
+  if (currentPage === 'courses' && selectedCourse) void renderDeadlines();
   if (persist) atlasApi.setSetting('viewMode', mode);
 }
 
@@ -5294,44 +5400,6 @@ function applyTheme(theme: 'light' | 'dark'): void {
 function setTheme(theme: 'light' | 'dark'): void {
   applyTheme(theme);
   atlasApi.setSetting('theme', theme);
-}
-
-// Accent color — a user-chosen override of --color-accent (styles.css :root),
-// which already drives active states/buttons/highlights throughout the app,
-// so changing this one CSS custom property recolors all of them at once
-// rather than needing per-component theming.
-// These are the five literal Direction A swatches. Both token families are
-// updated below because pre-overhaul surfaces still use --color-accent while
-// the rebuilt pages use --accent.
-const ACCENT_COLORS = ['#d9a441', '#3b82f6', '#8b5cf6', '#3ba55d', '#ec4899'];
-const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
-
-function applyAccentColor(color: string): void {
-  document.documentElement.style.setProperty('--accent', color);
-  document.documentElement.style.setProperty('--color-accent', color);
-  document.querySelectorAll<HTMLElement>('.settings-accent-swatch').forEach((swatch) => {
-    swatch.classList.toggle('active', swatch.dataset.accentColor === color);
-  });
-}
-
-function setAccentColor(color: string): void {
-  applyAccentColor(color);
-  atlasApi.setSetting('accentColor', color);
-}
-
-function renderAccentSwatches(): void {
-  const container = document.getElementById('settings-accent-swatches')!;
-  container.innerHTML = '';
-  for (const color of ACCENT_COLORS) {
-    const swatch = document.createElement('button');
-    swatch.type = 'button';
-    swatch.className = 'settings-accent-swatch';
-    swatch.dataset.accentColor = color;
-    swatch.style.backgroundColor = color;
-    swatch.setAttribute('aria-label', `Accent color ${color}`);
-    swatch.addEventListener('click', () => setAccentColor(color));
-    container.appendChild(swatch);
-  }
 }
 
 function focusSearch(): void {
@@ -6899,30 +6967,27 @@ function wireWindowControls(): void {
 
 async function init(): Promise<void> {
   wireWindowControls();
-  const savedTheme = await atlasApi.getSetting('theme');
+  const [savedTheme, savedSidebarCollapsed, savedViewMode, savedSemesterFilter] = await Promise.all([
+    atlasApi.getSetting('theme'),
+    atlasApi.getSetting('sidebarCollapsed'),
+    atlasApi.getSetting('viewMode'),
+    atlasApi.getSetting('semesterFilter'),
+  ]);
   applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 
-  renderAccentSwatches();
-  const savedAccentColor = await atlasApi.getSetting('accentColor');
-  applyAccentColor(savedAccentColor && ACCENT_COLORS.includes(savedAccentColor) ? savedAccentColor : DEFAULT_ACCENT_COLOR);
-
-  const savedSidebarCollapsed = await atlasApi.getSetting('sidebarCollapsed');
   if (savedSidebarCollapsed === '1') setSidebarCollapsed(true, false);
 
-  const savedViewMode = await atlasApi.getSetting('viewMode');
   // 'icons' is the pre-rename persisted value (view mode was called "list |
   // icons" before being relabeled "list | grid" to match the Courses page's
   // own wording) — still honored so an existing saved preference isn't
   // silently reset back to list on the next launch.
   if (savedViewMode === 'grid' || savedViewMode === 'icons') setViewMode('grid', false);
 
-  const savedSemesterFilter = await atlasApi.getSetting('semesterFilter');
   if (savedSemesterFilter) {
     semesterFilter = savedSemesterFilter;
   }
 
-  await renderCourses();
-  await renderDashboard();
+  await Promise.all([renderCourses(), renderDashboard()]);
 
   const form = document.getElementById('course-form') as HTMLFormElement;
   const addCourseToggle = document.getElementById('add-course-toggle') as HTMLButtonElement;
@@ -7211,16 +7276,6 @@ async function init(): Promise<void> {
 
   atlasApi.onClassroomChanged(() => {
     void renderClassroomPendingStatus();
-    // A course's coursework can land moments after the user confirms its
-    // mapping (see classroom:mapCourseToExisting/mapCourseToNew's immediate
-    // re-sync) — refresh whatever's currently visible so it doesn't look
-    // like the sync silently did nothing if they're already looking at it.
-    if (currentPage === 'dashboard') void renderDashboard();
-    else if (currentPage === 'courses' && selectedCourse) {
-      void renderCourseDetailPreviews(selectedCourse.id);
-      void renderCourseReadiness(selectedCourse.id);
-    }
-    else if (currentPage === 'courses') void renderCourses();
   });
   document.getElementById('sidebar-collapse-toggle')!.addEventListener('click', () => {
     const isCollapsed = document.getElementById('sidebar')!.classList.contains('collapsed');
@@ -7686,15 +7741,12 @@ async function init(): Promise<void> {
     await renderWatchedFolders();
   });
 
-  // Fired by the main process when a watched folder picks up a new file —
-  // the global Resources page isn't scoped to one course, so just refresh
-  // it outright rather than checking which course the event was for.
-  atlasApi.onResourcesChanged(async (courseId) => {
-    if (currentPage === 'resources') await renderResourcesPage();
-    else if (currentPage === 'courses' && selectedCourse?.id === courseId) {
-      await renderCourseDetailPreviews(courseId);
-      await renderCourseReadiness(courseId);
-    } else void renderDashboard();
+  // All canonical CRUD mutations use the same event shape. Queue refreshes so
+  // a burst from a folder watcher or sync cannot render over itself with
+  // stale intermediate data.
+  atlasApi.onAtlasChanged((change) => {
+    invalidateRendererReadCache();
+    queueVisibleChangeRefresh(change);
   });
 
   const searchInput = document.getElementById('search-input') as HTMLInputElement;

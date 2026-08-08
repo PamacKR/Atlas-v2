@@ -11,6 +11,16 @@ export interface SyncSourceStatus {
 }
 export type SyncStatus = Record<'drive' | 'classroom', SyncSourceStatus>;
 
+export type AtlasChangeEntity = 'course' | 'resource' | 'note' | 'deadline' | 'sync';
+export type AtlasChangeAction = 'created' | 'updated' | 'deleted';
+
+export interface AtlasChange {
+  entity: AtlasChangeEntity;
+  action: AtlasChangeAction;
+  id: number;
+  courseId?: number | null;
+}
+
 export interface Course {
   id: number;
   name: string;
@@ -303,6 +313,9 @@ contextBridge.exposeInMainWorld('atlas', {
   onClassroomChanged: (handler: () => void): void => {
     ipcRenderer.on('classroom:changed', () => handler());
   },
+  onAtlasChanged: (handler: (change: AtlasChange) => void): void => {
+    ipcRenderer.on('atlas:changed', (_event, change: AtlasChange) => handler(change));
+  },
   listAvailableClassroomCoursesForLinking: (): Promise<ClassroomLinkableCourse[]> =>
     ipcRenderer.invoke('classroom:listAvailableCoursesForLinking'),
   connectCourseToClassroom: (
@@ -391,9 +404,6 @@ contextBridge.exposeInMainWorld('atlas', {
   showFolderContextMenu: (folderId: number): void => ipcRenderer.send('folders:contextMenu', folderId),
   onFolderContextMenuRemove: (handler: (folderId: number) => void): void => {
     ipcRenderer.on('folders:contextMenuRemove', (_event, folderId: number) => handler(folderId));
-  },
-  onResourcesChanged: (handler: (courseId: number) => void): void => {
-    ipcRenderer.on('resources:changed', (_event, courseId: number) => handler(courseId));
   },
   listNotes: (courseId: number): Promise<Note[]> => ipcRenderer.invoke('notes:listByCourse', courseId),
   createNote: (courseId: number): Promise<Note> => ipcRenderer.invoke('notes:create', courseId),

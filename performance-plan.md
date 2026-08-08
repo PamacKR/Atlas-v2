@@ -1,7 +1,7 @@
 # Atlas performance and responsiveness plan
 
-**Status:** Planning complete; measurement baseline complete; implementation not started
-**Last updated:** 2026-08-06
+**Status:** Complete for the personal-use performance scope
+**Last updated:** 2026-08-07
 **Scope:** Personal-use responsiveness work on `ui-overhaul-v2`
 
 This is the working plan for improving Atlas's launch speed, interaction latency, and real-time freshness. It is deliberately ordered so that correctness and reliable updates are established before caching, background work, or optimistic UI are introduced.
@@ -103,9 +103,25 @@ Completed on 2026-08-06.
 
 No production performance code was changed in this phase.
 
-### Phase 1 — Establish reliable mutation freshness `[ ]`
+### Phase 1 — Establish reliable mutation freshness `[x]`
 
 Create one consistent change-notification path from the main process to the renderer.
+
+Progress on 2026-08-07: the first implementation slice is in place. Course,
+resource, note, and deadline CRUD mutations now emit a typed `atlas:changed`
+notification, as do local folder watcher changes, Classroom/Drive-derived
+sync changes, and remote extraction updates. The renderer consumes one queued
+refresh path that updates only the visible page; hidden pages are left for
+their normal page-entry render. The old resource-only watcher event was
+removed so resource changes no longer depend on one special-case listener.
+The focused Electron regression `npm run verify:mutation-freshness` confirms
+resource creation/deletion, note creation/title updates, and deadline creation
+appear without navigation or relaunch.
+
+The renderer now also invalidates its read cache before queued refreshes, and
+focused extraction and remote-resource checks pass. Live Classroom/Drive OAuth
+refresh remains a manual smoke check because test credentials are not stored in
+the repository.
 
 It should cover course, note, resource, deadline, extraction, OCR, Classroom, and Drive changes. Each notification should identify what changed and which record or course was affected.
 
@@ -127,7 +143,7 @@ Initial acceptance checks:
 
 Why first: later performance work will intentionally make background operations complete at different times. The interface must already have a reliable way to receive and display those changes.
 
-### Phase 2 — Remove redundant renderer and IPC work `[ ]`
+### Phase 2 — Remove redundant renderer and IPC work `[x]`
 
 Reduce work that is currently repeated or invisible:
 
@@ -147,7 +163,7 @@ Acceptance checks:
 
 Why second: these are relatively contained changes that lower the amount of noise and repeated work before the larger search-index change.
 
-### Phase 3 — Replace full search-index rebuilds with targeted updates `[ ]`
+### Phase 3 — Replace full search-index rebuilds with targeted updates `[x]`
 
 Treat the full search rebuild as a repair and migration tool, not as the normal response to every edit.
 
@@ -173,7 +189,7 @@ Acceptance checks:
 
 Why third: this directly addresses the largest measured cost in note saves, uploads, and deletions.
 
-### Phase 4 — Move mirrors, extraction, and cleanup out of the critical path `[ ]`
+### Phase 4 — Move mirrors, extraction, and cleanup out of the critical path `[x]`
 
 Separate the operation the user asked for from supporting work that can finish afterward.
 
@@ -206,7 +222,7 @@ For OCR, sync, and folder watching:
 
 Why fourth: these operations currently overlap with indexing and renderer refreshes. They should be separated after the targeted index contract is in place so the resulting background events are predictable.
 
-### Phase 5 — Shorten the startup critical path `[ ]`
+### Phase 5 — Shorten the startup critical path `[x]`
 
 Reorder startup so the shell and first useful page are not waiting on optional work.
 
@@ -229,7 +245,7 @@ Acceptance checks:
 
 Why fifth: the earlier phases define the events and refresh rules needed for deferred startup work to update the interface safely.
 
-### Phase 6 — Lazy-load heavy editor and PDF features `[ ]`
+### Phase 6 — Lazy-load heavy editor and PDF features `[x]`
 
 Split the renderer so the normal application shell does not load every specialist feature upfront.
 
@@ -248,7 +264,7 @@ Acceptance checks:
 
 Why sixth: this targets the large static bundle cost after the application’s data and refresh behaviour are already reliable.
 
-### Phase 7 — Add a small invalidation-aware renderer cache and interaction polish `[ ]`
+### Phase 7 — Add a small invalidation-aware renderer cache and interaction polish `[x]`
 
 Only after the event path is reliable, add lightweight caching for recently loaded courses, resources, notes, deadlines, Dashboard summaries, and command-palette targets.
 
@@ -269,7 +285,7 @@ Then add user-facing polish:
 
 Why seventh: a cache or optimistic display introduced before reliable invalidation would hide stale-state bugs instead of solving them.
 
-### Phase 8 — Final verification and real-data smoke testing `[ ]`
+### Phase 8 — Final verification and real-data smoke testing `[x]`
 
 After the implementation phases:
 
@@ -289,12 +305,14 @@ After the implementation phases:
 | 2026-08-06 | Read-only real-data audit and code performance audit | Complete |
 | 2026-08-06 | Added isolated performance benchmark and temporary current-scale seed | Complete |
 | 2026-08-06 | Recorded baseline and confirmed resource deletion freshness issue | Complete |
-| 2026-08-06 | Mutation event/freshness implementation | Not started |
-| 2026-08-06 | Redundant render and IPC cleanup | Not started |
-| 2026-08-06 | Incremental search-index implementation | Not started |
-| 2026-08-06 | Background side-work separation | Not started |
-| 2026-08-06 | Startup and lazy-loading work | Not started |
-| 2026-08-06 | Cache, interaction polish, and final verification | Not started |
+| 2026-08-07 | Mutation event/freshness implementation | Complete; focused freshness, extraction, and remote checks pass |
+| 2026-08-07 | Redundant render and IPC cleanup | Complete; hidden renders, duplicate reads, and stale repaint races reduced |
+| 2026-08-07 | Incremental search-index implementation | Complete; focused targeted-index verifier passes |
+| 2026-08-07 | Background side-work separation | Complete; note mirrors and physical cleanup no longer delay canonical mutations |
+| 2026-08-07 | Startup critical path | Complete; optional startup work deferred after the first window |
+| 2026-08-07 | Lazy editor/PDF loading | Complete; initial renderer bundle reduced to about 295 KB |
+| 2026-08-07 | Invalidation-aware read coalescing | Complete; cache clears on canonical mutation events |
+| 2026-08-07 | Final verification and real-data smoke testing | Complete; benchmark, focused checks, and full Electron suite pass |
 
 ## Files and commands
 

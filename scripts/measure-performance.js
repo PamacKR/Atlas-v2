@@ -62,7 +62,6 @@ function seedDatabase(dataDir) {
 
     const settings = new Map([
       ['theme', 'dark'],
-      ['accentColor', '#d6a84f'],
       ['sidebarCollapsed', '0'],
       ['viewMode', 'list'],
       ['semesterFilter', ''],
