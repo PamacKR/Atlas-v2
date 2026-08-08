@@ -21,14 +21,12 @@ const fs = require('fs');
       }
     }
     await window.click('[data-settings-tab="appearance"]');
-    await window.click('.settings-accent-swatch[data-accent-color="#3b82f6"]');
-    const accent = await window.evaluate(() => ({
-      modern: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-      legacy: getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim(),
-      subtle: getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim(),
-    }));
-    if (accent.modern !== '#3b82f6' || accent.legacy !== '#3b82f6' || !accent.subtle.includes('#3b82f6')) throw new Error(`Accent did not apply across the UI: ${JSON.stringify(accent)}`);
-    await window.click('.settings-accent-swatch[data-accent-color="#d9a441"]');
+    if (await window.locator('#settings-accent-swatches').count()) throw new Error('Accent color controls are still present in Appearance');
+    if ((await window.textContent('[data-settings-tab="appearance"]'))?.includes('accent')) throw new Error('Appearance still advertises an accent setting');
+    await window.click('#settings-theme-light');
+    await window.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+    await window.click('#settings-theme-dark');
+    await window.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
     await window.click('[data-settings-tab="ai"]');
     const before = await window.getAttribute('#settings-agent-access', 'aria-checked');
     await window.click('#settings-agent-access');

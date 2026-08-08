@@ -46,7 +46,7 @@ The approved language is Direction A: a near-black, low-contrast workspace with 
 - **No wasted space.** Compact does not mean removing features. Use space for legible real data and intentional breathing room, not redundant headings, duplicate metadata, empty cards, or oversized headers.
 - **Typography carries hierarchy.** Page headings are simple and strong. Uppercase small section labels are muted. Metadata is smaller/muted. The weekday in Dashboard’s date heading is strong; the date is muted and normal-weight.
 - **Colour is semantic, not decorative.** Course dots/swatches retain their data colour. Due/overdue/error states may use semantic colour. Utility icons and routine controls should be monochrome outline icons. Do not reintroduce emoji utility icons or arbitrary coloured icon fills.
-- **Accent selection is global.** The Appearance accent picker must update not only primary solid controls, but also selected states, tinted/soft surfaces, focus/border treatments, and other subtle colour touches. A blue/purple/green/pink selection must not leave amber-tinted “light” surfaces behind.
+- **Accent is fixed.** Atlas uses the restrained amber/yellow accent from the approved Direction A palette. It belongs in active states, solid controls, focus treatments, and other intentional highlights; the neutral light/dark surfaces should remain neutral.
 - **Light and dark both matter.** Never solve a dark-mode appearance by hard-coding a dark colour. Use tokens that permit the light theme to remain coherent.
 
 ### Geometry and density
@@ -154,7 +154,7 @@ All overlays follow `mockups/overlays-a.html`, regardless of feature.
 ### Settings
 
 - Settings tabs/rail stay visible while a long settings panel scrolls; only the content area should move.
-- Appearance's accent selection must actually update all accent-derived tokens, including subtle/tinted surfaces.
+- Appearance contains only the Dark/Light theme picker; the accent remains the fixed Direction A amber/yellow token.
 - Sources controls use the shared neutral control anatomy and centred label baseline. Audit legacy per-ID rules: no Source button should look like a browser/default/old UI button. Remove redundant separators when removing a section.
 - Shortcuts uses compact uppercase heading language, neutral reset styling, and application-font keycaps rather than forced monospaced key text. The Ctrl+/ sheet is a shared themed overlay.
 - AI & Integration configuration code retains readable multiline indentation.

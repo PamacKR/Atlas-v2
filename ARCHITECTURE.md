@@ -333,7 +333,7 @@ The user asked for a visual reskin inspired by mockups they shared. This went th
 
 Scope stayed bounded to a reskin/restructure of what already exists, not new product concepts, across every round: no Calendar, Tags, Trash, or Notifications, and no separate Assignments concept (would reopen the deliberately-deferred decision in `open-questions.md` #13) — everything below is Dashboard/Courses/Resources/Notes/Deadlines, all of which already existed as features. **There is no Settings page** — it was added in an early round with only the data-folder path on it, then removed outright once the user pointed out there's nothing to configure yet; better to not have the nav item than have it open onto one line of static text.
 
-*(Both exclusions above were revisited once there was real content to justify them — a Calendar page and sidebar entry shipped in §4d, and Settings came back in session 46's UI-polish batch, `open-questions.md` #22, once Drive/Classroom connections plus a real theme/accent-color picker gave it actual content instead of one static line.)*
+*(Both exclusions above were revisited once there was real content to justify them — a Calendar page and sidebar entry shipped in §4d, and Settings came back in session 46's UI-polish batch, `open-questions.md` #22, once Drive/Classroom connections plus a real theme picker gave it actual content instead of one static line.)*
 
 ### Real page routing, not a scroll shortcut
 

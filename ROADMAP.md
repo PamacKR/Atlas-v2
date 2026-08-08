@@ -20,7 +20,7 @@ Goal: Atlas is useful *before* any external sync exists.
 - [x] Local folder watching: explicit per-course folder mapping (`chokidar`), new files copied into the course's managed storage automatically, same as manual upload
 - [x] Notes: Markdown, flat per course (session-titled, e.g. "W1L1"), live-rendering WYSIWYG editor (`@milkdown/crepe` — supports live list/heading/divider shortcuts, math via KaTeX, toolbar active-state), autosaved
 - [x] Semester filter for the course list, persisted across launches
-- [x] Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings — the course detail page is a tabbed layout (Overview/Deadlines/Announcements/Assignments/Classwork/Files) once Classroom sync gave Assignments/Announcements/Classwork real data to show. A real app-wide Settings page also shipped, hosting Drive/Classroom connections plus theme/accent-color.
+- [x] Course workspace UI: Overview, Resources, Assignments, Announcements, Notes, Deadlines, Files, Settings — the course detail page is a tabbed layout (Overview/Deadlines/Announcements/Assignments/Classwork/Files) once Classroom sync gave Assignments/Announcements/Classwork real data to show. A real app-wide Settings page also shipped, hosting Drive/Classroom connections plus theme controls.
 - [x] Unified Resource Library (single view regardless of source) — manual upload and local folder watching already land in the same per-course resource list/table regardless of source; Classroom/Gmail/Drive sources are Phase 3
 - [x] Dashboard v1: upcoming deadlines, recently added resources, "what changed today"
 - [x] Global search (SQLite FTS5) across courses, resources, notes
@@ -102,7 +102,7 @@ Added 2026-07-29. With the functional product essentially complete, this phase i
 These are intentionally recorded as ideas, not committed work or a new Phase 7:
 
 - Command Palette follow-up: broader real-use review with long names and large result lists, advanced target expressions such as deadline date/status/course filters, more overlay-stacking combinations, real connected Drive/Classroom testing, and additional aliases based on the user's natural phrasing.
-- Accent colour coverage bug: changing the accent currently updates solid boxes and checkbox controls, but some smaller tinted surfaces, subtle highlights, and tiny accent-derived areas still retain the old/default tint. Audit and fix this later during public-release polish.
+- Accent-colour customization — cancelled for the personal-use scope. Atlas keeps its original fixed amber/yellow accent; Appearance exposes only Dark and Light theme controls.
 
 ## Explicitly out of scope for V1
 

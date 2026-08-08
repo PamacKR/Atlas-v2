@@ -5402,44 +5402,6 @@ function setTheme(theme: 'light' | 'dark'): void {
   atlasApi.setSetting('theme', theme);
 }
 
-// Accent color — a user-chosen override of --color-accent (styles.css :root),
-// which already drives active states/buttons/highlights throughout the app,
-// so changing this one CSS custom property recolors all of them at once
-// rather than needing per-component theming.
-// These are the five literal Direction A swatches. Both token families are
-// updated below because pre-overhaul surfaces still use --color-accent while
-// the rebuilt pages use --accent.
-const ACCENT_COLORS = ['#d9a441', '#3b82f6', '#8b5cf6', '#3ba55d', '#ec4899'];
-const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
-
-function applyAccentColor(color: string): void {
-  document.documentElement.style.setProperty('--accent', color);
-  document.documentElement.style.setProperty('--color-accent', color);
-  document.querySelectorAll<HTMLElement>('.settings-accent-swatch').forEach((swatch) => {
-    swatch.classList.toggle('active', swatch.dataset.accentColor === color);
-  });
-}
-
-function setAccentColor(color: string): void {
-  applyAccentColor(color);
-  atlasApi.setSetting('accentColor', color);
-}
-
-function renderAccentSwatches(): void {
-  const container = document.getElementById('settings-accent-swatches')!;
-  container.innerHTML = '';
-  for (const color of ACCENT_COLORS) {
-    const swatch = document.createElement('button');
-    swatch.type = 'button';
-    swatch.className = 'settings-accent-swatch';
-    swatch.dataset.accentColor = color;
-    swatch.style.backgroundColor = color;
-    swatch.setAttribute('aria-label', `Accent color ${color}`);
-    swatch.addEventListener('click', () => setAccentColor(color));
-    container.appendChild(swatch);
-  }
-}
-
 function focusSearch(): void {
   const searchInput = document.getElementById('search-input') as HTMLInputElement;
   searchInput.focus();
@@ -7005,17 +6967,13 @@ function wireWindowControls(): void {
 
 async function init(): Promise<void> {
   wireWindowControls();
-  const [savedTheme, savedAccentColor, savedSidebarCollapsed, savedViewMode, savedSemesterFilter] = await Promise.all([
+  const [savedTheme, savedSidebarCollapsed, savedViewMode, savedSemesterFilter] = await Promise.all([
     atlasApi.getSetting('theme'),
-    atlasApi.getSetting('accentColor'),
     atlasApi.getSetting('sidebarCollapsed'),
     atlasApi.getSetting('viewMode'),
     atlasApi.getSetting('semesterFilter'),
   ]);
   applyTheme(savedTheme === 'light' ? 'light' : 'dark');
-
-  renderAccentSwatches();
-  applyAccentColor(savedAccentColor && ACCENT_COLORS.includes(savedAccentColor) ? savedAccentColor : DEFAULT_ACCENT_COLOR);
 
   if (savedSidebarCollapsed === '1') setSidebarCollapsed(true, false);
 
