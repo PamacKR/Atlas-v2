@@ -2,13 +2,13 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-08 (personal-use UI overhaul complete on `ui-overhaul-v2`; performance and responsiveness is now the next focused workstream.)
+**Last updated:** 2026-08-08 (personal-use UI overhaul and performance/responsiveness pass complete on `ui-overhaul-v2`; public-readiness planning is the next workstream.)
 
 ## Next session — start here
 
 Read `AGENTS.md`, this current-session section, `open-questions.md`, and `DESIGN.md` in that order. `DESIGN.md` is the cross-page implementation contract for the active UI overhaul; use the page mockup plus `controls-a.html` and `overlays-a.html` for every UI pass.
 
-The performance measurement pass and implementation phases are complete; the benchmark comparison and regression results are documented below.
+The performance measurement and implementation phases are complete; the benchmark comparison and regression results are documented below.
 
 The detailed implementation sequence is now recorded in `performance-plan.md`. Phases 0–8 are complete for the personal-use scope.
 
