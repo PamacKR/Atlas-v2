@@ -19,17 +19,22 @@ For a request such as “summarize Lecture 10 from Course X”:
    - If the named course is not found, report that directly and ask whether the user meant another course.
    - If the named course does exist but the user accidentally named the wrong course, search only that named course. Do not search other courses or infer which course the user intended. If the requested material is absent there, say so plainly and stop the lookup so the user can correct the course.
 
-2. Inspect the course's resource inventory with `atlas_list_resources`.
-   - Use the course's `resourceTotal` and the tool's `truncated` value to decide whether pagination is required.
-   - When the request contains a number, inspect all likely numbered resource titles before concluding that the item is absent.
+2. If the request names one material, call `atlas_resolve_material` inside the resolved course before using broad search.
+   - `status: "found"` means there is one exact title match. If `nextAction` is `read_match`, use its indicated `readTool`; if it is `handle_availability`, handle the returned `availability` state and stop or ask rather than launching another search.
+   - `status: "ambiguous"` means the server found multiple exact or nearby numbered candidates. Stop and use its `clarification` payload for a blocking user question.
+   - `status: "not_found"` means the requested title is not present in that course. Stop. Do not search other courses or keep trying title variations unless the user explicitly asks for a broader investigation.
+   - Inspect the returned `availability` before reading. A source can exist but still be pending, OCR-dependent, unsupported, failed, or external.
+
+3. Inspect the course's resource inventory with `atlas_list_resources` when the user asks for a broad inventory or when a deliberate investigation requires it.
+   - Use the returned `total`, `offset`, and `truncated` values to decide whether pagination is required.
    - Treat filenames, resource titles, and slide/page ordinals as different things. “Lecture 10” is not automatically the same as “Slide 10.”
 
-3. Use `atlas_search` only as a bounded follow-up.
+4. Use `atlas_search` only as a bounded follow-up for concepts, content, or an explicitly requested broader investigation.
    - Search the exact phrase first, then at most one or two sensible title variants such as “Session 10” or “Notes 10.”
    - Atlas search uses per-word prefix matching, not exact natural-language intent. A hit for the word “10” is not evidence that Lecture 10 exists.
    - Prefer a resource-title match over an incidental mention inside an unrelated document.
 
-4. Read the matched source with `atlas_read_document`, `atlas_read_note`, or the appropriate Classroom-item tool.
+5. Read the matched source with `atlas_read_document`, `atlas_read_note`, or the appropriate Classroom-item tool.
    - Read enough of the source to support the requested answer, including all relevant pages/slides when the source is short.
    - If text is unavailable but the readiness report says a local visual is available, use `atlas_read_visual` with the Atlas id. Do not request or expose arbitrary filesystem paths.
 
@@ -59,7 +64,7 @@ Ask the user when:
 
 When the client supports structured user input, use it for a short choice list. For Codex specifically, use the blocking structured question interaction used in Plan mode: the current task must pause until the user answers. Do not continue searching, spend tokens on more guesses, or produce the final answer while waiting for that response. Otherwise ask the same question in plain language. Do not hide a clarification question inside a long explanation.
 
-The MCP server supplies the verified candidates and the reason clarification is needed; it does not open an Atlas UI popup. The Codex client is responsible for presenting the blocking question interaction.
+`atlas_resolve_material` can also use standard MCP form elicitation when the connected client advertises it. In that case the tool call itself pauses, and an accepted choice returns the selected material as `found`; a declined/cancelled choice is a stop condition. If the client does not support elicitation, the tool returns the same candidates and clarification payload for the agent's own interaction mechanism. This is a client question, not an Atlas UI popup.
 
 ## Response standard
 

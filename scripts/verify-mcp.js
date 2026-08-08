@@ -15,6 +15,7 @@ const Database = require('better-sqlite3');
 const electronPath = require('electron');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
+const { ElicitRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 
 let failures = 0;
 function assert(condition, message) {
@@ -83,6 +84,16 @@ function seedTestData(dataDir) {
   // search must still find its one real hit rather than returning nothing.
   db.prepare("INSERT INTO courses (name, code, term, folder_name) VALUES ('Statistics', 'STAT1', 'Fall', 'Statistics')").run();
   const statsCourseId = db.prepare("SELECT id FROM courses WHERE name = 'Statistics'").get().id;
+  // Material-resolution fixtures: the requested Lecture 10 is absent, but
+  // adjacent Lecture 9 and Lecture 11 titles exist inside this course. The
+  // resolver must return a blocking clarification payload rather than leave
+  // the agent to keep broadening the search.
+  db.prepare(
+    "INSERT INTO resources (course_id, title, kind, file_path, extraction_status) VALUES (?, 'Lecture 9.pdf', 'pdf', ?, 'unsupported')"
+  ).run(statsCourseId, pdfPath);
+  db.prepare(
+    "INSERT INTO resources (course_id, title, kind, file_path, extraction_status) VALUES (?, 'Lecture 11.pdf', 'pdf', ?, 'unsupported')"
+  ).run(statsCourseId, pdfPath);
   for (let i = 1; i <= 20; i++) {
     db.prepare(
       "INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES ('document_part', ?, ?, ?, ?)"
@@ -153,7 +164,7 @@ async function main() {
   await client.connect(transport);
 
   const toolsList = await client.listTools();
-  assert(toolsList.tools.length === 12, `12 tools registered (found ${toolsList.tools.length})`);
+  assert(toolsList.tools.length === 13, `13 tools registered (found ${toolsList.tools.length})`);
 
   const callTool = async (name, args) => {
     const result = await client.callTool({ name, arguments: args });
@@ -162,7 +173,7 @@ async function main() {
 
   const overview = await callTool('atlas_overview', {});
   assert(overview.courses.some((c) => c.name === 'Microeconomics'), 'atlas_overview lists the seeded course');
-  assert(overview.resourceCount === 5, 'atlas_overview counts the seeded resources');
+  assert(overview.resourceCount === 7, 'atlas_overview counts the seeded resources');
 
   const briefing = await callTool('atlas_course_briefing', { course: 'statist' });
   assert(briefing.ok === true, 'atlas_course_briefing resolves a course by unique substring name');
@@ -195,6 +206,45 @@ async function main() {
     'an ambiguous course name returns the candidates instead of guessing one'
   );
 
+  const exactMaterial = await callTool('atlas_resolve_material', { course: courseId, query: 'Textbook' });
+  assert(
+    exactMaterial.ok === true &&
+      exactMaterial.status === 'found' &&
+      exactMaterial.nextAction === 'read_match' &&
+      exactMaterial.match.title === 'Textbook.pdf' &&
+      exactMaterial.match.readTool === 'atlas_read_document',
+    'atlas_resolve_material returns one exact title match and tells the agent to read it'
+  );
+
+  const unavailableMaterial = await callTool('atlas_resolve_material', { course: statsCourseId, query: 'Lecture 9' });
+  assert(
+    unavailableMaterial.ok === true &&
+      unavailableMaterial.status === 'found' &&
+      unavailableMaterial.nextAction === 'handle_availability' &&
+      unavailableMaterial.match.availability === 'unsupported',
+    'atlas_resolve_material distinguishes an exact but unreadable source from a readable match'
+  );
+
+  // A valid but wrong course must not cause a cross-course search or a guess.
+  const missingInNamedCourse = await callTool('atlas_resolve_material', { course: courseId, query: 'Lecture 10' });
+  assert(
+    missingInNamedCourse.ok === true && missingInNamedCourse.status === 'not_found' && missingInNamedCourse.nextAction === 'stop' && missingInNamedCourse.candidates.length === 0,
+    'atlas_resolve_material stops when the requested item is absent from the named course'
+  );
+
+  const adjacentMaterial = await callTool('atlas_resolve_material', { course: statsCourseId, query: 'Lecture 10' });
+  assert(
+    adjacentMaterial.ok === true &&
+      adjacentMaterial.status === 'ambiguous' &&
+      adjacentMaterial.nextAction === 'ask_user' &&
+      adjacentMaterial.candidates.map((candidate) => candidate.title).join('|') === 'Lecture 9.pdf|Lecture 11.pdf' &&
+      adjacentMaterial.clarification.options.length === 2,
+    'atlas_resolve_material returns adjacent numbered candidates and a structured clarification question'
+  );
+
+  const emptySearch = await callTool('atlas_search', { query: '   ' });
+  assert(emptySearch.ok === false, 'atlas_search rejects an empty query instead of risking a broad search');
+
   const search = await callTool('atlas_search', { query: 'chapter 5' });
   assert(search.hits.length === 1 && search.hits[0].title === 'Page 5', 'atlas_search finds the right page, not just the file');
   assert(
@@ -208,6 +258,7 @@ async function main() {
   const resources = await callTool('atlas_list_resources', { course: courseId });
   const textbook = resources.resources.find((resource) => resource.title === 'Textbook.pdf');
   assert(textbook?.partCount === 2, 'atlas_list_resources reports part count');
+  assert(resources.total === 5 && resources.offset === 0 && resources.truncated === false, 'atlas_list_resources reports pagination metadata');
 
   const deadlines = await callTool('atlas_list_deadlines', { course: courseId });
   assert(deadlines.deadlines.length === 1 && deadlines.deadlines[0].title === 'Midterm', 'atlas_list_deadlines lists the seeded deadline');
@@ -298,6 +349,39 @@ async function main() {
   dbCheck.close();
 
   await client.close();
+
+  // A second client advertises standard MCP form elicitation. The resolver
+  // should pause the tool call, receive the selected candidate, and return a
+  // found result; clients without this capability are covered by the
+  // structured fallback assertion above.
+  const elicitationTransport = new StdioClientTransport({
+    command: electronPath,
+    args: [path.join(__dirname, '..', 'dist', 'main', 'mcpServer.js')],
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ATLAS_DATA_DIR: dataDir },
+  });
+  const elicitationClient = new Client(
+    { name: 'atlas-verify-elicitation', version: '1.0.0' },
+    { capabilities: { elicitation: { form: {} } } }
+  );
+  elicitationClient.setRequestHandler(ElicitRequestSchema, async (request) => {
+    const choice = request.params.requestedSchema.properties.choice.oneOf[0].const;
+    return { action: 'accept', content: { choice } };
+  });
+  await elicitationClient.connect(elicitationTransport);
+  const elicitedResolution = await elicitationClient.callTool({
+    name: 'atlas_resolve_material',
+    arguments: { course: statsCourseId, query: 'Lecture 10' },
+  });
+  const elicited = JSON.parse(elicitedResolution.content[0].text);
+  assert(
+    elicited.ok === true &&
+      elicited.status === 'found' &&
+      elicited.selectedByUser === true &&
+      elicited.match.title === 'Lecture 9.pdf',
+    'atlas_resolve_material uses standard MCP elicitation when the client supports it'
+  );
+  await elicitationClient.close();
+
   fs.rmSync(dataDir, { recursive: true, force: true });
 
   if (failures > 0) {

@@ -34,11 +34,11 @@ This repo already ships a working **`.mcp.json`** at its root:
 
 **Codex / Cursor**: check whether the tool reads project-level `.mcp.json` directly (many do, since it's becoming a de facto convention). If not, copy the same `command`/`args` into that tool's own MCP config file — still no absolute path, since `node` and a path relative to the project root are portable regardless of which tool launches it, as long as it runs with this project as its working directory.
 
-After it's connected, it should list twelve `atlas_*` tools.
+After it's connected, it should list thirteen `atlas_*` tools, including `atlas_resolve_material` for exact/ambiguous/not-found resolution of named material inside one course. Clients that support standard MCP form elicitation can receive the resolver's blocking candidate question directly; other clients receive a structured fallback result.
 
 ## What the agent can do
 
-When using Atlas MCP for an academic request, the connected agent should also read [`MCP_AGENT_GUIDE.md`](MCP_AGENT_GUIDE.md). That guide defines the bounded lookup, course/resource disambiguation, missing-lecture clarification, and no-invention rules; it is intentionally separate from the software-development instructions in `AGENTS.md`.
+When using Atlas MCP for an academic request, the connected agent should also read [`MCP_AGENT_GUIDE.md`](MCP_AGENT_GUIDE.md). That guide defines the resolver-first lookup, course/resource disambiguation, missing-lecture clarification, stop conditions, and no-invention rules; it is intentionally separate from the software-development instructions in `AGENTS.md`.
 
 The MCP surface includes course readiness, full locally-synced Classroom announcement/assignment reads, and General/unsorted agent-note creation. Document-page search hits include the parent resource id/title, source, and ordinal so the agent can follow a page result directly into `atlas_read_document`.
 

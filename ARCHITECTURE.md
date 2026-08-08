@@ -210,7 +210,7 @@ Why MCP over static file export:
 
 ### MCP capabilities beyond text lookup
 
-The MCP server is currently a thin transport over the same canonical query layer and exposes twelve tools. In addition to overview, course briefings, search, resource/deadline inventories, document/note reads, memory, and agent-note creation, it exposes the app's deterministic per-course readiness report and full locally-synced Classroom announcement/assignment bodies. Agent-created notes may use `course_id = NULL` for the existing General/unsorted area; those notes remain flagged `generated_by_agent = 1` and are indexed immediately.
+The MCP server is currently a thin transport over the same canonical query layer and exposes thirteen tools. In addition to overview, course briefings, named-material resolution, search, resource/deadline inventories, document/note reads, memory, and agent-note creation, it exposes the app's deterministic per-course readiness report and full locally-synced Classroom announcement/assignment bodies. Named-material ambiguity can use standard MCP form elicitation when the client supports it; otherwise the resolver returns a structured clarification payload. Agent-created notes may use `course_id = NULL` for the existing General/unsorted area; those notes remain flagged `generated_by_agent = 1` and are indexed immediately.
 
 Document-page search hits include both the `document_parts` location and the parent resource id/title/source. This is deliberately returned as navigation metadata rather than full text; the agent follows the parent id and ordinal into `atlas_read_document`.
 

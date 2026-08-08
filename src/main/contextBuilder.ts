@@ -43,6 +43,7 @@ export function findCourse(db: Database.Database, ref: string | number): CourseL
   }
 
   const name = String(ref).trim().toLowerCase();
+  if (!name) return { ok: false, error: 'Course reference cannot be empty.' };
   const all = db.prepare('SELECT * FROM courses').all() as CourseRow[];
 
   const exact = all.filter((c) => c.name.trim().toLowerCase() === name);
@@ -205,6 +206,304 @@ export interface SearchHit {
   partOrdinal: number | null;
 }
 
+export type MaterialType = 'resource' | 'note' | 'announcement' | 'assignment';
+export type MaterialAvailability = 'readable' | 'needs_ocr' | 'pending' | 'failed' | 'unsupported' | 'external';
+export type MaterialReadTool = 'atlas_read_document' | 'atlas_read_note' | 'atlas_read_classroom_item';
+
+export interface MaterialCandidate {
+  type: MaterialType;
+  id: number;
+  title: string;
+  kind: string | null;
+  source: string | null;
+  readTool: MaterialReadTool;
+  availability: MaterialAvailability;
+  availabilityDetail: string;
+}
+
+export interface MaterialClarification {
+  kind: 'choose_material';
+  question: string;
+  options: { type: MaterialType; id: number; label: string }[];
+}
+
+export type MaterialResolution =
+  | {
+      ok: true;
+      status: 'found';
+      nextAction: 'read_match' | 'handle_availability';
+      course: { id: number; name: string; code: string | null; term: string | null };
+      query: string;
+      match: MaterialCandidate;
+    }
+  | {
+      ok: true;
+      status: 'ambiguous';
+      nextAction: 'ask_user' | 'stop';
+      course: { id: number; name: string; code: string | null; term: string | null };
+      query: string;
+      candidates: MaterialCandidate[];
+      clarification: MaterialClarification;
+    }
+  | {
+      ok: true;
+      status: 'not_found';
+      nextAction: 'stop';
+      course: { id: number; name: string; code: string | null; term: string | null };
+      query: string;
+      candidates: [];
+    };
+
+function materialTitleKey(value: string): string {
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\.(pdf|pptx|docx|xlsx|txt|md|csv|tsv|png|jpg|jpeg|webp)$/i, '')
+    .replace(/[_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function numberedTitle(value: string): { prefix: string; start: number; end: number } | null {
+  const normalized = materialTitleKey(value);
+  const match = normalized.match(/^(.*?)(?:\s+)(\d+)(?:\s*[-–—]\s*(\d+))?$/);
+  if (!match) return null;
+  return {
+    prefix: match[1].trim(),
+    start: Number(match[2]),
+    end: Number(match[3] ?? match[2]),
+  };
+}
+
+function resourceAvailability(row: {
+  kind: string;
+  source: string;
+  extractionStatus: string;
+  extractionError: string | null;
+  ocrText: string | null;
+  linkKind: string | null;
+  partCount: number;
+}): { availability: MaterialAvailability; availabilityDetail: string } {
+  if (row.extractionStatus === 'done' && (row.partCount > 0 || !!row.ocrText?.trim())) {
+    return { availability: 'readable', availabilityDetail: 'Text is available to the agent.' };
+  }
+  if (row.extractionStatus === 'pending') {
+    return { availability: 'pending', availabilityDetail: 'Atlas is still extracting this file.' };
+  }
+  if (row.extractionStatus === 'empty') {
+    return row.kind === 'pdf'
+      ? { availability: 'needs_ocr', availabilityDetail: 'No text layer was found; OCR may be required.' }
+      : { availability: 'unsupported', availabilityDetail: 'No readable text was found.' };
+  }
+  if (row.extractionStatus === 'failed') {
+    return { availability: 'failed', availabilityDetail: row.extractionError || 'Atlas could not extract text from this file.' };
+  }
+  if (row.kind === 'link' && row.linkKind !== 'driveFile') {
+    return { availability: 'external', availabilityDetail: 'This is an external link and has no Atlas text copy.' };
+  }
+  return { availability: 'unsupported', availabilityDetail: 'This source has no readable Atlas text.' };
+}
+
+function noteAvailability(row: {
+  contentMarkdown: string;
+  ocrText: string | null;
+  isHandwritten: number;
+  imagePath: string | null;
+}): { availability: MaterialAvailability; availabilityDetail: string } {
+  if (row.contentMarkdown.trim() || row.ocrText?.trim()) {
+    return { availability: 'readable', availabilityDetail: 'Note text is available to the agent.' };
+  }
+  if (row.isHandwritten && row.imagePath) {
+    return { availability: 'needs_ocr', availabilityDetail: 'This scan has no accepted text yet; the visual source may still be readable.' };
+  }
+  return { availability: 'unsupported', availabilityDetail: 'This note does not contain readable text yet.' };
+}
+
+// Resolves a named piece of material inside one already-selected course. This
+// deliberately does not perform semantic search: it gives the agent a safe
+// first step for requests such as "Lecture 10" and makes the three possible
+// outcomes explicit (found, ambiguous, or not_found). The agent can then read
+// the exact match, pause for the user, or stop without launching a desperate
+// sequence of broader searches.
+export function resolveMaterial(
+  db: Database.Database,
+  ref: string | number,
+  query: string
+): MaterialResolution | { ok: false; error: string; candidates?: { id: number; name: string }[] } {
+  const lookup = findCourse(db, ref);
+  if (!lookup.ok) return lookup;
+
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return { ok: false, error: 'Material query cannot be empty.' };
+
+  const course = lookup.course;
+  const candidates: MaterialCandidate[] = [];
+  const resources = db
+    .prepare(
+      `SELECT resources.id, resources.title, resources.kind, resources.source,
+              resources.extraction_status AS extractionStatus,
+              resources.extraction_error AS extractionError,
+              resources.ocr_text AS ocrText, resources.link_kind AS linkKind,
+              (SELECT COUNT(*) FROM document_parts WHERE document_parts.resource_id = resources.id) AS partCount
+       FROM resources WHERE resources.course_id = ? ORDER BY resources.title`
+    )
+    .all(course.id) as {
+    id: number;
+    title: string;
+    kind: string;
+    source: string;
+    extractionStatus: string;
+    extractionError: string | null;
+    ocrText: string | null;
+    linkKind: string | null;
+    partCount: number;
+  }[];
+  for (const resource of resources) {
+    const readiness = resourceAvailability(resource);
+    candidates.push({
+      type: 'resource',
+      id: resource.id,
+      title: resource.title,
+      kind: resource.kind,
+      source: resource.source,
+      readTool: 'atlas_read_document',
+      ...readiness,
+    });
+  }
+
+  const notes = db
+    .prepare(
+      `SELECT id, title, content_markdown AS contentMarkdown, ocr_text AS ocrText,
+              is_handwritten AS isHandwritten, image_path AS imagePath
+       FROM notes WHERE course_id = ? ORDER BY title`
+    )
+    .all(course.id) as {
+    id: number;
+    title: string;
+    contentMarkdown: string;
+    ocrText: string | null;
+    isHandwritten: number;
+    imagePath: string | null;
+  }[];
+  for (const note of notes) {
+    const readiness = noteAvailability(note);
+    candidates.push({
+      type: 'note',
+      id: note.id,
+      title: note.title,
+      kind: null,
+      source: 'note',
+      readTool: 'atlas_read_note',
+      ...readiness,
+    });
+  }
+
+  const announcements = db
+    .prepare(
+      `SELECT id, title, source, body
+       FROM announcements WHERE course_id = ? ORDER BY title`
+    )
+    .all(course.id) as { id: number; title: string; source: string; body: string | null }[];
+  for (const announcement of announcements) {
+    candidates.push({
+      type: 'announcement',
+      id: announcement.id,
+      title: announcement.title,
+      kind: null,
+      source: announcement.source,
+      readTool: 'atlas_read_classroom_item',
+      availability: announcement.body?.trim() ? 'readable' : 'unsupported',
+      availabilityDetail: announcement.body?.trim()
+        ? 'Announcement text is available to the agent.'
+        : 'This announcement has no stored body text.',
+    });
+  }
+
+  const assignments = db
+    .prepare(
+      `SELECT id, title, source, description
+       FROM assignments WHERE course_id = ? ORDER BY title`
+    )
+    .all(course.id) as { id: number; title: string; source: string; description: string | null }[];
+  for (const assignment of assignments) {
+    candidates.push({
+      type: 'assignment',
+      id: assignment.id,
+      title: assignment.title,
+      kind: null,
+      source: assignment.source,
+      readTool: 'atlas_read_classroom_item',
+      availability: assignment.description?.trim() ? 'readable' : 'unsupported',
+      availabilityDetail: assignment.description?.trim()
+        ? 'Assignment description is available to the agent.'
+        : 'This assignment has no stored description text.',
+    });
+  }
+
+  const queryKey = materialTitleKey(trimmedQuery);
+  const exact = candidates.filter((candidate) => materialTitleKey(candidate.title) === queryKey);
+  if (exact.length === 1) {
+    return {
+      ok: true,
+      status: 'found',
+      nextAction: exact[0].availability === 'readable' ? 'read_match' : 'handle_availability',
+      course: { id: course.id, name: course.name, code: course.code, term: course.term },
+      query: trimmedQuery,
+      match: exact[0],
+    };
+  }
+
+  const numberedQuery = numberedTitle(trimmedQuery);
+  const nearby = numberedQuery
+    ? candidates
+        .map((candidate) => ({ candidate, numbered: numberedTitle(candidate.title) }))
+        .filter(
+          (item): item is { candidate: MaterialCandidate; numbered: { prefix: string; start: number; end: number } } =>
+            item.numbered !== null &&
+            item.numbered.prefix === numberedQuery.prefix &&
+            (item.numbered.end === numberedQuery.start - 1 || item.numbered.start === numberedQuery.end + 1)
+        )
+        .sort(
+          (a, b) =>
+            Math.abs(a.numbered.start - numberedQuery.start) - Math.abs(b.numbered.start - numberedQuery.start) ||
+            a.numbered.start - b.numbered.start
+        )
+        .map((item) => item.candidate)
+        .slice(0, 8)
+    : [];
+
+  const clarificationCandidates = exact.length > 0 ? exact : nearby;
+  if (clarificationCandidates.length > 0) {
+    const labels = clarificationCandidates.map((candidate) => candidate.title).join(', ');
+    return {
+      ok: true,
+      status: 'ambiguous',
+      nextAction: 'ask_user',
+      course: { id: course.id, name: course.name, code: course.code, term: course.term },
+      query: trimmedQuery,
+      candidates: clarificationCandidates,
+      clarification: {
+        kind: 'choose_material',
+        question: `I couldn't find "${trimmedQuery}" in ${course.name}. I found ${labels}. Which one did you mean?`,
+        options: clarificationCandidates.map((candidate) => ({
+          type: candidate.type,
+          id: candidate.id,
+          label: candidate.title,
+        })),
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    status: 'not_found',
+    nextAction: 'stop',
+    course: { id: course.id, name: course.name, code: course.code, term: course.term },
+    query: trimmedQuery,
+    candidates: [],
+  };
+}
+
 const SEARCH_DEFAULT_LIMIT = 10;
 const SEARCH_MAX_LIMIT = 25;
 // A course-scoped search is already narrowed to one course's own content —
@@ -226,6 +525,7 @@ export function searchAtlas(
   query: string,
   opts: { course?: string | number; types?: string[]; limit?: number } = {}
 ): { hits: SearchHit[]; truncated: boolean } | { ok: false; error: string } {
+  if (!query.trim()) return { ok: false, error: 'Search query cannot be empty.' };
   let courseId: number | null = null;
   if (opts.course !== undefined) {
     const lookup = findCourse(db, opts.course);
@@ -582,7 +882,21 @@ export function listResources(
     )
     .all(...params);
 
-  return { ok: true as const, resources: rows.slice(0, limit), truncated: rows.length > limit };
+  const totalParams = opts.kind ? [lookup.course.id, opts.kind] : [lookup.course.id];
+  const total = (
+    db
+      .prepare(`SELECT COUNT(*) AS count FROM resources WHERE course_id = ? ${where}`)
+      .get(...totalParams) as { count: number }
+  ).count;
+
+  return {
+    ok: true as const,
+    resources: rows.slice(0, limit),
+    total,
+    limit,
+    offset,
+    truncated: rows.length > limit,
+  };
 }
 
 export function listDeadlines(db: Database.Database, ref?: string | number, days?: number) {

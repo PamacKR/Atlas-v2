@@ -19,6 +19,7 @@ import {
   getOverview,
   getCourseBriefing,
   getCourseReadiness,
+  resolveMaterial,
   searchAtlas,
   listResources,
   listDeadlines,
@@ -99,6 +100,106 @@ async function main(): Promise<void> {
       inputSchema: { course: z.union([z.string(), z.number()]) },
     },
     async ({ course }) => jsonResult(db, getCourseBriefing(db, course))
+  );
+
+  server.registerTool(
+    'atlas_resolve_material',
+    {
+      description:
+        'Resolve one named piece of material inside exactly one course before reading it. Use this first for requests such as "Lecture 10" or a specific note/resource title. It performs title resolution only and returns status found, ambiguous, or not_found. For found, read the returned exact item. For ambiguous, a client supporting MCP form elicitation may be asked to choose and the tool will return the selected item; otherwise stop and use the returned clarification question. Do not keep searching. For not_found, stop unless the user explicitly asks for a broader investigation. This never searches other courses.',
+      inputSchema: {
+        course: z.union([z.string(), z.number()]),
+        query: z.string(),
+      },
+    },
+    async ({ course, query }) => {
+      const resolution = resolveMaterial(db, course, query);
+      if (!resolution.ok || resolution.status !== 'ambiguous') return jsonResult(db, resolution);
+
+      // MCP elicitation is the portable client-side equivalent of Codex's
+      // blocking structured question. Clients that advertise form elicitation
+      // can pause the current tool call and show the user the candidates;
+      // clients that do not support it receive the same structured payload so
+      // their agent can ask through its own interaction mechanism instead.
+      try {
+        const choiceValues = resolution.clarification.options.map((option) => `${option.type}:${option.id}`);
+        const elicited = await server.server.elicitInput({
+          mode: 'form',
+          message: `${resolution.clarification.question} Choose one, or select Something else if none is correct.`,
+          requestedSchema: {
+            type: 'object',
+            properties: {
+              choice: {
+                type: 'string',
+                title: 'Material',
+                oneOf: [
+                  ...resolution.clarification.options.map((option, index) => ({
+                    const: choiceValues[index],
+                    title: option.label,
+                  })),
+                  { const: 'other', title: 'Something else' },
+                ],
+              },
+              otherQuery: {
+                type: 'string',
+                title: 'Other material title (optional)',
+                description: 'Only fill this in if you selected Something else.',
+              },
+            },
+            required: ['choice'],
+          },
+        });
+
+        if (elicited.action !== 'accept' || !elicited.content) {
+          return jsonResult(db, { ...resolution, nextAction: 'stop', elicitationAction: elicited.action });
+        }
+
+        const choice = String(elicited.content.choice ?? '');
+        if (choice === 'other') {
+          const otherQuery = typeof elicited.content.otherQuery === 'string' ? elicited.content.otherQuery.trim() : '';
+          if (!otherQuery) {
+            return jsonResult(db, { ...resolution, nextAction: 'stop', elicitationAction: 'other_without_query' });
+          }
+          return jsonResult(db, {
+            ...resolveMaterial(db, course, otherQuery),
+            elicitationAction: 'other',
+          });
+        }
+
+        const selected = resolution.clarification.options.find(
+          (option, index) => choice === choiceValues[index]
+        );
+        if (!selected) {
+          return jsonResult(db, { ...resolution, nextAction: 'stop', elicitationAction: 'invalid_choice' });
+        }
+        const selectedCandidate = resolution.candidates.find(
+          (candidate) => candidate.type === selected.type && candidate.id === selected.id
+        );
+        if (!selectedCandidate) {
+          return jsonResult(db, { ...resolution, nextAction: 'stop', elicitationAction: 'missing_choice' });
+        }
+        return jsonResult(db, {
+          ok: true,
+          status: 'found',
+          nextAction: selectedCandidate.availability === 'readable' ? 'read_match' : 'handle_availability',
+          course: resolution.course,
+          query: resolution.query,
+          match: selectedCandidate,
+          selectedByUser: true,
+        });
+      } catch (error) {
+        // Unsupported elicitation is expected for older or simpler MCP
+        // clients. Returning the original result keeps the tool useful and
+        // lets the connected agent use its own blocking-input mechanism.
+        return jsonResult(db, {
+          ...resolution,
+          elicitation: {
+            supported: false,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
   );
 
   server.registerTool(
@@ -247,7 +348,7 @@ async function main(): Promise<void> {
     'atlas_write_memory',
     {
       description:
-        'Replace your persistent memory about the user or a course — what they\'re familiar with, how they like things explained, how a course runs, what\'s already been done. Omit `course` to write the general (cross-course) memory. This fully replaces the file, so include everything still worth keeping, not just what changed. Writes silently — no confirmation needed.',
+        'Only call this after the user explicitly asks you to update persistent memory. Replace the memory about the user or a course — what they\'re familiar with, how they like things explained, how a course runs, what\'s already been done. Omit `course` to write the general (cross-course) memory. This fully replaces the file, so include everything still worth keeping, not just what changed. Once explicitly authorized, the write itself does not ask for a second confirmation.',
       inputSchema: {
         course: z.union([z.string(), z.number()]).optional(),
         content: z.string(),
@@ -263,7 +364,7 @@ async function main(): Promise<void> {
     'atlas_create_note',
     {
       description:
-        'Create a new note in a course, or omit/null `course` to create it in General/unsorted (e.g. a study guide, summary, or cross-course reference). The note is saved and searchable later. This can only create a new note — it can never edit or overwrite a note the user wrote themselves.',
+        'Only call this after the user explicitly asks you to create a note. Create a new note in a course, or omit/null `course` to create it in General/unsorted (e.g. a study guide, summary, or cross-course reference). The note is saved and searchable later. This can only create a new note — it can never edit or overwrite a note the user wrote themselves.',
       inputSchema: {
         course: z.union([z.string(), z.number()]).nullable().optional(),
         title: z.string(),
