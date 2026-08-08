@@ -306,6 +306,7 @@ interface AtlasApi {
   createBackup: () => Promise<BackupInfo>;
   deleteBackup: (name: string) => Promise<void>;
   deleteAllBackups: () => Promise<void>;
+  deleteAllAtlasData: () => Promise<{ ok: true } | { ok: false; error: string }>;
   setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off') => Promise<void>;
   isDriveConnected: () => Promise<boolean>;
   connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -745,6 +746,52 @@ async function deleteAllBackups(): Promise<void> {
   await renderSettingsStorage();
 }
 
+let masterDeleteResolve: ((result: boolean) => void) | null = null;
+
+function closeMasterDelete(result = false): void {
+  const overlay = document.getElementById('master-delete-overlay')!;
+  overlay.hidden = true;
+  const input = document.getElementById('master-delete-input') as HTMLInputElement;
+  input.value = '';
+  (document.getElementById('master-delete-confirm') as HTMLButtonElement).disabled = true;
+  if (masterDeleteResolve) {
+    masterDeleteResolve(result);
+    masterDeleteResolve = null;
+  }
+}
+
+function askForMasterDeleteConfirmation(): Promise<boolean> {
+  const overlay = document.getElementById('master-delete-overlay')!;
+  const input = document.getElementById('master-delete-input') as HTMLInputElement;
+  overlay.hidden = false;
+  input.value = '';
+  input.focus();
+  return new Promise((resolve) => { masterDeleteResolve = resolve; });
+}
+
+async function deleteAllAtlasData(): Promise<void> {
+  if (!(await showConfirm('Delete all Atlas data? This permanently removes the local academic workspace. Google Drive and Classroom connections remain connected, and Google data is not deleted.'))) return;
+  if (!(await askForMasterDeleteConfirmation())) return;
+
+  const button = document.getElementById('settings-delete-all-data') as HTMLButtonElement;
+  button.disabled = true;
+  button.textContent = 'Deleting…';
+  try {
+    const result = await atlasApi.deleteAllAtlasData();
+    if (!result.ok) throw new Error(result.error);
+    closeMasterDelete();
+    rendererReadCache.clear();
+    await renderSettingsStorage();
+    showPage(currentPage);
+  } catch (error) {
+    closeMasterDelete();
+    await showConfirm(`Atlas could not delete all data: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Delete all data';
+  }
+}
+
 // Sync schedule (open-questions.md #2) — one dropdown + last-synced/error
 // line per source. `value` on each <select> is exactly the config string
 // main.ts's sync:setConfig expects ('off' / 'launch' / 'interval:<seconds>'),
@@ -818,8 +865,9 @@ function showConfirm(message: string): Promise<boolean> {
   const confirmButton = document.getElementById('confirm-yes')!;
   const firstWord = message.trim().split(/[\s?]/)[0] || 'Confirm';
   const action = ['Delete', 'Disconnect', 'Archive', 'Unarchive', 'Reset'].includes(firstWord) ? firstWord : 'Confirm';
-  titleEl.textContent = action === 'Confirm' ? 'Confirm action' : `${action} this item?`;
-  confirmButton.textContent = action;
+  const isMasterDelete = message.includes('all Atlas data');
+  titleEl.textContent = isMasterDelete ? 'Delete all Atlas data?' : action === 'Confirm' ? 'Confirm action' : `${action} this item?`;
+  confirmButton.textContent = isMasterDelete ? 'Delete all data' : action;
   confirmButton.classList.toggle('danger', ['Delete', 'Disconnect', 'Archive', 'Reset'].includes(action));
   messageEl.textContent = message;
   overlay.hidden = false;
@@ -5625,6 +5673,7 @@ function registerAppShortcuts(): void {
           ['course-picker-overlay', closeCoursePicker],
           ['preview-overlay', closePreview],
           ['confirm-overlay', () => resolveConfirm(false)],
+          ['master-delete-overlay', () => closeMasterDelete(false)],
         ];
         for (const [id, close] of overlayCloseHandlers) {
           const el = document.getElementById(id) as HTMLElement | null;
@@ -7628,6 +7677,21 @@ async function init(): Promise<void> {
 
   document.getElementById('confirm-cancel')!.addEventListener('click', () => resolveConfirm(false));
   document.getElementById('confirm-yes')!.addEventListener('click', () => resolveConfirm(true));
+  document.getElementById('settings-delete-all-data')!.addEventListener('click', () => void deleteAllAtlasData());
+  document.getElementById('master-delete-close')!.addEventListener('click', () => closeMasterDelete(false));
+  document.getElementById('master-delete-cancel')!.addEventListener('click', () => closeMasterDelete(false));
+  document.getElementById('master-delete-overlay')!.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) closeMasterDelete(false);
+  });
+  document.getElementById('master-delete-input')!.addEventListener('input', (event) => {
+    const value = (event.target as HTMLInputElement).value.trim().toUpperCase();
+    (document.getElementById('master-delete-confirm') as HTMLButtonElement).disabled = value !== 'DELETE';
+  });
+  document.getElementById('master-delete-input')!.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeMasterDelete(false);
+    if (event.key === 'Enter' && !(document.getElementById('master-delete-confirm') as HTMLButtonElement).disabled) closeMasterDelete(true);
+  });
+  document.getElementById('master-delete-confirm')!.addEventListener('click', () => closeMasterDelete(true));
 
   document.getElementById('course-picker-close')!.addEventListener('click', closeCoursePicker);
   document.getElementById('course-picker-overlay')!.addEventListener('click', (e) => {

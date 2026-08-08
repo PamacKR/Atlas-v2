@@ -3282,6 +3282,66 @@ function deleteAllBackups(): void {
   for (const backup of listBackups()) deleteBackup(backup.name);
 }
 
+// Clears Atlas-owned academic content while deliberately leaving the Google
+// connection credentials and the user's app preferences in place. This is a
+// local reset: it never deletes anything from Drive or Classroom.
+function deleteAllAtlasData(): void {
+  for (const folderId of Array.from(activeWatchers.keys())) stopWatchingFolder(folderId);
+  for (const courseId of Array.from(activeCourseStorageWatchers.keys())) stopWatchingCourseStorage(courseId);
+  clearSyncInterval('drive');
+  clearSyncInterval('classroom');
+
+  const db = getDb();
+  const clearContent = db.transaction(() => {
+    db.prepare('DELETE FROM search_index').run();
+    db.prepare('DELETE FROM document_parts').run();
+    db.prepare('DELETE FROM resources').run();
+    db.prepare('DELETE FROM notes').run();
+    db.prepare('DELETE FROM deadlines').run();
+    db.prepare('DELETE FROM announcements').run();
+    db.prepare('DELETE FROM assignments').run();
+    db.prepare('DELETE FROM watched_folders').run();
+    db.prepare('DELETE FROM drive_pending_files').run();
+    db.prepare('DELETE FROM classroom_pending_courses').run();
+    db.prepare('DELETE FROM classwork_materials').run();
+    db.prepare('DELETE FROM dashboard_cleared_items').run();
+    db.prepare('DELETE FROM courses').run();
+
+    // Keep OAuth refresh tokens and general preferences. These values only
+    // describe the connected account or how Atlas behaves; they are not
+    // academic content. Source-specific selections/status are reset so a
+    // future sync starts with a clean local workspace.
+    db.prepare(`DELETE FROM app_settings WHERE key IN (
+      'google_drive_folder_id', 'google_drive_folder_name',
+      'google_drive_preview_folder_id', 'ashoka_planner_db_path',
+      'sync_drive_last_success', 'sync_drive_last_error',
+      'sync_classroom_last_success', 'sync_classroom_last_error',
+      'dashboard_v2_baseline', 'extraction_logic_version',
+      'classroom_resource_added_at_repaired'
+    )`).run();
+  });
+  clearContent();
+
+  const dataDir = path.resolve(getDataDir());
+  const removeManagedDirectory = (directory: string): void => {
+    const target = path.resolve(dataDir, directory);
+    if (target === dataDir || !target.startsWith(`${dataDir}${path.sep}`)) {
+      throw new Error('Refusing to remove a path outside Atlas storage.');
+    }
+    fs.rmSync(target, { recursive: true, force: true });
+  };
+  removeManagedDirectory('files');
+  removeManagedDirectory('backups');
+  removeManagedDirectory('course-profiles');
+  removeManagedDirectory('exports');
+  removeManagedDirectory('readiness-fixtures');
+
+  // General memory is an empty, app-managed starting point rather than user
+  // content. Recreate its template so the external MCP interface remains
+  // immediately usable after the reset.
+  ensureGeneralMemoryFile();
+}
+
 type BackupFrequency = 'daily' | 'weekly' | 'off';
 const BACKUP_INTERVAL_MS: Record<Exclude<BackupFrequency, 'off'>, number> = {
   daily: 24 * 60 * 60 * 1000,
@@ -3320,6 +3380,14 @@ ipcMain.handle('settings:getStorageStatus', () => {
 ipcMain.handle('settings:createBackup', () => createLocalBackup());
 ipcMain.handle('settings:deleteBackup', (_event, name: string) => deleteBackup(name));
 ipcMain.handle('settings:deleteAllBackups', () => deleteAllBackups());
+ipcMain.handle('settings:deleteAllAtlasData', () => {
+  try {
+    deleteAllAtlasData();
+    return { ok: true as const };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+  }
+});
 ipcMain.handle('settings:setBackupFrequency', (_event, frequency: BackupFrequency) => {
   if (!['daily', 'weekly', 'off'].includes(frequency)) throw new Error('Invalid backup frequency');
   setBackupFrequency(frequency);

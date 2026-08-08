@@ -2388,6 +2388,22 @@ form#course-form button {
 #confirm-yes.danger { border-color: rgba(224,87,74,.45); color: var(--urgent); }
 #confirm-yes.danger:hover { background: rgba(224,87,74,.12); }
 
+#master-delete-overlay { position: fixed; inset: 0; z-index: 81; align-items: center; justify-content: center; background: rgba(0,0,0,.62); }
+#master-delete-overlay:not([hidden]) { display: flex; }
+#master-delete-panel.overlay-panel { width: min(520px, calc(100vw - (var(--space-6) * 2))); max-width: none; padding: 0; background: var(--bg-panel); border-color: var(--rule-strong); border-radius: var(--radius-lg); box-shadow: 0 24px 64px rgba(0,0,0,.5); overflow: hidden; }
+.master-delete-body { display: grid; gap: var(--space-4); padding: var(--space-5); }
+.master-delete-body p { margin: 0; color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
+.master-delete-body label { color: var(--text); font-size: var(--text-sm); }
+.master-delete-body label strong { color: var(--urgent); font-weight: 600; letter-spacing: .05em; }
+#master-delete-input { width: 100%; height: 36px; box-sizing: border-box; padding: 0 var(--space-3); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-sm); outline: none; }
+#master-delete-input:focus { border-color: rgba(224,87,74,.55); box-shadow: 0 0 0 3px rgba(224,87,74,.1); }
+.master-delete-footer { display: flex; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--rule); }
+.master-delete-footer button { height: 34px; padding: 0 var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.master-delete-footer button:hover { border-color: var(--rule-strong); background: var(--bg-hover); color: var(--text); }
+.master-delete-footer .settings-button-danger { border-color: rgba(224,87,74,.45); color: var(--urgent); }
+.master-delete-footer .settings-button-danger:hover:not(:disabled), .master-delete-footer .settings-button-danger:focus-visible { background: rgba(224,87,74,.12); }
+.master-delete-footer .settings-button-danger:disabled { opacity: .45; cursor: not-allowed; }
+
 /* Google Drive review panel — same overlay pattern as #confirm-overlay
    above, including the same [hidden]-vs-own-selector fix (AGENTS.md). */
 #drive-review-overlay {

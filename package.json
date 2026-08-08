@@ -15,6 +15,7 @@
     "verify:resources-filters": "npm run build && node scripts/verify-resources-filters.js",
     "verify:readiness": "npm run build && node scripts/verify-readiness.js",
     "verify:mutation-freshness": "npm run build && node scripts/verify-mutation-freshness.js",
+    "verify:master-delete": "npm run build && node scripts/verify-master-delete.js",
     "verify:search-index": "npm run build && node scripts/verify-search-index.js",
     "measure:performance": "npm run build && node scripts/run-as-electron-node.js scripts/measure-performance.js",
     "mcp:server": "node scripts/run-mcp-server.js",

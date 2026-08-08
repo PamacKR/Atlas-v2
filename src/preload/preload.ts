@@ -260,6 +260,7 @@ contextBridge.exposeInMainWorld('atlas', {
   createBackup: (): Promise<unknown> => ipcRenderer.invoke('settings:createBackup'),
   deleteBackup: (name: string): Promise<void> => ipcRenderer.invoke('settings:deleteBackup', name),
   deleteAllBackups: (): Promise<void> => ipcRenderer.invoke('settings:deleteAllBackups'),
+  deleteAllAtlasData: (): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke('settings:deleteAllAtlasData'),
   setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off'): Promise<void> => ipcRenderer.invoke('settings:setBackupFrequency', frequency),
   isDriveConnected: (): Promise<boolean> => ipcRenderer.invoke('google:isDriveConnected'),
   connectDrive: (): Promise<{ ok: true } | { ok: false; error: string }> =>

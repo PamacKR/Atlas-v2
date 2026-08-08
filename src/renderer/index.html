@@ -540,6 +540,7 @@
             <section class="settings-section"><h2>By course</h2><div id="storage-courses"></div></section>
             <section class="settings-section"><h2>Text extraction</h2><div class="settings-row"><div><div id="storage-extraction-title" class="settings-row-label"></div><div id="storage-extraction-hint" class="settings-row-hint"></div></div><button id="settings-review-extraction" class="settings-button" type="button" hidden>Review</button></div></section>
             <section class="settings-section"><h2>Backup</h2><div class="settings-row"><div><div class="settings-row-label">Local backup</div><div id="storage-backup-hint" class="settings-row-hint"></div></div><div class="settings-row-controls"><div id="settings-backup-frequency" class="dselect sync-config-select"></div><button id="settings-backup-now" type="button" class="settings-button">Back up now</button></div></div><div id="storage-backups"></div></section>
+            <section class="settings-section settings-danger-section"><h2>Danger zone</h2><div class="settings-row settings-row-no-rule"><div><div class="settings-row-label">Delete all Atlas data</div><div class="settings-row-hint">Removes all courses, files, notes, deadlines, imported items, local backups, memory files, and search data. Google Drive and Classroom connections remain connected, and nothing is deleted from Google.</div></div><button id="settings-delete-all-data" class="settings-button settings-button-danger" type="button">Delete all data</button></div></section>
           </div>
 
           <div class="settings-panel" data-settings-panel="about" hidden>
@@ -798,6 +799,24 @@
         <button id="confirm-cancel" type="button">Cancel</button>
         <button id="confirm-yes" type="button">Delete</button>
       </div>
+    </div>
+  </div>
+
+  <div id="master-delete-overlay" hidden>
+    <div id="master-delete-panel" class="overlay-panel size-md" role="dialog" aria-modal="true" aria-labelledby="master-delete-title">
+      <div class="overlay-header">
+        <div class="overlay-header-titles">
+          <h3 id="master-delete-title">Delete all Atlas data?</h3>
+          <div class="sub">This cannot be undone.</div>
+        </div>
+        <div class="overlay-header-actions"><button id="master-delete-close" type="button" aria-label="Close delete confirmation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      </div>
+      <div class="overlay-body master-delete-body">
+        <p>This removes Atlas’s local academic workspace, including all courses, resources, notes, deadlines, imported Classroom/Drive items, backups, and agent memory. Your Google connections and Google data are not deleted.</p>
+        <label for="master-delete-input">Type <strong>DELETE</strong> to continue.</label>
+        <input id="master-delete-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="master-delete-title" />
+      </div>
+      <div class="overlay-footer master-delete-footer"><button id="master-delete-cancel" type="button">Cancel</button><button id="master-delete-confirm" class="settings-button-danger" type="button" disabled>Delete all data</button></div>
     </div>
   </div>
 
