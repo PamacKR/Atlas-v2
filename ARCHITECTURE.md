@@ -208,6 +208,14 @@ Why MCP over static file export:
 - The query/context-builder logic (section 16) has to exist regardless of transport. MCP is a thin protocol layer on top of that logic, not a parallel implementation.
 - A static "export context to file" mode is still kept as a secondary path (same underlying query layer) for use with AI tools that don't support MCP, satisfying the PRD's AI-provider-independence goal (open question 5).
 
+### MCP capabilities beyond text lookup
+
+The MCP server is currently a thin transport over the same canonical query layer and exposes twelve tools. In addition to overview, course briefings, search, resource/deadline inventories, document/note reads, memory, and agent-note creation, it exposes the app's deterministic per-course readiness report and full locally-synced Classroom announcement/assignment bodies. Agent-created notes may use `course_id = NULL` for the existing General/unsorted area; those notes remain flagged `generated_by_agent = 1` and are indexed immediately.
+
+Document-page search hits include both the `document_parts` location and the parent resource id/title/source. This is deliberately returned as navigation metadata rather than full text; the agent follows the parent id and ordinal into `atlas_read_document`.
+
+`atlas_read_visual` is the bounded visual path. It accepts only an Atlas resource or handwritten-note id, resolves the associated local PDF/image path internally, and returns one MCP image content block. PDF pages are rendered locally with the same bundled pdfjs/canvas stack used by OCR, one page per request; small images are returned in their source bytes, and unusually large images are resized to a bounded canvas. Arbitrary filesystem paths are never accepted or returned. A missing/deleted file, external link, unsupported kind, or invalid page produces a normal error response. Atlas still makes no AI/LLM calls; the connected agent decides what the image means.
+
 ## 7. Resource Viewer: in-app preview, per file type
 
 PRD section 10 asks for in-app viewing "whenever practical," with an external-app fallback otherwise. Implementation, per resource kind:

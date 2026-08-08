@@ -90,11 +90,16 @@ export function getOverview(db: Database.Database) {
     return row.c;
   };
 
+  const generalNoteCount = (db.prepare('SELECT COUNT(*) AS c FROM notes WHERE course_id IS NULL').get() as { c: number }).c;
+
   return {
     currentSemester,
     courses: courses.map((c) => ({ id: c.id, name: c.name, code: c.code, term: c.term })),
     resourceCount: count('resources'),
-    noteCount: count('notes'),
+    // General notes are deliberately not tied to a semester or course, so
+    // include them in the overall count even when a semester filter is active.
+    noteCount: count('notes') + generalNoteCount,
+    generalNoteCount,
     upcomingDeadlineCount: count(
       'deadlines',
       "AND completed = 0 AND classroom_removed = 0 AND due_at IS NOT NULL AND due_at >= datetime('now')"
@@ -190,10 +195,14 @@ export function toFtsQuery(userInput: string): string {
 export interface SearchHit {
   entityType: string;
   entityId: number;
-  courseId: number;
+  courseId: number | null;
   courseName: string;
   title: string;
   snippet: string;
+  resourceId: number | null;
+  resourceTitle: string | null;
+  source: string | null;
+  partOrdinal: number | null;
 }
 
 const SEARCH_DEFAULT_LIMIT = 10;
@@ -253,10 +262,28 @@ export function searchAtlas(
               search_index.entity_id AS entityId,
               search_index.course_id AS courseId,
               search_index.title AS title,
-              courses.name AS courseName,
+              COALESCE(courses.name, 'General') AS courseName,
+              CASE
+                WHEN search_index.entity_type IN ('resource', 'document_part') THEN matched_resource.id
+                ELSE NULL
+              END AS resourceId,
+              CASE
+                WHEN search_index.entity_type IN ('resource', 'document_part') THEN matched_resource.title
+                ELSE NULL
+              END AS resourceTitle,
+              matched_resource.source AS source,
+              parts.ordinal AS partOrdinal,
               snippet(search_index, 4, '', '', '…', 20) AS snippet
        FROM search_index
-       JOIN courses ON courses.id = search_index.course_id
+       LEFT JOIN courses ON courses.id = search_index.course_id
+       LEFT JOIN document_parts AS parts
+         ON search_index.entity_type = 'document_part' AND parts.id = search_index.entity_id
+       LEFT JOIN resources AS matched_resource
+         ON matched_resource.id = CASE
+           WHEN search_index.entity_type = 'resource' THEN search_index.entity_id
+           WHEN search_index.entity_type = 'document_part' THEN parts.resource_id
+           ELSE NULL
+         END
        WHERE ${conditions.join(' AND ')}
        ORDER BY rank
        LIMIT ?`
@@ -265,6 +292,269 @@ export function searchAtlas(
 
   const hits = rows.slice(0, limit).map((r) => ({ ...r, snippet: r.snippet.slice(0, SEARCH_EXCERPT_MAX_CHARS) }));
   return { hits, truncated: rows.length > limit };
+}
+
+export type ClassroomItemType = 'announcement' | 'assignment';
+
+interface ClassroomAttachment {
+  id: number;
+  title: string;
+  kind: string;
+  source: string;
+  linkKind: string | null;
+}
+
+function classroomAttachments(db: Database.Database, classroomItemId: string | null): ClassroomAttachment[] {
+  if (!classroomItemId) return [];
+  return db
+    .prepare(
+      `SELECT id, title, kind, source, link_kind AS linkKind
+       FROM resources
+       WHERE classwork_material_id IS NULL
+         AND classroom_attachment_id LIKE ? || ':%'
+       ORDER BY added_at`
+    )
+    .all(classroomItemId) as ClassroomAttachment[];
+}
+
+// Classroom sync stores the complete announcement/assignment body in Atlas.
+// This reads that canonical local copy; it does not make a Google API request
+// and it never returns local filesystem paths.
+export function readClassroomItem(db: Database.Database, type: ClassroomItemType, id: number) {
+  if (type === 'announcement') {
+    const row = db
+      .prepare(
+        `SELECT announcements.id, announcements.title, announcements.body,
+                announcements.posted_at AS postedAt, announcements.source,
+                announcements.dashboard_pinned AS dashboardPinned,
+                announcements.classroom_announcement_id AS classroomAnnouncementId,
+                courses.id AS courseId, courses.name AS courseName,
+                courses.code AS courseCode, courses.term AS courseTerm
+         FROM announcements
+         JOIN courses ON courses.id = announcements.course_id
+         WHERE announcements.id = ?`
+      )
+      .get(id) as
+      | {
+          id: number;
+          title: string;
+          body: string | null;
+          postedAt: string;
+          source: string;
+          dashboardPinned: number;
+          classroomAnnouncementId: string | null;
+          courseId: number;
+          courseName: string;
+          courseCode: string | null;
+          courseTerm: string | null;
+        }
+      | undefined;
+    if (!row) return { ok: false as const, error: `No announcement with id ${id}.` };
+    return {
+      ok: true as const,
+      course: { id: row.courseId, name: row.courseName, code: row.courseCode, term: row.courseTerm },
+      item: {
+        id: row.id,
+        type,
+        title: row.title,
+        body: row.body,
+        postedAt: row.postedAt,
+        source: row.source,
+        dashboardPinned: row.dashboardPinned === 1,
+        classroomAnnouncementId: row.classroomAnnouncementId,
+        attachments: classroomAttachments(db, row.classroomAnnouncementId),
+      },
+    };
+  }
+
+  const row = db
+    .prepare(
+      `SELECT assignments.id, assignments.title, assignments.description,
+              assignments.due_at AS dueAt, assignments.source, assignments.status,
+              assignments.updated_at AS updatedAt, assignments.posted_at AS postedAt,
+              assignments.classroom_coursework_id AS classroomCourseworkId,
+              assignments.classroom_removed AS classroomRemoved,
+              courses.id AS courseId, courses.name AS courseName,
+              courses.code AS courseCode, courses.term AS courseTerm
+       FROM assignments
+       JOIN courses ON courses.id = assignments.course_id
+       WHERE assignments.id = ?`
+    )
+    .get(id) as
+    | {
+        id: number;
+        title: string;
+        description: string | null;
+        dueAt: string | null;
+        source: string;
+        status: string;
+        updatedAt: string | null;
+        postedAt: string | null;
+        classroomCourseworkId: string | null;
+        classroomRemoved: number;
+        courseId: number;
+        courseName: string;
+        courseCode: string | null;
+        courseTerm: string | null;
+      }
+    | undefined;
+  if (!row) return { ok: false as const, error: `No assignment with id ${id}.` };
+  return {
+    ok: true as const,
+    course: { id: row.courseId, name: row.courseName, code: row.courseCode, term: row.courseTerm },
+    item: {
+      id: row.id,
+      type,
+      title: row.title,
+      description: row.description,
+      dueAt: row.dueAt,
+      source: row.source,
+      status: row.status,
+      updatedAt: row.updatedAt,
+      postedAt: row.postedAt,
+      classroomCourseworkId: row.classroomCourseworkId,
+      classroomRemoved: row.classroomRemoved === 1,
+      attachments: classroomAttachments(db, row.classroomCourseworkId),
+    },
+  };
+}
+
+export type ReadinessStatus = 'ready' | 'needs_ocr' | 'pending' | 'failed' | 'unsupported' | 'external';
+
+export interface ReadinessItem {
+  id: number;
+  type: 'resource' | 'note';
+  title: string;
+  status: ReadinessStatus;
+  detail: string;
+  kind?: string;
+  source?: string;
+  canRetry?: boolean;
+}
+
+// The same deterministic report powers the in-app Readiness tab and the MCP
+// tool. It reports text availability only, not comprehension or progress.
+export function getCourseReadiness(db: Database.Database, ref: string | number) {
+  const lookup = findCourse(db, ref);
+  if (!lookup.ok) return lookup;
+  const course = lookup.course;
+  const resources = db
+    .prepare(
+      `SELECT resources.id, resources.title, resources.kind, resources.source,
+              resources.extraction_status AS extractionStatus,
+              resources.extraction_error AS extractionError,
+              resources.ocr_text AS ocrText,
+              resources.remote_source AS remoteSource,
+              resources.link_kind AS linkKind,
+              (SELECT COUNT(*) FROM document_parts
+               WHERE document_parts.resource_id = resources.id) AS partCount
+       FROM resources
+       WHERE resources.course_id = ?
+       ORDER BY resources.added_at DESC`
+    )
+    .all(course.id) as {
+    id: number;
+    title: string;
+    kind: string;
+    source: string;
+    extractionStatus: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
+    extractionError: string | null;
+    ocrText: string | null;
+    remoteSource: 'drive' | 'gmail' | null;
+    linkKind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
+    partCount: number;
+  }[];
+  const notes = db
+    .prepare(
+      `SELECT id, title, content_markdown AS contentMarkdown, is_handwritten AS isHandwritten,
+              image_path AS imagePath, ocr_text AS ocrText
+       FROM notes
+       WHERE course_id = ?
+       ORDER BY updated_at DESC`
+    )
+    .all(course.id) as {
+    id: number;
+    title: string;
+    contentMarkdown: string;
+    isHandwritten: number;
+    imagePath: string | null;
+    ocrText: string | null;
+  }[];
+
+  const counts: Record<ReadinessStatus, number> = {
+    ready: 0,
+    needs_ocr: 0,
+    pending: 0,
+    failed: 0,
+    unsupported: 0,
+    external: 0,
+  };
+  const issues: ReadinessItem[] = [];
+  const add = (item: ReadinessItem): void => {
+    counts[item.status] += 1;
+    if (item.status !== 'ready') issues.push(item);
+  };
+
+  for (const resource of resources) {
+    let status: ReadinessStatus;
+    let detail: string;
+    let canRetry = false;
+    if (resource.extractionStatus === 'done' && (resource.partCount > 0 || !!resource.ocrText?.trim())) {
+      status = 'ready';
+      detail = 'Text is available to the agent.';
+    } else if (resource.extractionStatus === 'pending') {
+      status = 'pending';
+      detail = 'Atlas is still extracting this file.';
+    } else if (resource.extractionStatus === 'empty') {
+      status = resource.kind === 'pdf' ? 'needs_ocr' : 'unsupported';
+      detail = resource.kind === 'pdf' ? 'No text layer was found. Run OCR and review the result.' : 'No readable text was found.';
+    } else if (resource.extractionStatus === 'failed') {
+      status = 'failed';
+      detail = resource.extractionError || 'Atlas could not extract text from this file.';
+      canRetry = !resource.remoteSource && ['pdf', 'pptx', 'xlsx', 'docx', 'text', 'markdown'].includes(resource.kind);
+    } else if (resource.kind === 'link' && resource.linkKind !== 'driveFile') {
+      status = 'external';
+      detail = 'External material; Atlas does not extract this link into course text.';
+    } else {
+      status = 'unsupported';
+      detail = 'This file type is not included in Atlas text extraction.';
+    }
+    add({
+      id: resource.id,
+      type: 'resource',
+      title: resource.title,
+      status,
+      detail,
+      kind: resource.kind,
+      source: resource.source,
+      canRetry,
+    });
+  }
+
+  for (const note of notes) {
+    if (note.contentMarkdown.trim() || note.ocrText?.trim()) {
+      add({ id: note.id, type: 'note', title: note.title, status: 'ready', detail: 'Note text is available to the agent.' });
+    } else if (note.isHandwritten && note.imagePath) {
+      add({
+        id: note.id,
+        type: 'note',
+        title: note.title,
+        status: 'needs_ocr',
+        detail: 'This scan has no accepted text yet. Run OCR or ask the external agent to inspect the scan.',
+      });
+    } else {
+      add({ id: note.id, type: 'note', title: note.title, status: 'unsupported', detail: 'This note does not contain text yet.' });
+    }
+  }
+
+  return {
+    ok: true as const,
+    course: { id: course.id, name: course.name, code: course.code, term: course.term },
+    total: resources.length + notes.length,
+    readable: counts.ready,
+    counts,
+    issues,
+  };
 }
 
 const LIST_DEFAULT_LIMIT = 50;
@@ -405,6 +695,78 @@ export function readNote(db: Database.Database, noteId: number) {
   return { ok: true as const, note };
 }
 
+export interface VisualSource {
+  ok: true;
+  targetType: 'resource' | 'note';
+  id: number;
+  title: string;
+  kind: 'pdf' | 'image';
+  filePath: string;
+  course: { id: number; name: string } | null;
+}
+
+// Resolve a visual target by an Atlas id, never by a caller-supplied path.
+// The MCP layer keeps filePath internal and only returns image bytes, which
+// prevents the visual tool from becoming an arbitrary local-file reader.
+export function resolveVisualSource(
+  db: Database.Database,
+  target: { resourceId?: number; noteId?: number }
+): VisualSource | { ok: false; error: string } {
+  if ((target.resourceId === undefined) === (target.noteId === undefined)) {
+    return { ok: false, error: 'Provide exactly one of resource_id or note_id.' };
+  }
+
+  if (target.resourceId !== undefined) {
+    const row = db
+      .prepare(
+        `SELECT resources.id, resources.title, resources.kind, resources.file_path AS filePath,
+                courses.id AS courseId, courses.name AS courseName
+         FROM resources
+         LEFT JOIN courses ON courses.id = resources.course_id
+         WHERE resources.id = ?`
+      )
+      .get(target.resourceId) as
+      | { id: number; title: string; kind: string; filePath: string; courseId: number | null; courseName: string | null }
+      | undefined;
+    if (!row) return { ok: false, error: `No resource with id ${target.resourceId}.` };
+    if (row.kind !== 'pdf' && row.kind !== 'image') {
+      return { ok: false, error: `Resource ${target.resourceId} is ${row.kind}, not a PDF or image.` };
+    }
+    return {
+      ok: true,
+      targetType: 'resource',
+      id: row.id,
+      title: row.title,
+      kind: row.kind,
+      filePath: row.filePath,
+      course: row.courseId !== null && row.courseName ? { id: row.courseId, name: row.courseName } : null,
+    };
+  }
+
+  const row = db
+    .prepare(
+      `SELECT notes.id, notes.title, notes.image_path AS filePath,
+              courses.id AS courseId, courses.name AS courseName
+       FROM notes
+       LEFT JOIN courses ON courses.id = notes.course_id
+       WHERE notes.id = ?`
+    )
+    .get(target.noteId) as
+    | { id: number; title: string; filePath: string | null; courseId: number | null; courseName: string | null }
+    | undefined;
+  if (!row) return { ok: false, error: `No note with id ${target.noteId}.` };
+  if (!row.filePath) return { ok: false, error: `Note ${target.noteId} has no image or PDF scan attached.` };
+  return {
+    ok: true,
+    targetType: 'note',
+    id: row.id,
+    title: row.title,
+    kind: /\.pdf$/i.test(row.filePath) ? 'pdf' : 'image',
+    filePath: row.filePath,
+    course: row.courseId !== null && row.courseName ? { id: row.courseId, name: row.courseName } : null,
+  };
+}
+
 // course === undefined writes the general memory file (Phase 4 architecture §5.0);
 // otherwise the named course's. Silent per §5.3 — no confirmation, no review
 // queue; the file being plain text in the user's own data folder is the
@@ -423,11 +785,22 @@ export function writeCourseOrGeneralMemory(db: Database.Database, course: string
 // Can only ever create — never overwrites or edits an existing note, so an
 // agent can add a study guide but never touch something the user wrote
 // (Phase 4 architecture §4, a boundary the user explicitly asked for).
-export function createAgentNote(db: Database.Database, course: string | number, title: string, contentMarkdown: string) {
+export function createAgentNote(
+  db: Database.Database,
+  course: string | number | null | undefined,
+  title: string,
+  contentMarkdown: string
+) {
+  if (course === undefined || course === null) {
+    const result = db
+      .prepare('INSERT INTO notes (course_id, title, content_markdown, generated_by_agent) VALUES (NULL, ?, ?, 1)')
+      .run(title, contentMarkdown);
+    return { ok: true as const, noteId: Number(result.lastInsertRowid), courseId: null, courseName: 'General' };
+  }
   const lookup = findCourse(db, course);
   if (!lookup.ok) return lookup;
   const result = db
     .prepare('INSERT INTO notes (course_id, title, content_markdown, generated_by_agent) VALUES (?, ?, ?, 1)')
     .run(lookup.course.id, title, contentMarkdown);
-  return { ok: true as const, noteId: Number(result.lastInsertRowid) };
+  return { ok: true as const, noteId: Number(result.lastInsertRowid), courseId: lookup.course.id, courseName: lookup.course.name };
 }

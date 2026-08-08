@@ -61,6 +61,15 @@ Reordered again 2026-07-28 (user decision): the two remaining non-Gmail items be
 - "Fresh conversation" flow (`atlas_overview`) already lets a connected agent pick up full context with no manual explanation — course AI profiles are folded into the memory files above rather than a separate settings form.
 - [x] Remote attachment reading: Classroom Drive attachments (and links discovered inside them, e.g. a professor's course-index spreadsheet) are fetched, extracted, and discarded — never downloaded into `Atlas-Storage/files/` — so the agent can read them like any local resource. Required the user to reconnect Google Classroom once for a new Drive scope.
 
+Phase 4 MCP extensions completed after the initial Context Builder pass:
+
+- [x] The external agent can request the same deterministic per-course readiness report already shown in the app's Course detail Readiness tab.
+- [x] `atlas_read_classroom_item` reads complete locally-synced Classroom announcements and assignments, including their stored metadata and attached Atlas resource ids.
+- [x] `atlas_create_note` can create an agent-owned note in General/unsorted when no course is supplied; General notes are immediately searchable and remain distinct from user-authored notes.
+- [x] Document-page search hits include their parent resource id/title/source and page ordinal, so the agent can navigate directly from a hit to the correct document.
+- [x] `atlas_read_visual` returns one local PDF page or image/handwritten scan as MCP image content through Atlas ids only; it never accepts arbitrary filesystem paths and makes no AI calls.
+- [x] `scripts/verify-mcp.js` covers the twelve-tool surface and the new visual, Classroom, readiness, General-note, and parent-resource behaviors against throwaway data.
+
 ## Phase 5 — Lifecycle & polish
 
 - [x] Course archiving: archive/unarchive a course (right-click or a detail-page button) without deleting anything; a "Show archived courses" toggle on the Courses page shows one list or the other; archived courses stop auto-syncing from Classroom but stay fully searchable.

@@ -12,6 +12,8 @@ The performance measurement and implementation phases are complete; the benchmar
 
 The performance measurement and implementation work is complete for the personal-use scope; benchmark and regression results are documented below.
 
+- **MCP capability expansion, 2026-08-08:** the shared Context Builder and local MCP server now expose 12 tools. Search page hits include their parent resource id/title, source, and ordinal; `atlas_read_classroom_item` reads full synced announcement and assignment bodies with attachment ids; `atlas_course_readiness` exposes the same deterministic report used by the in-app Readiness tab; `atlas_create_note` can target General/unsorted when no course is supplied; and `atlas_read_visual` returns one local PDF page or image as an MCP image block without accepting arbitrary paths. The focused `npm run verify:mcp` check passes every new behavior against a throwaway database.
+
 ## Current session — 2026-08-08
 
 - **Master delete, 2026-08-08:** Settings → Storage now has a deliberately high-friction "Delete all Atlas data" action. It requires the existing confirmation dialog and then an exact `DELETE` entry in a second themed modal before removing all local courses, resources, notes, deadlines, Classroom/Drive imports, watched-folder mappings, search data, agent memory, exports, readiness fixtures, and local backups. Google OAuth refresh tokens and the credential file remain untouched, and the operation never deletes anything from Drive or Classroom; source-folder selections and sync status are cleared so the next sync starts as a clean local workspace. Active file watchers and sync timers are stopped before the reset. The focused throwaway-data Electron check `npm run verify:master-delete` passes.

@@ -31,6 +31,8 @@ Phases 0–5 and the personal-use scope of Phase 6 are complete. Public-release 
 
 ## Connecting an AI agent
 
+The MCP server also exposes the existing in-app readiness report, full synced Classroom announcement/assignment content, General/unsorted agent-note creation, parent-resource metadata for document-page search hits, and bounded PDF/image visual reads through Atlas ids. It remains a local data bridge only: Atlas does not call an AI service and does not accept arbitrary file paths from the agent.
+
 Atlas ships a local MCP server (`npm run mcp:server`) that any MCP-capable tool (Claude Code, Codex, Cursor, ...) can connect to for live, queryable access to your courses, resources, notes, and deadlines — see [`mcp-setup.md`](mcp-setup.md) for the exact steps. A project-scoped `.mcp.json` is already checked into this repo, fully portable (no hardcoded paths).
 
 ## Running it

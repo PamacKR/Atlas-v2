@@ -18,14 +18,18 @@ import { getDbPath } from './paths';
 import {
   getOverview,
   getCourseBriefing,
+  getCourseReadiness,
   searchAtlas,
   listResources,
   listDeadlines,
   readDocument,
   readNote,
+  readClassroomItem,
+  resolveVisualSource,
   writeCourseOrGeneralMemory,
   createAgentNote,
 } from './contextBuilder';
+import { renderVisual } from './mcpVisual';
 
 function openDb(): Database.Database {
   const dbPath = getDbPath();
@@ -62,7 +66,7 @@ function jsonResult(db: Database.Database, value: unknown) {
 // function would mean two copies of the same logic drifting apart. This
 // only ever adds, never removes, so it can't leave search_index stale for
 // anything this server doesn't touch.
-function indexNoteForSearch(db: Database.Database, noteId: number, courseId: number, title: string, body: string): void {
+function indexNoteForSearch(db: Database.Database, noteId: number, courseId: number | null, title: string, body: string): void {
   db.prepare("DELETE FROM search_index WHERE entity_type = 'note' AND entity_id = ?").run(noteId);
   db.prepare('INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES (?, ?, ?, ?, ?)').run(
     'note',
@@ -98,10 +102,33 @@ async function main(): Promise<void> {
   );
 
   server.registerTool(
+    'atlas_course_readiness',
+    {
+      description:
+        'Report which resources and notes in a course have readable text for the external agent, and which are ready, pending, failed, unsupported, external, or need OCR. This is a deterministic text-availability report, not an assessment of academic quality or comprehension.',
+      inputSchema: { course: z.union([z.string(), z.number()]) },
+    },
+    async ({ course }) => jsonResult(db, getCourseReadiness(db, course))
+  );
+
+  server.registerTool(
+    'atlas_read_classroom_item',
+    {
+      description:
+        'Read the full locally-synced body or description of one Classroom announcement or assignment, including its course, dates/status, source id, and attached Atlas resource ids. Use atlas_search or atlas_course_briefing first to find the item id.',
+      inputSchema: {
+        item_type: z.enum(['announcement', 'assignment']),
+        item_id: z.number().int(),
+      },
+    },
+    async ({ item_type, item_id }) => jsonResult(db, readClassroomItem(db, item_type, item_id))
+  );
+
+  server.registerTool(
     'atlas_search',
     {
       description:
-        'Search notes, resources, extracted document pages/slides/sheets, announcements, and assignments. Returns short excerpts and locations (e.g. "Page 214"), never full text — use atlas_read_document/atlas_read_note to read what a hit points at.',
+        'Search notes, resources, extracted document pages/slides/sheets, announcements, and assignments. Returns short excerpts and locations (e.g. "Page 214"). Document-page hits include their parent resource id/title, source, and ordinal so atlas_read_document can read the exact page; use atlas_read_note or atlas_read_classroom_item for other hit types.',
       inputSchema: {
         query: z.string(),
         course: z.union([z.string(), z.number()]).optional(),
@@ -153,6 +180,61 @@ async function main(): Promise<void> {
   );
 
   server.registerTool(
+    'atlas_read_visual',
+    {
+      description:
+        'Return one visual Atlas source through the MCP image content type: a local PDF page or an image resource/handwritten scan. Provide exactly one resource_id or note_id. PDF pages are rendered locally and bounded to a practical image size; images are returned as-is when small enough and safely resized when unusually large. This never accepts an arbitrary filesystem path.',
+      inputSchema: {
+        resource_id: z.number().int().positive().optional(),
+        note_id: z.number().int().positive().optional(),
+        page: z.number().int().positive().optional(),
+      },
+    },
+    async ({ resource_id, note_id, page }) => {
+      if (!agentAccessAllowed(db)) return jsonResult(db, null);
+      const source = resolveVisualSource(db, { resourceId: resource_id, noteId: note_id });
+      if (!source.ok) return jsonResult(db, source);
+      try {
+        const visual = await renderVisual(source, page ?? 1);
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(
+                {
+                  ok: true,
+                  target: {
+                    type: source.targetType,
+                    id: source.id,
+                    title: source.title,
+                    kind: source.kind,
+                    course: source.course,
+                  },
+                  page: visual.page,
+                  pageCount: visual.pageCount,
+                  resized: visual.resized,
+                },
+                null,
+                2
+              ),
+            },
+            {
+              type: 'image' as const,
+              data: visual.data.toString('base64'),
+              mimeType: visual.mimeType,
+            },
+          ],
+        };
+      } catch (error) {
+        return jsonResult(db, {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Atlas could not render this visual source.',
+        });
+      }
+    }
+  );
+
+  server.registerTool(
     'atlas_read_note',
     {
       description: "Read a note's full Markdown content by id.",
@@ -181,9 +263,9 @@ async function main(): Promise<void> {
     'atlas_create_note',
     {
       description:
-        'Create a new note in a course (e.g. a study guide or summary you just produced) so it\'s saved and searchable later. This can only create a new note — it can never edit or overwrite a note the user wrote themselves.',
+        'Create a new note in a course, or omit/null `course` to create it in General/unsorted (e.g. a study guide, summary, or cross-course reference). The note is saved and searchable later. This can only create a new note — it can never edit or overwrite a note the user wrote themselves.',
       inputSchema: {
-        course: z.union([z.string(), z.number()]),
+        course: z.union([z.string(), z.number()]).nullable().optional(),
         title: z.string(),
         content_markdown: z.string(),
       },
@@ -192,7 +274,7 @@ async function main(): Promise<void> {
       if (!agentAccessAllowed(db)) return jsonResult(db, null);
       const result = createAgentNote(db, course, title, content_markdown);
       if (result.ok) {
-        const noteRow = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(result.noteId) as { course_id: number };
+        const noteRow = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(result.noteId) as { course_id: number | null };
         indexNoteForSearch(db, result.noteId, noteRow.course_id, title, content_markdown);
       }
       return jsonResult(db, result);

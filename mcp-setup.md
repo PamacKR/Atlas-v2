@@ -34,13 +34,17 @@ This repo already ships a working **`.mcp.json`** at its root:
 
 **Codex / Cursor**: check whether the tool reads project-level `.mcp.json` directly (many do, since it's becoming a de facto convention). If not, copy the same `command`/`args` into that tool's own MCP config file — still no absolute path, since `node` and a path relative to the project root are portable regardless of which tool launches it, as long as it runs with this project as its working directory.
 
-After it's connected, it should list nine `atlas_*` tools.
+After it's connected, it should list twelve `atlas_*` tools.
 
 ## What the agent can do
 
-Read: search everything, list a course's resources/deadlines, read a specific page/slide/sheet/section range of a document (or, called with no range, get an outline of the whole document's parts), read a note. This transparently includes text read from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professor shared, plus links discovered inside them (e.g. a course-index spreadsheet) — fetched and extracted without ever being downloaded into Atlas's local storage.
+The MCP surface includes course readiness, full locally-synced Classroom announcement/assignment reads, and General/unsorted agent-note creation. Document-page search hits include the parent resource id/title, source, and ordinal so the agent can follow a page result directly into `atlas_read_document`.
 
-Write: create a new note (can never edit or overwrite one you wrote yourself), and update its own persistent memory about you or a specific course — plain Markdown files in `Downloads/Atlas-Storage/course-profiles/`, readable and editable by you at any time, never shown inside the Atlas app itself.
+`atlas_read_visual` returns one local PDF page or image/handwritten scan as an MCP image block. The agent supplies an Atlas `resource_id` or `note_id`, never a filesystem path. PDFs are rendered locally one page at a time; small images remain in their original format, while unusually large images are safely resized. This gives a vision-capable client the visual surface without Atlas calling an AI service or exposing arbitrary files.
+
+Read: search everything, list a course's resources/deadlines, inspect a course's text readiness, read a specific page/slide/sheet/section range of a document (or, called with no range, get an outline of the whole document's parts), read a note, and read the full locally-synced body of a Classroom announcement or assignment. This transparently includes text read from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professor shared, plus links discovered inside them (e.g. a course-index spreadsheet) — fetched and extracted without ever being downloaded into Atlas's local storage.
+
+Write: create a new note in a course or General/unsorted (can never edit or overwrite one you wrote yourself), and update its own persistent memory about you or a specific course — plain Markdown files in `Downloads/Atlas-Storage/course-profiles/`, readable and editable by you at any time, never shown inside the Atlas app itself.
 
 ## If your AI tool doesn't support MCP
 

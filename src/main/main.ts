@@ -10,7 +10,7 @@ import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
 import { extractDocumentParts } from './textExtraction';
 import { processPendingRemoteResources, driveFileIdFromUrl } from './remoteSync';
 import { ensureCourseMemoryFile, ensureGeneralMemoryFile, deleteCourseMemoryFile } from './memoryFiles';
-import { toFtsQuery, getCourseBriefing } from './contextBuilder';
+import { toFtsQuery, getCourseBriefing, getCourseReadiness } from './contextBuilder';
 import {
   isGoogleDriveConnected,
   authorizeGoogleDrive,
@@ -2262,133 +2262,7 @@ ipcMain.handle('resources:listByCourse', (_event, courseId: number) => {
 // for the external agent. It deliberately does not judge academic coverage or
 // comprehension, and it does not call an AI service.
 ipcMain.handle('courses:getReadiness', (_event, courseId: number) => {
-  const db = getDb();
-  const resources = db
-    .prepare(
-      `SELECT resources.id, resources.title, resources.kind, resources.source,
-              resources.extraction_status AS extractionStatus,
-              resources.extraction_error AS extractionError,
-              resources.ocr_text AS ocrText,
-              resources.remote_source AS remoteSource,
-              resources.link_kind AS linkKind,
-              (SELECT COUNT(*) FROM document_parts
-               WHERE document_parts.resource_id = resources.id) AS partCount
-       FROM resources
-       WHERE resources.course_id = ?
-       ORDER BY resources.added_at DESC`
-    )
-    .all(courseId) as {
-    id: number;
-    title: string;
-    kind: string;
-    source: string;
-    extractionStatus: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
-    extractionError: string | null;
-    ocrText: string | null;
-    remoteSource: 'drive' | 'gmail' | null;
-    linkKind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
-    partCount: number;
-  }[];
-  const notes = db
-    .prepare(
-      `SELECT id, title, content_markdown AS contentMarkdown, is_handwritten AS isHandwritten,
-              image_path AS imagePath, ocr_text AS ocrText
-       FROM notes
-       WHERE course_id = ?
-       ORDER BY updated_at DESC`
-    )
-    .all(courseId) as {
-    id: number;
-    title: string;
-    contentMarkdown: string;
-    isHandwritten: number;
-    imagePath: string | null;
-    ocrText: string | null;
-  }[];
-
-  type ReadinessStatus = 'ready' | 'needs_ocr' | 'pending' | 'failed' | 'unsupported' | 'external';
-  type ReadinessItem = {
-    id: number;
-    type: 'resource' | 'note';
-    title: string;
-    status: ReadinessStatus;
-    detail: string;
-    kind?: string;
-    source?: string;
-    canRetry?: boolean;
-  };
-  const counts: Record<ReadinessStatus, number> = {
-    ready: 0,
-    needs_ocr: 0,
-    pending: 0,
-    failed: 0,
-    unsupported: 0,
-    external: 0,
-  };
-  const issues: ReadinessItem[] = [];
-  const add = (item: ReadinessItem): void => {
-    counts[item.status] += 1;
-    if (item.status !== 'ready') issues.push(item);
-  };
-
-  for (const resource of resources) {
-    let status: ReadinessStatus;
-    let detail: string;
-    let canRetry = false;
-    if (resource.extractionStatus === 'done' && (resource.partCount > 0 || !!resource.ocrText?.trim())) {
-      status = 'ready';
-      detail = 'Text is available to the agent.';
-    } else if (resource.extractionStatus === 'pending') {
-      status = 'pending';
-      detail = 'Atlas is still extracting this file.';
-    } else if (resource.extractionStatus === 'empty') {
-      status = resource.kind === 'pdf' ? 'needs_ocr' : 'unsupported';
-      detail = resource.kind === 'pdf' ? 'No text layer was found. Run OCR and review the result.' : 'No readable text was found.';
-    } else if (resource.extractionStatus === 'failed') {
-      status = 'failed';
-      detail = resource.extractionError || 'Atlas could not extract text from this file.';
-      canRetry = !resource.remoteSource && ['pdf', 'pptx', 'xlsx', 'docx', 'text', 'markdown'].includes(resource.kind);
-    } else if (resource.kind === 'link' && resource.linkKind !== 'driveFile') {
-      status = 'external';
-      detail = 'External material; Atlas does not extract this link into course text.';
-    } else {
-      status = 'unsupported';
-      detail = 'This file type is not included in Atlas text extraction.';
-    }
-    add({
-      id: resource.id,
-      type: 'resource',
-      title: resource.title,
-      status,
-      detail,
-      kind: resource.kind,
-      source: resource.source,
-      canRetry,
-    });
-  }
-
-  for (const note of notes) {
-    if (note.contentMarkdown.trim() || note.ocrText?.trim()) {
-      add({ id: note.id, type: 'note', title: note.title, status: 'ready', detail: 'Note text is available to the agent.' });
-    } else if (note.isHandwritten && note.imagePath) {
-      add({
-        id: note.id,
-        type: 'note',
-        title: note.title,
-        status: 'needs_ocr',
-        detail: 'This scan has no accepted text yet. Run OCR or ask the external agent to inspect the scan.',
-      });
-    } else {
-      add({ id: note.id, type: 'note', title: note.title, status: 'unsupported', detail: 'This note does not contain text yet.' });
-    }
-  }
-
-  return {
-    total: resources.length + notes.length,
-    readable: counts.ready,
-    counts,
-    issues,
-  };
+  return getCourseReadiness(getDb(), courseId);
 });
 
 ipcMain.handle('resources:upload', async (_event, courseId: number) => {
