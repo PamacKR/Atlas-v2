@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-08 (personal-use UI overhaul and performance/responsiveness pass complete on `ui-overhaul-v2`; a guarded local master-delete flow is now available in Settings → Storage.)
+**Last updated:** 2026-08-08 (personal-use UI overhaul and performance/responsiveness pass were completed on `ui-overhaul-v2` and merged into `main`; a guarded local master-delete flow is now available in Settings → Storage.)
 
 ## Next session — start here
 
@@ -13,6 +13,8 @@ The performance measurement and implementation phases are complete; the benchmar
 The performance measurement and implementation work is complete for the personal-use scope; benchmark and regression results are documented below.
 
 - **MCP capability expansion, 2026-08-08:** the shared Context Builder and local MCP server now expose 12 tools. Search page hits include their parent resource id/title, source, and ordinal; `atlas_read_classroom_item` reads full synced announcement and assignment bodies with attachment ids; `atlas_course_readiness` exposes the same deterministic report used by the in-app Readiness tab; `atlas_create_note` can target General/unsorted when no course is supplied; and `atlas_read_visual` returns one local PDF page or image as an MCP image block without accepting arbitrary paths. The focused `npm run verify:mcp` check passes every new behavior against a throwaway database.
+
+- **Documentation and repository cleanup, 2026-08-08:** added `MCP_AGENT_GUIDE.md` with bounded-search, ambiguity, clarification, source-verification, and no-invention rules for external agents using Atlas MCP. `AGENTS.md`, `DESIGN.md`, `README.md`, `ROADMAP.md`, and `ARCHITECTURE.md` now point to the current MCP workflow, current `main` branch, completed Search/Dashboard/logo work, targeted search-index updates, and the restored Settings surface. The deleted `.claude` directory's stale Git worktree registration was also removed; no product code or user data was changed.
 
 ## Current session — 2026-08-08
 
@@ -34,9 +36,9 @@ The performance measurement and implementation work is complete for the personal
 
 ## Current session — 2026-08-06
 
-The personal-use UI overhaul is complete on `ui-overhaul-v2`; the earlier statements below that no implementation exists or that the overhaul is still in progress are historical and superseded by this section. Public-release polish remains intentionally deferred.
+The personal-use UI overhaul was complete on `ui-overhaul-v2` and has since been merged into `main`; the earlier statements below that no implementation exists or that the overhaul is still in progress are historical and superseded by this section. The performance baseline in this section predates the implementation recorded under 2026-08-07. Public-release polish remains intentionally deferred.
 
-- **Performance measurement baseline, 2026-08-06:** added `scripts/measure-performance.js` and the `npm run measure:performance` command. It launches the built Electron app against a temporary database seeded to 5 courses, 196 resources, 3,081 document parts, 2 notes, 42 deadlines, 152 announcements, 27 assignments, and 3,458 matching search rows, then removes that directory after the run. The final focused run passed without captured renderer/Electron errors and measured approximately: 3.27s for Electron launch to resolve, 4.76s to the first window, 5.72s to DOMContentLoaded, and 5.81s to a usable Dashboard from process start; 0.22–0.30s for populated page navigation; 1.90s to open a new note editor; 2.11s from note edit through the real Saving → Saved transition; 2.83s from file choice through the uploaded resource becoming visible; and 1.30s for resource deletion to disappear from the database. The same delete sample found `uiStillShows: true` 250ms later, confirming a stale resource row remains visible after the direct deletion IPC path. Deadline create/toggle IPC measured 16ms, global search 0.38s, and command-palette opening 95–103ms. The underlying note-save IPC took 1.10s; the renderer sample observed a 17.1ms maximum animation-frame gap and no long tasks. The current renderer bundle is 6.76MB and the PDF worker is 2.37MB. This confirms the first implementation targets should be synchronous full-index work on note/resource mutations, deletion freshness, and startup work before first use; no performance fix has been implemented yet.
+- **Historical performance measurement baseline, 2026-08-06 (superseded by the 2026-08-07 implementation entry above):** added `scripts/measure-performance.js` and the `npm run measure:performance` command. It launches the built Electron app against a temporary database seeded to the user's approximate data volume, measures launch, navigation, mutations, search, command-palette opening, animation-frame gaps, and bundle sizes, then removes the temporary directory. The baseline identified full-index mutations, stale deletion refreshes, and startup work as the first targets; those targets were implemented and re-verified in the 2026-08-07 performance pass.
 
 - **Roadmap direction, 2026-08-03:** the UI overhaul is marked complete for personal use. Packaging Atlas as a Windows app and building empty/first-run states are deferred until public-release preparation; design-style themes and the density setting are cancelled. The next implementation task is the per-course readiness view. Accent-colour customization is now cancelled for the personal-use scope; Atlas keeps its original fixed amber/yellow accent.
 
@@ -134,7 +136,7 @@ The personal-use UI overhaul is complete on `ui-overhaul-v2`; the earlier statem
 
 - **Resources source filter, 2026-08-03:** Resources now has a combined Local/Classroom/Drive source filter alongside the existing course, kind, sort, and view controls. Manual uploads and watched-folder files count as Local; Classroom attachments and Drive imports remain distinct. A focused Electron verifier seeds one resource of each source without requiring Google credentials and confirms each filter plus the All sources reset.
 
-**Historical state follows.**
+**Historical state follows.** The entries below preserve earlier decisions and implementation history; they are not current branch instructions or a second list of pending work.
 
 **What actually happened (read this before assuming any earlier plan is still live):**
 
@@ -144,11 +146,11 @@ The personal-use UI overhaul is complete on `ui-overhaul-v2`; the earlier statem
 4. **`ui-overhaul-v2` was then brought current on mockups only** — the full, later mockup set from `ui-overhaul` was copied over (`course-detail-a.html`, `overlays-a.html`, `search-a.html`, `controls-a.html`, `dashboard-light-a.html`, `settings-light-a.html`, plus refined versions of the original six: `courses-a`, `dashboard-a`, `notes-a`, `resources-a`, `settings-a`). Nothing else from `ui-overhaul` was brought over — `src/renderer/*` on `ui-overhaul-v2` is untouched, identical to before any overhaul work began.
 5. **The old 14-stage plan document is gone from the workflow** — it lived outside this repo, at a Claude-Code-specific path (`~/.claude/plans/vectorized-gliding-sketch.md`), and does not carry over across a tool switch. Treat it as no longer authoritative. If a written plan is wanted again, write it fresh against the current mockup set and store it somewhere that survives a tool/session change (this repo, if it needs to be durable).
 6. **The hard-won lesson for whoever builds this next**: implement by opening the actual mockup HTML/CSS files and copying markup structure and literal values (hex colors, class names, spacing) directly — don't reconstruct from memory, a summary, or "what a design like this usually looks like." Every real defect found in the abandoned attempt traced back to that shortcut.
-7. **A real app icon** is still separately pending — unrelated to the above, still just a one-line `build.win.icon` swap once a logo exists (`ROADMAP.md`).
+7. **A real app icon was still pending at that historical point.** It was subsequently integrated and verified in the 2026-08-06 branding entries above.
 
-**Known loose end, unrelated to the UI work, not touched:** a stray git worktree at `.claude/worktrees/goofy-noyce-e28e2e` (branch `claude/goofy-noyce-e28e2e`, stuck at old commit `a68d21e` "Build Phase 4 Part A: page-aware text extraction", with an uncommitted change to `src/renderer/styles.css` sitting in it). Predates this session's work; not understood to be related to anything current. Flagged here rather than silently removed or assumed safe to delete — needs the user's call.
+**Historical loose end, resolved 2026-08-08:** the deleted `.claude/worktrees/goofy-noyce-e28e2e` directory no longer existed, but Git retained a prunable worktree registration. That registration was removed during the documentation cleanup; the old branch remains untouched as historical Git data.
 
-**Work on `ui-overhaul-v2` should continue one commit at a time**, same as before, merged to `main` only once a real implementation is done and verified against the mockups directly.
+**Branch handoff, resolved 2026-08-08:** the UI implementation branch `ui-overhaul-v2` was merged into `main`. Current work should follow the checked-out branch unless the user explicitly changes branch or scope.
 
 ## Session 2026-07-29 (continued) — the two ready-to-build fixes from last session
 

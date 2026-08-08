@@ -38,6 +38,8 @@ After it's connected, it should list twelve `atlas_*` tools.
 
 ## What the agent can do
 
+When using Atlas MCP for an academic request, the connected agent should also read [`MCP_AGENT_GUIDE.md`](MCP_AGENT_GUIDE.md). That guide defines the bounded lookup, course/resource disambiguation, missing-lecture clarification, and no-invention rules; it is intentionally separate from the software-development instructions in `AGENTS.md`.
+
 The MCP surface includes course readiness, full locally-synced Classroom announcement/assignment reads, and General/unsorted agent-note creation. Document-page search hits include the parent resource id/title, source, and ordinal so the agent can follow a page result directly into `atlas_read_document`.
 
 `atlas_read_visual` returns one local PDF page or image/handwritten scan as an MCP image block. The agent supplies an Atlas `resource_id` or `note_id`, never a filesystem path. PDFs are rendered locally one page at a time; small images remain in their original format, while unusually large images are safely resized. This gives a vision-capable client the visual surface without Atlas calling an AI service or exposing arbitrary files.

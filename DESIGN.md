@@ -175,7 +175,7 @@ All overlays follow `mockups/overlays-a.html`, regardless of feature.
 4. During iteration use focused build/type checks. Do **not** run the entire Electron suite after every small CSS edit.
 5. After a cohesive major surface/cross-cutting change, run the relevant focused Electron verifier or add one that drives the real Electron DOM with a throwaway `ATLAS_DATA_DIR`; inspect its screenshot. Use the full suite only at a sensible major milestone.
 6. Check the rendered page for hidden-state leaks, overflow, control theming, actual hover/focus, long names, course-filter behavior, and close/overlay stacking before reporting completion.
-7. Update `STATUS.md`; update `ROADMAP.md` for completed milestones or deliberately deferred work. Commit and push coherent changes without waiting for approval. Never stage `.claude/`.
+7. Update `STATUS.md`; update `ROADMAP.md` for completed milestones or deliberately deferred work. Commit and push coherent changes without waiting for approval. Do not stage unrelated generated or tool-owned metadata without checking its scope first.
 
 The user uses `Launch Atlas.bat` for live feedback. Do not attribute a mismatch to an installer/release build unless there is direct evidence. The user has explicitly permitted using real `Atlas-Storage` data for careful diagnosis when test fixtures are insufficient, since it will be reset before semester; still protect data and never make irreversible changes without clear scope.
 
@@ -183,17 +183,16 @@ The user uses `Launch Atlas.bat` for live feedback. Do not attribute a mismatch 
 
 ### Do not silently claim these are fixed
 
-1. **Search final verification:** the search overhaul is implemented, but the broad verifier stops in an unrelated historical course-detail flow before search. Add/run a focused Electron check and inspect its screenshot before calling the search pass fully verified.
-2. **Dashboard v2 visual review:** behavior is implemented and covered by `scripts/verify-dashboard-v2.js`, but the user has not yet reviewed the finished surface. Keep its `ROADMAP.md` checkbox unchecked until they do.
+The earlier warnings about Search final verification and Dashboard v2 visual review are historical and superseded. Both are marked complete in `ROADMAP.md`, and their focused Electron checks have been used during the completed personal-use UI work.
 
 The previously deferred scrollbar and Dashboard hover-fidelity debt was resolved on 2026-08-03 through a live Electron cascade diagnosis. The dedicated verifier confirms 6px rounded track/thumb geometry and unclipped rounded Dashboard row hovers.
 
 ### Start sequence for the next chat
 
 1. Read `AGENTS.md`, `STATUS.md`, `open-questions.md`, and this file.
-2. Read the current relevant mockups before editing.
-3. Check `git status`; preserve the untracked `.claude/` directory and do not stage it.
-4. Work from `ui-overhaul-v2` unless the user explicitly changes branch/scope.
-5. Begin with the user’s next requested UI surface, while observing the deferred items above instead of reopening them opportunistically.
+2. If the task uses Atlas MCP, read `MCP_AGENT_GUIDE.md` before querying or writing data.
+3. Read the current relevant mockups before editing.
+4. Check `git status` and continue on the currently checked-out branch unless the user explicitly changes branch or scope.
+5. Begin with the user’s next requested surface. Do not reopen completed Search, Dashboard v2, scrollbar, or hover work without a new user request and a concrete diagnosis.
 
-The immediate functional implementation at handoff is Dashboard v2 plus the Calendar deadline entry flow and Calendar filter persistence. The appropriate next product task is whatever the user supplies next; it is **not** a mandate to continue cosmetic scrollbar/hover changes without a real diagnosis.
+The personal-use UI overhaul, Dashboard v2, Calendar, command palette, and performance pass are completed milestones. The remaining deliberately deferred public-release items are tracked in `ROADMAP.md`; they are not an instruction to begin them automatically.
