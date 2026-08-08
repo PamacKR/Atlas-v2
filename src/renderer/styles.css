@@ -4437,7 +4437,7 @@ button#classroom-connect-confirm {
   display: block !important;
   min-width: 0;
   padding: var(--space-4);
-  margin: calc(var(--space-3) * -1);
+  margin: 0;
   border: 0;
   border-radius: var(--radius-sm);
   cursor: pointer;
