@@ -17,6 +17,7 @@ For a request such as “summarize Lecture 10 from Course X”:
    - A unique substring match is acceptable.
    - If more than one course matches, ask the user to choose; never silently pick the first one.
    - If the named course is not found, report that directly and ask whether the user meant another course.
+   - If the named course does exist but the user accidentally named the wrong course, search only that named course. Do not search other courses or infer which course the user intended. If the requested material is absent there, say so plainly and stop the lookup so the user can correct the course.
 
 2. Inspect the course's resource inventory with `atlas_list_resources`.
    - Use the course's `resourceTotal` and the tool's `truncated` value to decide whether pagination is required.
@@ -38,9 +39,13 @@ If the requested number is absent but nearby numbered items exist, stop and ask 
 
 > I couldn't find Lecture 10. I found Lecture 9 and Lecture 11–12. Did you mean one of those, or is Lecture 10 stored under another title?
 
-If the user confirms that the missing number is definitely correct, perform one additional bounded search for alternate titles. If it still cannot be found, say that it is not currently available in Atlas and stop. Do not read unrelated resources merely because they contain the same number or the word “lecture.”
+If the user confirms that the missing number is definitely correct, say that it is not currently available in Atlas and stop. Do not keep trying alternate titles or read unrelated resources merely because they contain the same number or the word “lecture,” unless the user explicitly asks for a broader investigation.
 
 If the course contains resources that appear to belong to another subject, mention the mismatch as a data-quality caveat. Do not silently reassign the material or assume the course label is correct.
+
+## Current development priority
+
+The first priority is the agent's retrieval and decision process, not the wording of its final answer. Design and test how it resolves the request, chooses MCP tools, recognizes found/missing/ambiguous results, stops, and pauses for clarification. The response wording and presentation can be refined after that control flow is reliable.
 
 ## When to ask instead of continuing
 
@@ -52,7 +57,9 @@ Ask the user when:
 - the source exists but is unsupported, empty, or awaiting OCR and another source would change the answer;
 - the requested action would write, move, delete, or otherwise change Atlas data and the user has not clearly authorized it.
 
-When the client supports structured user input, use it for a short choice list. Otherwise ask the same question in plain language. Do not hide a clarification question inside a long explanation.
+When the client supports structured user input, use it for a short choice list. For Codex specifically, use the blocking structured question interaction used in Plan mode: the current task must pause until the user answers. Do not continue searching, spend tokens on more guesses, or produce the final answer while waiting for that response. Otherwise ask the same question in plain language. Do not hide a clarification question inside a long explanation.
+
+The MCP server supplies the verified candidates and the reason clarification is needed; it does not open an Atlas UI popup. The Codex client is responsible for presenting the blocking question interaction.
 
 ## Response standard
 
