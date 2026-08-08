@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-08 (personal-use UI overhaul and performance/responsiveness pass complete on `ui-overhaul-v2`; public-readiness planning is the next workstream.)
+**Last updated:** 2026-08-08 (personal-use UI overhaul and performance/responsiveness pass complete on `ui-overhaul-v2`; empty/first-run state planning is now recorded for the next workstream.)
 
 ## Next session — start here
 
@@ -16,6 +16,7 @@ The detailed implementation sequence is now recorded in `performance-plan.md`. P
 
 - **Sidebar logo centering:** kept the Atlas wordmark in its existing aligned position while removing the logo mark's separate 3px rightward optical offset. The larger mark now shares the navigation icons' fixed x-axis in both expanded and collapsed sidebar states; the focused branding assertions were updated to guard that geometry.
 - **Accent selector removal:** restored the pre-accent-cleanup visual behavior and removed accent-color selection from Settings → Appearance. Atlas now uses its fixed amber/yellow accent, while Appearance contains only Dark and Light controls. Renderer initialization no longer reads or persists an accent setting, obsolete swatch styling and performance seed data were removed, and the focused Settings verifier now checks the reduced Appearance surface.
+- **Empty/first-run planning:** created `empty-first-run-plan.md` as the implementation contract. It distinguishes first run, domain-empty, filtered-empty, archived-empty, unavailable/pending source, quiet activity, and error states; recommends one non-blocking Dashboard setup surface; defines page-specific actions and copy; and records the state, accessibility, verification, and rollout order before implementation begins.
 
 ## Current session — 2026-08-07
 
