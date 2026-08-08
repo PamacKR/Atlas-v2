@@ -5402,21 +5402,39 @@ function setTheme(theme: 'light' | 'dark'): void {
   atlasApi.setSetting('theme', theme);
 }
 
-// Accent color — a user-chosen override of --color-accent (styles.css :root),
-// which already drives active states/buttons/highlights throughout the app,
-// so changing this one CSS custom property recolors all of them at once
-// rather than needing per-component theming.
+// Accent color — a user-chosen override of the shared accent token. The CSS
+// surface/text/rule tokens are derived from --accent, while this renderer
+// helper supplies the foreground used on solid accent controls so every
+// swatch remains readable in both themes.
 // These are the five literal Direction A swatches. Both token families are
 // updated below because pre-overhaul surfaces still use --color-accent while
 // the rebuilt pages use --accent.
 const ACCENT_COLORS = ['#d9a441', '#3b82f6', '#8b5cf6', '#3ba55d', '#ec4899'];
 const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
+let selectedAccentColor = DEFAULT_ACCENT_COLOR;
+
+function accentLuminance(color: string): number {
+  const normalized = color.replace('#', '');
+  if (normalized.length !== 6) return 0;
+  const channels = [0, 2, 4].map((offset) => parseInt(normalized.slice(offset, offset + 2), 16) / 255);
+  const linear = channels.map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
+  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+}
+
+function accentForeground(color: string): string {
+  const luminance = accentLuminance(color);
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  const darkContrast = (luminance + 0.05) / 0.05;
+  return whiteContrast >= darkContrast ? '#ffffff' : '#111519';
+}
 
 function applyAccentColor(color: string): void {
-  document.documentElement.style.setProperty('--accent', color);
-  document.documentElement.style.setProperty('--color-accent', color);
+  selectedAccentColor = color;
+  document.documentElement.style.setProperty('--accent', selectedAccentColor);
+  document.documentElement.style.setProperty('--color-accent', selectedAccentColor);
+  document.documentElement.style.setProperty('--accent-foreground', accentForeground(selectedAccentColor));
   document.querySelectorAll<HTMLElement>('.settings-accent-swatch').forEach((swatch) => {
-    swatch.classList.toggle('active', swatch.dataset.accentColor === color);
+    swatch.classList.toggle('active', swatch.dataset.accentColor === selectedAccentColor);
   });
 }
 

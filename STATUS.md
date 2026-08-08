@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-08 (personal-use UI overhaul and performance/responsiveness pass complete on `ui-overhaul-v2`; public-readiness planning is the next workstream.)
+**Last updated:** 2026-08-08 (personal-use UI overhaul, performance/responsiveness pass, and accent-colour coverage cleanup complete on `ui-overhaul-v2`; public-readiness planning is the next workstream.)
 
 ## Next session — start here
 
@@ -15,6 +15,7 @@ The detailed implementation sequence is now recorded in `performance-plan.md`. P
 ## Current session — 2026-08-08
 
 - **Sidebar logo centering:** kept the Atlas wordmark in its existing aligned position while removing the logo mark's separate 3px rightward optical offset. The larger mark now shares the navigation icons' fixed x-axis in both expanded and collapsed sidebar states; the focused branding assertions were updated to guard that geometry.
+- **Accent-colour system cleanup:** replaced the fixed warm neutral palette with cool light/dark bases and accent-derived backgrounds, panels, hover surfaces, text tones, dividers, soft surfaces, and borders. Settings selection, search focus, drag/drop feedback, checked controls, calendar current-day states, and solid accent controls now follow the selected accent immediately, with contrast-aware foregrounds for readable text. Semantic danger, success, course, source, preview, overlay, and logo colours remain independent. Added `npm run verify:accent-colors`, covering all five swatches in both themes, persistence, representative controls, and visual screenshots; it passes, and the complete Electron regression suite passes as well.
 
 ## Current session — 2026-08-07
 
