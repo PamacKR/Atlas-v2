@@ -2,7 +2,7 @@ import { getDb } from './db/database';
 import { fetchRemoteDriveFile } from './remoteFetch';
 import { DiscoveredLink } from './textExtraction';
 
-// Orchestrates remote-attachment reading (remote-attachments-spec.md) —
+// Orchestrates remote-attachment reading (remote-attachment architecture) —
 // fetching a Classroom Drive attachment's text, and following links found
 // inside it, without ever writing a file under Atlas-Storage/files/. Kept
 // separate from main.ts's local-file extraction (scheduleExtraction/

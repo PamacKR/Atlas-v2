@@ -1,5 +1,5 @@
 // Verifies text extraction preserves what documents actually contain —
-// specifically the things it used to silently destroy (remote-attachments-spec.md
+// specifically the things it used to silently destroy (remote-attachment architecture
 // §2.2). Every check here corresponds to a real defect found by running the
 // extractor against a real course spreadsheet a professor had built.
 //

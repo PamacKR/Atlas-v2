@@ -10,7 +10,7 @@ import * as os from 'os';
 export function getDataDir(): string {
   // Override for automated verification (scripts/verify-app.js), so test
   // runs never touch the user's real Downloads/Atlas-Storage data. Also how
-  // the standalone MCP server (phase4-spec.md §6.1) points itself at the
+  // the standalone MCP server (Phase 4 architecture §6.1) points itself at the
   // right Atlas-Storage without needing Electron at all.
   if (process.env.ATLAS_DATA_DIR) return process.env.ATLAS_DATA_DIR;
 
@@ -67,7 +67,7 @@ export function getScanImagesDir(courseFolderName: string): string {
   return path.join(getFilesDir(), courseFolderName, 'notes', 'scans');
 }
 
-// Phase 4 persistent memory (phase4-spec.md §5) — plain Markdown files an AI
+// Phase 4 persistent memory (Phase 4 architecture §5) — plain Markdown files an AI
 // agent reads/writes directly, kept in the user's own data folder (not the
 // app's source repo, not shown in the Atlas UI) so they're readable in any
 // text editor and survive switching chats or AI tools entirely.

@@ -41,7 +41,7 @@ export async function endOcrBatch(): Promise<void> {
 }
 
 // Exported so callers that need the individual pages back (main.ts's
-// resources:saveOcrText, for document_parts — phase4-spec.md §3.7) can split
+// resources:saveOcrText, for document_parts — Phase 4 architecture §3.7) can split
 // on the exact same separator this module joins with, rather than guessing.
 export const OCR_PAGE_SEPARATOR = '\n\n---\n\n';
 

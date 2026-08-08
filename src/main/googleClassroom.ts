@@ -114,11 +114,11 @@ export interface MaterialLink {
   // hands back directly (material.driveFile.driveFile.id). This is what
   // remoteFetch.ts needs to fetch the file's bytes; nothing downstream can
   // reach it once collapsed to just {title, url} the way this used to be
-  // (remote-attachments-spec.md §1).
+  // (remote-attachment architecture §1).
   driveFileId?: string;
   // Distinguishes a real fetchable Drive file from a YouTube video, a plain
   // external link, or a Form — none of which remoteFetch.ts can or should
-  // attempt to fetch (remote-attachments-spec.md §7).
+  // attempt to fetch (remote-attachment architecture §7).
   linkKind: 'driveFile' | 'youTubeVideo' | 'link' | 'form';
 }
 
@@ -127,7 +127,7 @@ export interface MaterialLink {
 // downloadable file at all) is just as representable as a Drive file one.
 // Returns one entry per material that actually has a link to show, keeping
 // the Drive file ID and material kind alongside title/url (previously
-// discarded — remote-attachments-spec.md §1 — which made every Classroom
+// discarded — remote-attachment architecture §1 — which made every Classroom
 // attachment indistinguishable from a plain external link downstream).
 function extractMaterialLinks(
   materials: classroom_v1.Schema$Material[] | undefined

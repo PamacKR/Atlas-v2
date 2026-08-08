@@ -5,7 +5,7 @@ import mammoth from 'mammoth';
 import { loadPdfjs } from './pdfjsLoader';
 import { decodeXmlEntities } from './preview';
 
-// Page-aware extraction for the Phase 4 Context Builder (phase4-spec.md §3).
+// Page-aware extraction for the Phase 4 Context Builder (Phase 4 architecture §3).
 // Each resource's text is split into "parts" (page/slide/sheet/section) with
 // a human-readable label, so search can point the AI agent at "page 214" and
 // it can request just that range instead of an entire file at once.
@@ -18,7 +18,7 @@ export interface DocumentPart {
   text: string;
 }
 
-// A link found inside a document's content (remote-attachments-spec.md
+// A link found inside a document's content (remote-attachment architecture
 // §5.5.1) — kept alongside the inline "Links: ..." text already appended to
 // each part (below), since that's for the agent's own visibility while this
 // is what lets Atlas *follow* a link that points at another Drive file.
@@ -38,10 +38,10 @@ export interface ExtractionResult {
 // DOCX/TXT/MD have no real page boundaries, so long runs of plain text are
 // split into fixed-size blocks purely so no single part is unreasonably
 // large — the label says "Part N", not "Page N", to avoid implying a
-// precision the format doesn't have (phase4-spec.md §10).
+// precision the format doesn't have (Phase 4 architecture §10).
 const CHUNK_CHARS = 3000;
 
-// --- Link preservation (remote-attachments-spec.md §2.2) ---
+// --- Link preservation (remote-attachment architecture §2.2) ---
 //
 // Every extractor previously discarded hyperlink targets, keeping only the
 // visible link text — verified against a real course spreadsheet where a

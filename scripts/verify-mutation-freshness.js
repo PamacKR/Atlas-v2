@@ -1,4 +1,4 @@
-// Focused regression coverage for Phase 1 of performance-plan.md.
+// Focused regression coverage for Phase 1 of performance implementation notes.
 // It drives the real Electron app and deliberately performs mutations through
 // the exposed Atlas API while each affected page is already visible. A page
 // change or reload would hide the stale-rendering bug this is meant to catch.

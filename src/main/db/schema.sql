@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS resources (
   drive_preview_synced_size INTEGER,
   drive_preview_synced_mtime_ms INTEGER,
   -- Page-aware text extraction for the Phase 4 Context Builder
-  -- (phase4-spec.md §3) — 'pending' until a background extraction pass
+  -- (Phase 4 architecture §3) — 'pending' until a background extraction pass
   -- completes, 'done' once document_parts rows exist, 'empty' when the file
   -- parsed but yielded no text (the scan-detection signal that drives the
   -- existing "Run OCR" button), 'unsupported' for kinds with no extractor
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS resources (
   extraction_status TEXT NOT NULL DEFAULT 'pending',
   extraction_error TEXT,
   extracted_at TEXT,
-  -- Remote-attachment reading (remote-attachments-spec.md §4) — a resource
+  -- Remote-attachment reading (remote-attachment architecture §4) — a resource
   -- whose bytes live in Drive (later Gmail) and are fetched to memory,
   -- extracted, then discarded rather than saved under files/. NULL/NULL for
   -- anything local (manual upload, watched folder, or an already-downloaded
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS resources (
 );
 
 -- One row per page/slide/sheet/section of a resource's extracted text
--- (phase4-spec.md §3.2/3.3) — kept separate from one blob per file so the
+-- (Phase 4 architecture §3.2/3.3) — kept separate from one blob per file so the
 -- Context Builder can point the AI agent at "page 214" instead of handing
 -- over an entire 600-page textbook. `origin` distinguishes text pulled
 -- straight from the file ('extracted') from text recovered via the existing
@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS notes (
   -- resources.drive_file_id. NULL for anything not sourced from Drive.
   drive_file_id TEXT,
   -- Set when an AI agent created this note (Phase 4 Part B,
-  -- phase4-spec.md §4) rather than the user — typed, imported, and scanned
+  -- Phase 4 architecture §4) rather than the user — typed, imported, and scanned
   -- notes are all "user-made" alike, so this is orthogonal to is_handwritten.
   -- Drives a badge + filter; agent-created notes can never be edited by the
   -- agent afterward, only created fresh.

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getMemoryFilesDir } from './paths';
 
-// Persistent AI-agent memory (phase4-spec.md §5) — plain Markdown, one file
+// Persistent AI-agent memory (Phase 4 architecture §5) — plain Markdown, one file
 // per course plus one general file, deliberately never parsed or validated
 // by Atlas (§5.2): Atlas stores and serves this text, the agent decides what
 // it means. Not exposed anywhere in the Atlas UI (user decision) — the file
@@ -79,7 +79,7 @@ export function readMemory(folderName: string | null): string | null {
 }
 
 // Full-replace write, used by the MCP server's atlas_write_memory tool
-// (phase4-spec.md §6.3) — the agent sends back the complete file each time,
+// (Phase 4 architecture §6.3) — the agent sends back the complete file each time,
 // not a diff, since Atlas never parses or merges this content (§5.2).
 export function writeMemory(folderName: string | null, content: string): void {
   const dir = getMemoryFilesDir();

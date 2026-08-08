@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { readMemory, writeMemory } from './memoryFiles';
 
-// The Phase 4 query layer (phase4-spec.md §6.3) — plain functions over a
+// The Phase 4 query layer (Phase 4 architecture §6.3) — plain functions over a
 // better-sqlite3 Database instance, with no dependency on Electron or IPC.
 // Shared by two callers: the in-app static export (Part E, runs inside the
 // Electron main process) and the standalone MCP server (Part D, runs as a
@@ -9,7 +9,7 @@ import { readMemory, writeMemory } from './memoryFiles';
 // caller is imported here, so this file stays usable from both without
 // pulling in Electron.
 //
-// This is also where "relevance" is deliberately NOT decided (phase4-spec.md
+// This is also where "relevance" is deliberately NOT decided (Phase 4 architecture
 // §2) — every function here returns data for the agent to judge, never a
 // pre-filtered "best answer." The only judgment calls made here are response
 // *size* limits (§6.4), enforced because an oversized response makes the
@@ -31,7 +31,7 @@ export type CourseLookup =
   | { ok: false; error: string; candidates?: { id: number; name: string }[] };
 
 // Every course-taking tool accepts either a numeric ID or a name
-// (phase4-spec.md §6.2) — exact case-insensitive match first, then a unique
+// (Phase 4 architecture §6.2) — exact case-insensitive match first, then a unique
 // substring match. An ambiguous name returns the candidates rather than
 // guessing, since guessing here would silently answer about the wrong course.
 export function findCourse(db: Database.Database, ref: string | number): CourseLookup {
@@ -68,7 +68,7 @@ function activeCourses(db: Database.Database, semester: string | null): CourseRo
   return semester ? all.filter((c) => c.term === semester) : all;
 }
 
-// The fresh-conversation bootstrap (PRD §18, phase4-spec.md §6.3) — the
+// The fresh-conversation bootstrap (PRD §18, Phase 4 architecture §6.3) — the
 // first call in any new chat. "Current semester" reuses the same
 // app_settings key the renderer's own semester filter already persists
 // (renderer.ts's semesterFilter), rather than inventing a second concept of
@@ -105,7 +105,7 @@ export function getOverview(db: Database.Database) {
 
 const BRIEFING_LIST_LIMIT = 20;
 
-// A course reached via link-following (remote-attachments-spec.md §5.5) can
+// A course reached via link-following (remote-attachment architecture §5.5) can
 // plausibly have 60+ resources and several thousand pages — the fixed
 // top-20 lists below stay (still the right shape for "what's new"), but
 // without a total count alongside them the agent has no way to tell "this
@@ -207,7 +207,7 @@ const SEARCH_MAX_LIMIT = 25;
 const SEARCH_MAX_LIMIT_COURSE_SCOPED = 100;
 const SEARCH_EXCERPT_MAX_CHARS = 400;
 
-// Never returns full text (phase4-spec.md §6.4) — a hit points at a
+// Never returns full text (Phase 4 architecture §6.4) — a hit points at a
 // location (title + short excerpt); atlas_read_document/atlas_read_note are
 // how the agent actually reads something it found here. This is also where
 // "page 214" becomes visible: a document_part hit's title is a page/slide/
@@ -232,7 +232,7 @@ export function searchAtlas(
   // silently return nothing whenever the globally top-ranked N hits all
   // belonged to other courses, even though real matches existed in the
   // requested one. That's precisely the "agent confidently answers from a
-  // partial view" failure phase4-spec.md §6.4 exists to prevent.
+  // partial view" failure Phase 4 architecture §6.4 exists to prevent.
   const conditions = ['search_index MATCH ?'];
   const params: (string | number)[] = [toFtsQuery(query)];
   if (courseId !== null) {
@@ -405,7 +405,7 @@ export function readNote(db: Database.Database, noteId: number) {
   return { ok: true as const, note };
 }
 
-// course === undefined writes the general memory file (phase4-spec.md §5.0);
+// course === undefined writes the general memory file (Phase 4 architecture §5.0);
 // otherwise the named course's. Silent per §5.3 — no confirmation, no review
 // queue; the file being plain text in the user's own data folder is the
 // oversight mechanism.
@@ -422,7 +422,7 @@ export function writeCourseOrGeneralMemory(db: Database.Database, course: string
 
 // Can only ever create — never overwrites or edits an existing note, so an
 // agent can add a study guide but never touch something the user wrote
-// (phase4-spec.md §4, a boundary the user explicitly asked for).
+// (Phase 4 architecture §4, a boundary the user explicitly asked for).
 export function createAgentNote(db: Database.Database, course: string | number, title: string, contentMarkdown: string) {
   const lookup = findCourse(db, course);
   if (!lookup.ok) return lookup;

@@ -44,7 +44,7 @@ const CLASSROOM_REFRESH_TOKEN_SETTING_KEY = 'google_classroom_refresh_token';
 // and student contexts — needed once courseWorkMaterials.list (the
 // ungraded "Classwork" tab, open-questions.md #21) was added.
 //
-// drive.readonly was added 2026-07-29 (remote-attachments-spec.md §10.1,
+// drive.readonly was added 2026-07-29 (remote-attachment architecture §10.1,
 // revised): a Classroom attachment's underlying Drive file is shared by the
 // professor with whichever Google account is connected *to Classroom* — the
 // separate personal-account Drive connection (googleAuth.ts's other

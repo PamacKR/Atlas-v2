@@ -1,4 +1,4 @@
-// Verifies the standalone MCP server (src/main/mcpServer.ts, phase4-spec.md
+// Verifies the standalone MCP server (src/main/mcpServer.ts, Phase 4 architecture
 // §6) end-to-end over the real MCP protocol — scripts/verify-app.js drives
 // the Atlas *window* with Playwright and has no way to reach a separate
 // background process, so this is its own script rather than folded in.

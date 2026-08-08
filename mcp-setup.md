@@ -1,6 +1,6 @@
 # Connecting an AI agent to Atlas (MCP server)
 
-Atlas exposes its data — courses, resources, extracted document text, deadlines, notes, and per-course memory — to any MCP-capable AI tool via a standalone server. See `phase4-spec.md` §6 for the full design; this file is just the "how do I actually turn it on" instructions.
+Atlas exposes its data — courses, resources, extracted document text, deadlines, notes, and per-course memory — to any MCP-capable AI tool via a standalone server. The current architecture and data boundary are documented in `ARCHITECTURE.md`; this file is the "how do I actually turn it on" guide.
 
 ## Why a separate program, and why it's launched the way it is
 
@@ -38,7 +38,7 @@ After it's connected, it should list nine `atlas_*` tools.
 
 ## What the agent can do
 
-Read: search everything, list a course's resources/deadlines, read a specific page/slide/sheet/section range of a document (or, called with no range, get an outline of the whole document's parts), read a note. This transparently includes text read from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professor shared, plus links discovered inside them (e.g. a course-index spreadsheet) — fetched and extracted without ever being downloaded into Atlas's local storage (`remote-attachments-spec.md`).
+Read: search everything, list a course's resources/deadlines, read a specific page/slide/sheet/section range of a document (or, called with no range, get an outline of the whole document's parts), read a note. This transparently includes text read from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professor shared, plus links discovered inside them (e.g. a course-index spreadsheet) — fetched and extracted without ever being downloaded into Atlas's local storage.
 
 Write: create a new note (can never edit or overwrite one you wrote yourself), and update its own persistent memory about you or a specific course — plain Markdown files in `Downloads/Atlas-Storage/course-profiles/`, readable and editable by you at any time, never shown inside the Atlas app itself.
 

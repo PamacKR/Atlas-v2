@@ -1,5 +1,5 @@
 // Verifies remote-attachment reading (remoteSync.ts/remoteFetch.ts,
-// remote-attachments-spec.md) — local-copy-first resolution, link-following
+// remote-attachment architecture) — local-copy-first resolution, link-following
 // with its caps, and the failure-state rules, all without any live Google
 // API access. Google's API calls are stubbed at the fetcher interface
 // (fetchRemoteDriveFile) per §9 — the boundary the spec itself specifies —

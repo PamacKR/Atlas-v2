@@ -34,7 +34,7 @@ interface Resource {
   ocr_text: string | null;
   extraction_status: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
   extraction_error: string | null;
-  // Remote-attachment reading (remote-attachments-spec.md §4) — see
+  // Remote-attachment reading (remote-attachment architecture §4) — see
   // schema.sql for the full field-by-field reasoning.
   remote_source: 'drive' | 'gmail' | null;
   link_kind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
@@ -4213,7 +4213,7 @@ async function renderCourseReadiness(courseId: number): Promise<void> {
   }
 }
 
-// Phase 4 Part E fallback (phase4-spec.md §7) — for pasting into an AI tool
+// Phase 4 Part E fallback (Phase 4 architecture §7) — for pasting into an AI tool
 // that can't use the MCP server (Part D) directly. Reveals the written file
 // in the OS file manager (main.ts's shell.showItemInFolder) since there's no
 // in-app viewer for it — the point is a plain file to open elsewhere.
@@ -4682,7 +4682,7 @@ async function openPreview(resource: Resource): Promise<void> {
   ocrButton.disabled = false;
   // extraction_status 'empty' means the file parsed but Atlas's own text
   // extraction (textExtraction.ts) found nothing — the scan-detection signal
-  // (phase4-spec.md §3.7) that this PDF is very likely a photographed/scanned
+  // (Phase 4 architecture §3.7) that this PDF is very likely a photographed/scanned
   // book with no real text layer, so OCR is the way to make it searchable.
   document.getElementById('preview-ocr-status')!.textContent =
     resource.kind === 'pdf' && resource.extraction_status === 'empty'

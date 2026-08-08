@@ -1,4 +1,4 @@
-// Standalone MCP server (phase4-spec.md §6) — a separate Node process, NOT
+// Standalone MCP server (Phase 4 architecture §6) — a separate Node process, NOT
 // part of the Atlas Electron app, so it can answer an AI agent's questions
 // whether or not the Atlas window happens to be open. Talks over stdio, the
 // standard MCP transport every current MCP-capable tool (Claude Code, Codex,

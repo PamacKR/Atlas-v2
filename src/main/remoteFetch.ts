@@ -7,7 +7,7 @@ import { getClassroomClient, getDriveClient } from './googleAuth';
 import { extractDocumentParts, DocumentPart, DiscoveredLink } from './textExtraction';
 
 // Reads a Drive file's *content* without ever writing it under
-// Atlas-Storage/files/ (remote-attachments-spec.md §3.2) — bytes pass
+// Atlas-Storage/files/ (remote-attachment architecture §3.2) — bytes pass
 // through a temp file (or memory, for exported text) purely so the existing
 // format extractors can read them, and are deleted immediately after.
 

@@ -373,7 +373,7 @@ Found 2026-07-29 while measuring the results of the first full remote-attachment
 
 **9 of the user's Classroom Drive attachments extracted as `empty`** — they parsed fine, but contain no text layer at all. These are scans (photographed or scanned readings), all in Development Economics. `empty` is exactly the signal that normally surfaces Atlas's existing "Run OCR" button.
 
-**The problem:** that OCR flow (`ocr.ts`) renders pages from a **local file path** and OCRs the resulting images. A remote attachment deliberately has no local file — that's the entire point of `remote-attachments-spec.md` §3.2 ("nothing is ever written to `Atlas-Storage/files/`"). So the one recovery path Atlas has for a scanned document is structurally unavailable for exactly the files most likely to need it.
+**The problem:** that OCR flow (`ocr.ts`) renders pages from a **local file path** and OCRs the resulting images. A remote attachment deliberately has no local file — that's the entire point of `remote-attachment architecture` §3.2 ("nothing is ever written to `Atlas-Storage/files/`"). So the one recovery path Atlas has for a scanned document is structurally unavailable for exactly the files most likely to need it.
 
 Right now these 9 files are permanently unreadable to the AI agent: not a failure, not retryable, just silently empty.
 
@@ -381,7 +381,7 @@ Right now these 9 files are permanently unreadable to the AI agent: not a failur
 
 - **(a) Temp-fetch for OCR.** Re-fetch the file to the OS temp directory (the same mechanism `remoteFetch.ts` already uses for large PDFs), run the existing OCR pipeline against it, store the accepted text as `origin='ocr'` parts, delete the temp file. Consistent with the existing no-local-download guarantee, which is about `Atlas-Storage/files/` specifically, not about bytes never touching disk. Moderate work: mostly plumbing an existing pipeline to an existing fetcher.
 - **(b) Leave them unreadable, but say so clearly.** Cheapest. The resource list would need to distinguish "scanned, and Atlas can't OCR remote files" from a generic empty result, otherwise it looks like a bug.
-- **(c) Ask the user to download those specific files manually.** Once a local copy exists, `local_twin_id` resolution (`remote-attachments-spec.md` §3.3) already picks it up and normal OCR applies. Zero new code, but it's manual work the app is supposed to remove.
+- **(c) Ask the user to download those specific files manually.** Once a local copy exists, `local_twin_id` resolution (`remote-attachment architecture` §3.3) already picks it up and normal OCR applies. Zero new code, but it's manual work the app is supposed to remove.
 
 **Recommendation:** (a), but only if the user actually cares about those 9 files — worth checking what they are first. If they're a professor's scanned readings for a course that's already over, (b) is fine and honest.
 

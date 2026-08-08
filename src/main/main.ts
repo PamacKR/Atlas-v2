@@ -161,7 +161,7 @@ function rebuildSearchIndex(): void {
     insert.run('assignment', assignment.id, assignment.course_id, assignment.title, assignment.description ?? '');
   }
 
-  // Page-aware parts (phase4-spec.md §3.8) — indexed alongside their parent
+  // Page-aware parts (Phase 4 architecture §3.8) — indexed alongside their parent
   // resource so a hit can point the AI agent at "page 214" specifically
   // rather than just the resource's title. entity_id is the document_parts
   // row id, not the resource id, since a search hit resolves to one part.
@@ -265,7 +265,7 @@ function removeSearchIndexForCourse(courseId: number): void {
 
 // A full rebuild is correct-by-construction (see rebuildSearchIndex's own
 // comment above) but stopped being free once Phase 4's page-aware extraction
-// pushed indexed rows into the thousands (phase6-spec.md §5 — 3,443 rows
+// pushed indexed rows into the thousands (Phase 6 implementation notes §5 — 3,443 rows
 // measured against the user's real data, rebuilt unconditionally on every
 // launch). Every call site that actually changes searchable content already
 // calls rebuildSearchIndex() directly, so this is only for the launch-time
@@ -340,7 +340,7 @@ const EXTRACTABLE_KINDS = new Set(['pdf', 'pptx', 'xlsx', 'docx', 'text', 'markd
 // Runs extraction in the background after a resource is inserted (import is
 // not blocked on a large textbook's extraction) and writes the result back —
 // document_parts rows plus resources.extraction_status, so the Context
-// Builder (phase4-spec.md §3) and the "Run OCR" auto-suggest (§3.7) both see
+// Builder (Phase 4 architecture §3) and the "Run OCR" auto-suggest (§3.7) both see
 // it. Fire-and-forget: callers don't await this, matching every other
 // upload/import call site's existing non-blocking shape.
 function scheduleExtraction(resourceId: number, kind: string, filePath: string): void {
@@ -396,7 +396,7 @@ function scheduleExtraction(resourceId: number, kind: string, filePath: string):
 // output for files already processed — everything is then re-extracted once.
 // v2: extraction previously discarded every hyperlink target, skipped PPTX
 // speaker notes entirely, and padded spreadsheets with tens of thousands of
-// empty cells (remote-attachments-spec.md §2.2). Files extracted by v1 hold
+// empty cells (remote-attachment architecture §2.2). Files extracted by v1 hold
 // materially worse text than a re-run would produce, so a one-time re-extract
 // is the only way existing resources benefit from the fix.
 const EXTRACTION_LOGIC_VERSION = 2;
@@ -412,7 +412,7 @@ function resetExtractionForNewLogicVersion(): void {
   // OCR results were reviewed and accepted by the user by hand and must
   // never be silently discarded, and a remote (Classroom/Drive) resource's
   // extracted text has its own version-check cache (remote_fetched_version,
-  // remote-attachments-spec.md §6) rather than this local-extractor-logic
+  // remote-attachment architecture §6) rather than this local-extractor-logic
   // versioning, so re-running its (potentially rate-limited) network fetch
   // just because a *local* PDF/DOCX extractor improved would be both wrong
   // and wasteful.
@@ -429,7 +429,7 @@ function resetExtractionForNewLogicVersion(): void {
   ).run(String(EXTRACTION_LOGIC_VERSION));
 }
 
-// Classroom Drive-link attachments synced *before* remote-attachments-spec.md
+// Classroom Drive-link attachments synced *before* remote-attachment architecture
 // shipped (2026-07-29) were inserted with remote_source/remote_ref/link_kind
 // all NULL and extraction_status forced to 'unsupported' — that's the state
 // EXTRACTABLE_KINDS gave every 'link' resource before this feature existed.
@@ -468,7 +468,7 @@ async function extractAllPendingResources(): Promise<void> {
   // remote_source IS NULL excludes Classroom Drive-link attachments — those
   // have no real file_path to read locally and are handled entirely by
   // processPendingRemoteResources (remoteSync.ts) instead
-  // (remote-attachments-spec.md). Without this exclusion, every
+  // (remote-attachment architecture). Without this exclusion, every
   // driveFile-kind link resource would be marked 'unsupported' here before
   // remote fetching ever got a chance to run.
   const pending = db
@@ -1038,7 +1038,7 @@ app.whenReady().then(() => {
   // on anything the reconciliation passes above just cleaned out. Used to
   // run unconditionally on every launch; now gated behind a cheap count
   // check (searchIndexNeedsRebuild) since Phase 4 made a full rebuild
-  // expensive at this app's real scale (phase6-spec.md §5).
+  // expensive at this app's real scale (Phase 6 implementation notes §5).
   if (searchIndexNeedsRebuild()) rebuildSearchIndex();
 
   // Google Drive "inbox folder" scan (Phase 3, open-questions.md #19) and
@@ -1121,7 +1121,7 @@ app.on('window-all-closed', () => {
 // --- IPC: global search (FTS5, PRD §14) ---
 
 // Hard-partitioned into four sections, in this fixed order (the user's
-// explicit ask, phase5-spec.md §2.3): courses, then file/note *names*, then
+// explicit ask, Phase 5 implementation notes §2.3): courses, then file/note *names*, then
 // *content* (page/slide/sheet hits and note bodies), then Classroom items.
 // A hard partition rather than a relevance weight, on purpose — a strong
 // content match must never outrank a weak name match by landing earlier in
@@ -1529,7 +1529,7 @@ ipcMain.handle('courses:setArchived', (_event, courseId: number, archived: boole
   return course;
 });
 
-// Phase 4 Part E (phase4-spec.md §7) — a plain-Markdown dump of one course's
+// Phase 4 Part E (Phase 4 architecture §7) — a plain-Markdown dump of one course's
 // context (memory, deadlines, announcements, resource/note inventory) for
 // pasting into an AI tool that can't use the MCP server (Part D) directly.
 // Reuses getCourseBriefing rather than querying separately, so this and the
@@ -1984,7 +1984,7 @@ async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: Cla
       recordSyncResult('classroom', true, null);
     }
     // Runs after coursework sync completes, sequentially, never blocking it
-    // (remote-attachments-spec.md §8) — new Classroom attachments just
+    // (remote-attachment architecture §8) — new Classroom attachments just
     // discovered above are exactly what this reads.
     void runRemoteExtractionAndNotify();
     return { changed, errors };
@@ -2445,7 +2445,7 @@ ipcMain.handle('resources:saveOcrText', (_event, resourceId: number, text: strin
   const db = getDb();
   db.prepare('UPDATE resources SET ocr_text = ? WHERE id = ?').run(text, resourceId);
 
-  // Split back into one document_parts row per page (phase4-spec.md §3.7) —
+  // Split back into one document_parts row per page (Phase 4 architecture §3.7) —
   // safe because the review step the user just accepted is display-only
   // (preview-ocr-review-text uses textContent, not an editable field), so
   // the separator ocr.ts joined with is guaranteed to still be intact here.
@@ -2857,7 +2857,7 @@ ipcMain.handle('notes:create', (_event, courseId: number) => {
   return note;
 });
 
-// Quick capture (phase5-spec.md-equivalent shortcut work, 2026-07-29): the
+// Quick capture (Phase 5 implementation notes-equivalent shortcut work, 2026-07-29): the
 // whole point of a keyboard-shortcut note capture is skipping the "which
 // course?" prompt, so this creates a note with course_id NULL rather than
 // making the user pick a course before they can start typing. Shared by the

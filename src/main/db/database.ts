@@ -92,7 +92,7 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('drive_preview_synced_mtime_ms')) {
     db.exec('ALTER TABLE resources ADD COLUMN drive_preview_synced_mtime_ms INTEGER');
   }
-  // Page-aware text extraction (phase4-spec.md §3). Existing resources
+  // Page-aware text extraction (Phase 4 architecture §3). Existing resources
   // predate this column and would otherwise default to 'pending' forever —
   // extractAllPendingResources() in main.ts is what actually processes them,
   // gated by its own app_settings flag so it only runs its one-time backfill
@@ -106,7 +106,7 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('extracted_at')) {
     db.exec('ALTER TABLE resources ADD COLUMN extracted_at TEXT');
   }
-  // Remote-attachment reading (remote-attachments-spec.md §4) — see
+  // Remote-attachment reading (remote-attachment architecture §4) — see
   // schema.sql for the full field-by-field reasoning.
   if (!resourceColumns.includes('remote_source')) {
     db.exec('ALTER TABLE resources ADD COLUMN remote_source TEXT');
