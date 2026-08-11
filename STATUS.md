@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-08 (personal-use UI overhaul and performance/responsiveness pass were completed on `ui-overhaul-v2` and merged into `main`; a guarded local master-delete flow is now available in Settings → Storage.)
+**Last updated:** 2026-08-11 (the README was rewritten as a release-style product and setup document; no product code or user data changed.)
 
 ## Next session — start here
 
@@ -11,6 +11,8 @@ Read `AGENTS.md`, this current-session section, `open-questions.md`, and `DESIGN
 The performance measurement and implementation phases are complete; the benchmark comparison and regression results are documented below.
 
 The performance measurement and implementation work is complete for the personal-use scope; benchmark and regression results are documented below.
+
+- **README rework, 2026-08-11:** replaced the baseline README with a release-style description of Atlas's product model, complete user-facing functionality, local storage and privacy boundary, Google Drive/Classroom/Ashoka Planner flows, document extraction and OCR, search, Calendar and deadline behavior, MCP tools and retrieval rules, setup, verification commands, current limitations, and placeholders for future screenshots and a video walkthrough. This was documentation-only; no product code or user data changed.
 
 - **MCP capability expansion, 2026-08-08:** the shared Context Builder and local MCP server now expose 12 tools. Search page hits include their parent resource id/title, source, and ordinal; `atlas_read_classroom_item` reads full synced announcement and assignment bodies with attachment ids; `atlas_course_readiness` exposes the same deterministic report used by the in-app Readiness tab; `atlas_create_note` can target General/unsorted when no course is supplied; and `atlas_read_visual` returns one local PDF page or image as an MCP image block without accepting arbitrary paths. The focused `npm run verify:mcp` check passes every new behavior against a throwaway database.
 
