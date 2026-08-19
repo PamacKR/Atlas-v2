@@ -24,29 +24,77 @@ This repo already ships a working **`.mcp.json`** at its root:
   "mcpServers": {
     "atlas": {
       "command": "node",
-      "args": ["scripts/run-mcp-server.js"]
+      "args": ["scripts/run-mcp-server.js"],
+      "env": {
+        "ATLAS_MCP_MODE": "read-only"
+      }
     }
   }
 }
 ```
 
+## Safe MCP mode
+
+Atlas MCP connections default to **read-only**. If `ATLAS_MCP_MODE` is absent,
+invalid, or set to `read-only`, the server exposes exactly the 11 read-only
+`atlas_*` tools. The project configuration above sets the safe value explicitly.
+
+`ATLAS_MCP_MODE=notes-write` exposes the 11 read-only tools plus
+`atlas_create_note` for explicitly requested agent-owned study notes. It does
+not expose `atlas_write_memory`. This is the recommended mode for Pamac's
+permanent default Hermes connection.
+
+The full write-capable mode is separate:
+
+- `atlas_write_memory`
+- `atlas_create_note`
+
+A process may explicitly opt into the full surface with:
+
+```text
+ATLAS_MCP_MODE=read-write
+```
+
+`read-write` exposes all 13 tools and must not be added to the normal Hermes or
+Codex client configuration without a deliberate decision. The `agentAccess`
+setting remains the master switch and can disable all MCP operations.
+
 **Claude Code** picks this up automatically — just open this project and (re)start Claude Code; you'll likely get a one-time prompt to approve running the `atlas` server. No path needed at all.
 
 **Codex / Cursor**: check whether the tool reads project-level `.mcp.json` directly (many do, since it's becoming a de facto convention). If not, copy the same `command`/`args` into that tool's own MCP config file — still no absolute path, since `node` and a path relative to the project root are portable regardless of which tool launches it, as long as it runs with this project as its working directory.
 
-After it's connected, it should list thirteen `atlas_*` tools, including `atlas_resolve_material` for exact/ambiguous/not-found resolution of named material inside one course. Clients that support standard MCP form elicitation can receive the resolver's blocking candidate question directly; other clients receive a structured fallback result.
+After it's connected, the project read-only configuration should list exactly
+11 `atlas_*` tools. A permanent Hermes profile configured with
+`ATLAS_MCP_MODE=notes-write` should list 12 tools, adding only
+`atlas_create_note`; `atlas_write_memory` should remain absent. The full
+`read-write` mode lists all 13 tools and is not the recommended normal mode.
+Clients that support standard MCP form elicitation can receive the resolver's
+blocking candidate question directly; other clients receive a structured
+fallback result.
 
 ## What the agent can do
 
 When using Atlas MCP for an academic request, the connected agent should also read [`MCP_AGENT_GUIDE.md`](MCP_AGENT_GUIDE.md). That guide defines the resolver-first lookup, course/resource disambiguation, missing-lecture clarification, stop conditions, and no-invention rules; it is intentionally separate from the software-development instructions in `AGENTS.md`.
 
-The MCP surface includes course readiness, full locally-synced Classroom announcement/assignment reads, and General/unsorted agent-note creation. Document-page search hits include the parent resource id/title, source, and ordinal so the agent can follow a page result directly into `atlas_read_document`.
+The MCP surface includes course readiness, full locally-synced Classroom announcement/assignment reads, and General/unsorted agent-note creation when the connection uses `notes-write` or `read-write` mode. Document-page search hits include the parent resource id/title, source, and ordinal so the agent can follow a page result directly into `atlas_read_document`.
 
 `atlas_read_visual` returns one local PDF page or image/handwritten scan as an MCP image block. The agent supplies an Atlas `resource_id` or `note_id`, never a filesystem path. PDFs are rendered locally one page at a time; small images remain in their original format, while unusually large images are safely resized. This gives a vision-capable client the visual surface without Atlas calling an AI service or exposing arbitrary files.
 
-Read: search everything, list a course's resources/deadlines, inspect a course's text readiness, read a specific page/slide/sheet/section range of a document (or, called with no range, get an outline of the whole document's parts), read a note, and read the full locally-synced body of a Classroom announcement or assignment. This transparently includes text read from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professor shared, plus links discovered inside them (e.g. a course-index spreadsheet) — fetched and extracted without ever being downloaded into Atlas's local storage.
+Read-only operations include: search everything, list a course's resources/deadlines,
+inspect a course's text readiness, read a specific page/slide/sheet/section
+range of a document (or, called with no range, get an outline of the whole
+document's parts), read a note, and read the full locally-synced body of a
+Classroom announcement or assignment. This transparently includes text read
+from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professor
+shared, plus links discovered inside them — fetched and extracted without ever
+being downloaded into Atlas's local storage.
 
-Write: create a new note in a course or General/unsorted (can never edit or overwrite one you wrote yourself), and update its own persistent memory about you or a specific course — plain Markdown files in `Downloads/Atlas-Storage/course-profiles/`, readable and editable by you at any time, never shown inside the Atlas app itself.
+Write operations are deliberately opt-in and unavailable in the default mode.
+`notes-write` enables only `atlas_create_note`, for explicit requests such as
+saving a generated study guide or revision notes. `read-write` additionally
+enables `atlas_write_memory`, which replaces course or general agent memory and
+should remain disabled for normal study-note creation. Both operations still
+require an explicit user request under `MCP_AGENT_GUIDE.md`.
 
 ## If your AI tool doesn't support MCP
 
@@ -58,4 +106,10 @@ Open the course in Atlas and click **"Export for AI"** on its detail page — it
 npm run verify:mcp
 ```
 
-Spins up the server against a temporary seeded database and calls every tool over the real MCP protocol, asserting the responses — not just that it starts without crashing. `npm run verify:remote` separately verifies the Classroom Drive-attachment fetching itself (local-copy-first, link-following, failure states), with Google API calls stubbed at the fetcher boundary so it runs offline.
+This command builds Atlas, seeds a temporary database, and verifies the real
+MCP protocol. It first starts the server with no mode override and confirms the
+11-tool read-only surface, all required read paths, ambiguity handling,
+Atlas-ID visual validation, and unchanged temporary database contents. It then
+starts a temporary `notes-write` server and confirms that only
+`atlas_create_note` is added, followed by a temporary `read-write` server for
+memory/note regression coverage. It never uses `Downloads/Atlas-Storage`.

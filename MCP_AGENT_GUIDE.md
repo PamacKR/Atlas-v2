@@ -8,6 +8,22 @@ Atlas is the source of truth. The connected agent is responsible for reasoning a
 
 Useful output is better than forced output. If the requested material is not present, say so plainly. Never invent a lecture, infer its contents from a nearby file, or continue broadening a search indefinitely just to produce a summary.
 
+## Connection mode and write boundary
+
+The standard external-agent connection is read-only. With no override, or with
+`ATLAS_MCP_MODE=read-only`, Atlas exposes the 11 retrieval and visual tools but
+does not register `atlas_write_memory` or `atlas_create_note`.
+
+`ATLAS_MCP_MODE=notes-write` adds only `atlas_create_note`, allowing an agent to
+save explicitly requested study guides or revision notes as agent-owned Atlas
+notes. `ATLAS_MCP_MODE=read-write` additionally exposes `atlas_write_memory`.
+A process must explicitly select one of these modes before any write tool exists.
+
+The Atlas `agentAccess` setting remains the master switch for all modes. A
+read-only connection does not authorise writes, and a notes-write connection
+still requires the user to explicitly request note creation. Do not infer
+permission from the fact that a client can see a tool.
+
 ## Resolve the request in bounded steps
 
 For a request such as “summarize Lecture 10 from Course X”:
@@ -91,4 +107,9 @@ Then give the closest verified candidates, if any, and ask one focused question.
 
 ## Data boundary
 
-MCP reads and writes are separate responsibilities. Reading and summarizing does not authorize creating notes, changing memory, moving resources, or deleting data. Use write tools only when the user explicitly requests that specific change, and describe what will be written before doing it when the scope could be misunderstood.
+MCP reads and writes are separate responsibilities. The default read-only
+connection cannot create notes or change memory. A `notes-write` connection can
+only create a new agent-owned note after an explicit user request. The broader
+`read-write` mode also permits memory replacement and should remain disabled for
+normal study-note creation. Reading and summarizing never authorises moving,
+deleting, or otherwise changing Atlas data.

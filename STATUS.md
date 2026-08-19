@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-08-11 (the README was rewritten as a release-style product and setup document; no product code or user data changed.)
+**Last updated:** 2026-08-19 (Phase 11B added a read-only-by-default MCP mode and verified it against temporary data; no product data changed.)
 
 ## Next session — start here
 
@@ -12,9 +12,11 @@ The performance measurement and implementation phases are complete; the benchmar
 
 The performance measurement and implementation work is complete for the personal-use scope; benchmark and regression results are documented below.
 
+- **MCP modes, 2026-08-19:** external connections default to 11 read-only tools. `ATLAS_MCP_MODE=notes-write` adds only `atlas_create_note` for explicit study-note saves, while `ATLAS_MCP_MODE=read-write` additionally exposes `atlas_write_memory`. The normal project configuration remains read-only; the default Hermes profile may use notes-write.
+
 - **README rework, 2026-08-11:** replaced the baseline README with a release-style description of Atlas's product model, complete user-facing functionality, local storage and privacy boundary, Google Drive/Classroom/Ashoka Planner flows, document extraction and OCR, search, Calendar and deadline behavior, MCP tools and retrieval rules, setup, verification commands, current limitations, and placeholders for future screenshots and a video walkthrough. This was documentation-only; no product code or user data changed.
 
-- **MCP capability expansion, 2026-08-08:** the shared Context Builder and local MCP server now expose 12 tools. Search page hits include their parent resource id/title, source, and ordinal; `atlas_read_classroom_item` reads full synced announcement and assignment bodies with attachment ids; `atlas_course_readiness` exposes the same deterministic report used by the in-app Readiness tab; `atlas_create_note` can target General/unsorted when no course is supplied; and `atlas_read_visual` returns one local PDF page or image as an MCP image block without accepting arbitrary paths. The focused `npm run verify:mcp` check passes every new behavior against a throwaway database.
+- **MCP capability expansion, 2026-08-08:** the shared Context Builder and local MCP server support 13 total tools across three modes: 11 read-only, 12 with notes-write, and 13 with full read-write. Search page hits include their parent resource id/title, source, and ordinal; `atlas_read_classroom_item` reads full synced announcement and assignment bodies with attachment ids; `atlas_course_readiness` exposes the same deterministic report used by the in-app Readiness tab; `atlas_create_note` can target General/unsorted when no course is supplied; and `atlas_read_visual` returns one local PDF page or image as an MCP image block without accepting arbitrary paths. The focused `npm run verify:mcp` check passes every new behavior against a throwaway database.
 
 - **MCP retrieval resolver, 2026-08-09:** added the read-only `atlas_resolve_material` tool as the required first step for named material requests. It searches title metadata only within the named course and returns explicit `found`, `ambiguous`, or `not_found` states, exact candidates' text availability, nearby numbered candidates, and a structured clarification payload. Clients that support standard MCP form elicitation can pause the resolver and return the user's selected candidate; unsupported clients receive the same payload for their own blocking-input mechanism. Empty global searches are rejected, and resource pagination now returns total/offset metadata.
 

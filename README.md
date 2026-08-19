@@ -332,7 +332,7 @@ Atlas exposes a local MCP server over stdio. Any compatible external agent can c
 
 ### What the MCP server exposes
 
-The current MCP surface contains thirteen tools:
+The default project MCP surface is read-only and contains eleven tools:
 
 | Tool | Purpose |
 | --- | --- |
@@ -347,8 +347,10 @@ The current MCP surface contains thirteen tools:
 | atlas_read_visual | Return one PDF page, image, or handwritten scan as MCP image content |
 | atlas_read_note | Read a note's full Markdown content |
 | atlas_read_classroom_item | Read a full locally synced announcement or assignment |
-| atlas_write_memory | Explicitly replace general or course-specific agent memory |
-| atlas_create_note | Explicitly create a new agent-owned note in a course or General/unsorted |
+
+For explicit study-note saves, `ATLAS_MCP_MODE=notes-write` adds only
+`atlas_create_note`. The broader `ATLAS_MCP_MODE=read-write` mode adds both
+`atlas_create_note` and `atlas_write_memory`; it is not the normal mode.
 
 ### Retrieval behavior
 
@@ -363,7 +365,7 @@ The MCP workflow is intentionally bounded:
 - A requested item is not silently replaced with a nearby lecture or unrelated search hit.
 - Document outlines and page ranges keep large reads targeted.
 - Visual reads use Atlas ids only; the agent cannot provide an arbitrary filesystem path.
-- Writes are separate from reads and require an explicit user request.
+- Read-only connections cannot write Atlas data. `notes-write` permits only `atlas_create_note` after an explicit request; `read-write` additionally permits memory replacement. Neither mode permits arbitrary edits or deletes.
 
 When a connected client supports standard MCP form elicitation, an ambiguous material lookup can pause and ask the user to choose from the returned candidates. Clients without that capability receive the same structured clarification data for their own interaction mechanism.
 
@@ -382,13 +384,37 @@ The repository includes a portable project-level [.mcp.json](.mcp.json) configur
   "mcpServers": {
     "atlas": {
       "command": "node",
-      "args": ["scripts/run-mcp-server.js"]
+      "args": ["scripts/run-mcp-server.js"],
+      "env": {
+        "ATLAS_MCP_MODE": "read-only"
+      }
     }
   }
 }
 ~~~
 
 The full setup instructions for Claude Code, Codex, Cursor, and other MCP-capable tools are in [mcp-setup.md](mcp-setup.md).
+
+### Hermes connection
+
+Hermes uses its own native `mcp_servers` configuration and does not
+automatically discover this project-level `.mcp.json`. The default Hermes
+profile should use the Atlas server with:
+
+```yaml
+mcp_servers:
+  atlas:
+    command: node
+    args:
+      - C:/Users/Pamac/Downloads/Atlas-v2/scripts/run-mcp-server.js
+    env:
+      ATLAS_MCP_MODE: notes-write
+```
+
+Use `notes-write` when Pamac explicitly wants requests such as "create these
+revision notes and save them in Atlas" to persist an agent-owned note. Keep
+`ATLAS_MCP_MODE=read-write` disabled unless memory replacement is separately
+approved. Restart Hermes after changing its native MCP configuration.
 
 ## Data ownership and privacy
 

@@ -4,10 +4,10 @@
 // background process, so this is its own script rather than folded in.
 //
 // Seeds a fresh temp Atlas-Storage (same ATLAS_DATA_DIR override
-// verify-app.js uses) with real schema + test data, spawns the MCP server
-// against it via the MCP SDK's own client/stdio transport, and calls every
-// one of the 12 tools, asserting real responses rather than just "it didn't
-// crash."
+// verify-app.js uses) with real schema + test data, starts the MCP server
+// against it via the MCP SDK's own client/stdio transport, and verifies the
+// default 11-tool read-only surface plus the explicit read-write opt-in surface
+// against temporary data.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -69,7 +69,9 @@ function seedTestData(dataDir) {
   db.prepare("INSERT INTO deadlines (course_id, title, kind, due_at) VALUES (?, 'Midterm', 'exam', datetime('now', '+3 days'))").run(
     courseId
   );
-  db.prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (?, 'My own notes', 'stuff I wrote')").run(courseId);
+  const noteId = Number(
+    db.prepare("INSERT INTO notes (course_id, title, content_markdown) VALUES (?, 'My own notes', 'stuff I wrote')").run(courseId).lastInsertRowid
+  );
 
   // --- Regression fixtures for three bugs found while auditing Phase 4 ---
 
@@ -148,12 +150,30 @@ function seedTestData(dataDir) {
   db.prepare("INSERT INTO search_index (entity_type, entity_id, course_id, title, body) VALUES ('assignment', ?, ?, 'Problem set 1', 'Complete questions 1 through 5 and show your working.')").run(assignmentId, courseId);
 
   db.close();
-  return { courseId, resourceId, duplicateNameCourseId, statsCourseId, scannedResourceId, imageResourceId, scanNoteId, announcementId, assignmentId };
+  return { courseId, noteId, pdfPath, resourceId, duplicateNameCourseId, statsCourseId, scannedResourceId, imageResourceId, scanNoteId, announcementId, assignmentId };
+}
+
+function snapshotDatabase(dataDir) {
+  const db = new Database(path.join(dataDir, 'atlas.db'), { readonly: true });
+  try {
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+      .all();
+    const snapshot = {};
+    for (const { name } of tables) {
+      const identifier = `"${name.replace(/"/g, '""')}"`;
+      snapshot[name] = db.prepare(`SELECT * FROM ${identifier}`).all();
+    }
+    return JSON.stringify(snapshot);
+  } finally {
+    db.close();
+  }
 }
 
 async function main() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-verify-mcp-'));
-  const { courseId, resourceId, duplicateNameCourseId, statsCourseId, scannedResourceId, imageResourceId, scanNoteId, announcementId, assignmentId } = seedTestData(dataDir);
+  const { courseId, noteId, pdfPath, resourceId, duplicateNameCourseId, statsCourseId, scannedResourceId, imageResourceId, scanNoteId, announcementId, assignmentId } = seedTestData(dataDir);
+  const readOnlySnapshotBefore = snapshotDatabase(dataDir);
 
   const transport = new StdioClientTransport({
     command: electronPath,
@@ -164,7 +184,24 @@ async function main() {
   await client.connect(transport);
 
   const toolsList = await client.listTools();
-  assert(toolsList.tools.length === 13, `13 tools registered (found ${toolsList.tools.length})`);
+  const expectedReadOnlyTools = [
+    'atlas_overview',
+    'atlas_course_briefing',
+    'atlas_resolve_material',
+    'atlas_course_readiness',
+    'atlas_read_classroom_item',
+    'atlas_search',
+    'atlas_list_resources',
+    'atlas_list_deadlines',
+    'atlas_read_document',
+    'atlas_read_visual',
+    'atlas_read_note',
+  ].sort();
+  const actualReadOnlyTools = toolsList.tools.map((tool) => tool.name).sort();
+  assert(toolsList.tools.length === 11, `11 read-only tools registered (found ${toolsList.tools.length})`);
+  assert(JSON.stringify(actualReadOnlyTools) === JSON.stringify(expectedReadOnlyTools), 'read-only mode exposes exactly the expected 11 tool names');
+  assert(!toolsList.tools.some((tool) => tool.name === 'atlas_write_memory'), 'read-only mode does not expose atlas_write_memory');
+  assert(!toolsList.tools.some((tool) => tool.name === 'atlas_create_note'), 'read-only mode does not expose atlas_create_note');
 
   const callTool = async (name, args) => {
     const result = await client.callTool({ name, arguments: args });
@@ -266,45 +303,22 @@ async function main() {
   const doc = await callTool('atlas_read_document', { resource_id: resourceId, from: 5, to: 6 });
   assert(doc.parts.length === 2 && doc.parts[0].label === 'Page 5', 'atlas_read_document returns the requested page range with labels');
 
-  const memoryWrite = await callTool('atlas_write_memory', { course: courseId, content: '# Test memory\nUser is comfortable with elasticity.' });
-  assert(memoryWrite.ok === true, 'atlas_write_memory succeeds');
-  const memoryPath = path.join(dataDir, 'course-profiles', 'Microeconomics.md');
-  assert(
-    fs.existsSync(memoryPath) && fs.readFileSync(memoryPath, 'utf-8').includes('comfortable with elasticity'),
-    'atlas_write_memory actually wrote a plain, readable file to disk'
-  );
+  const note = await callTool('atlas_read_note', { note_id: noteId });
+  assert(note.ok === true && note.note.id === noteId && note.note.title === 'My own notes' && note.note.content_markdown === 'stuff I wrote', 'atlas_read_note returns the requested note content');
 
-  const noteResult = await callTool('atlas_create_note', {
-    course: courseId,
-    title: 'Agent-generated study guide',
-    content_markdown: '# Study guide\nCovers supply and demand.',
-  });
-  assert(noteResult.ok === true, 'atlas_create_note succeeds');
-
-  const generalNoteResult = await callTool('atlas_create_note', {
-    title: 'General study method',
-    content_markdown: 'This general note is useful across courses.',
-  });
-  assert(
-    generalNoteResult.ok === true && generalNoteResult.courseId === null && generalNoteResult.courseName === 'General',
-    'atlas_create_note can create an agent note in General when no course is supplied'
-  );
-  const generalSearch = await callTool('atlas_search', { query: 'general study method' });
-  assert(
-    generalSearch.hits.length === 1 && generalSearch.hits[0].courseId === null && generalSearch.hits[0].courseName === 'General',
-    'General agent notes are immediately searchable and clearly labeled'
-  );
+  const arbitraryPathResult = await client.callTool({ name: 'atlas_read_visual', arguments: { path: pdfPath } });
+  const arbitraryPathText = arbitraryPathResult.content?.find((block) => block.type === 'text')?.text ?? '';
+  let arbitraryPathRejected = arbitraryPathResult.isError === true;
+  if (!arbitraryPathRejected && arbitraryPathText) {
+    try {
+      arbitraryPathRejected = JSON.parse(arbitraryPathText).ok === false;
+    } catch {
+      arbitraryPathRejected = false;
+    }
+  }
+  assert(arbitraryPathRejected, 'atlas_read_visual rejects arbitrary filesystem paths');
 
   // --- Regressions for the three bugs found auditing Phase 4 ---
-
-  // (1) Two courses sharing a display name must have independent memory.
-  await callTool('atlas_write_memory', { course: duplicateNameCourseId, content: '# Spring term memory' });
-  const springBriefing = await callTool('atlas_course_briefing', { course: duplicateNameCourseId });
-  const fallBriefing = await callTool('atlas_course_briefing', { course: courseId });
-  assert(
-    springBriefing.memory.includes('Spring term memory') && fallBriefing.memory.includes('comfortable with elasticity'),
-    'two courses with the same name keep separate memory files (not one shared/overwritten file)'
-  );
 
   // (2) Course-scoped search must not be starved by higher-ranked hits elsewhere.
   const scopedSearch = await callTool('atlas_search', { query: 'elasticity', course: statsCourseId });
@@ -335,20 +349,95 @@ async function main() {
   const noteVisualImage = noteVisualResult.content.find((block) => block.type === 'image');
   assert(noteVisualMeta.ok === true && noteVisualMeta.target.type === 'note' && noteVisualImage?.mimeType === 'image/png', 'atlas_read_visual can inspect a handwritten PDF scan through its note id');
 
-  const dbCheck = new Database(path.join(dataDir, 'atlas.db'));
-  const createdNote = dbCheck.prepare('SELECT generated_by_agent FROM notes WHERE id = ?').get(noteResult.noteId);
-  assert(createdNote.generated_by_agent === 1, 'the created note is flagged generated_by_agent, distinct from the user\'s own note');
-  const createdGeneralNote = dbCheck.prepare('SELECT course_id, generated_by_agent FROM notes WHERE id = ?').get(generalNoteResult.noteId);
-  assert(createdGeneralNote.course_id === null && createdGeneralNote.generated_by_agent === 1, 'the General note is stored without a course and remains agent-generated');
-  const userNote = dbCheck.prepare("SELECT generated_by_agent FROM notes WHERE title = 'My own notes'").get();
-  assert(userNote.generated_by_agent === 0, "the user's pre-existing note is untouched by the agent's write");
-  const searchHitForNewNote = dbCheck
-    .prepare("SELECT 1 FROM search_index WHERE entity_type = 'note' AND entity_id = ?")
-    .get(noteResult.noteId);
-  assert(!!searchHitForNewNote, 'the agent-created note is immediately searchable, not just saved');
-  dbCheck.close();
+  assert(readOnlySnapshotBefore === snapshotDatabase(dataDir), 'read-only MCP calls leave the temporary database unchanged');
 
   await client.close();
+
+  const noteWriteTransport = new StdioClientTransport({
+    command: electronPath,
+    args: [path.join(__dirname, '..', 'dist', 'main', 'mcpServer.js')],
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ATLAS_DATA_DIR: dataDir, ATLAS_MCP_MODE: 'notes-write' },
+  });
+  const noteWriteClient = new Client({ name: 'atlas-verify-notes-write-mode', version: '1.0.0' });
+  await noteWriteClient.connect(noteWriteTransport);
+  const noteWriteTools = await noteWriteClient.listTools();
+  assert(noteWriteTools.tools.length === 12, `explicit notes-write mode registers 12 tools (found ${noteWriteTools.tools.length})`);
+  assert(noteWriteTools.tools.some((tool) => tool.name === 'atlas_create_note'), 'notes-write mode exposes atlas_create_note');
+  assert(!noteWriteTools.tools.some((tool) => tool.name === 'atlas_write_memory'), 'notes-write mode does not expose atlas_write_memory');
+  const noteWriteResult = await noteWriteClient.callTool({
+    name: 'atlas_create_note',
+    arguments: { course: courseId, title: 'Notes-write mode test', content_markdown: 'Synthetic notes-write content.' },
+  });
+  const noteWritePayload = JSON.parse(noteWriteResult.content[0].text);
+  assert(noteWritePayload.ok === true, 'notes-write mode can create an agent-owned note');
+  await noteWriteClient.close();
+
+  const writeTransport = new StdioClientTransport({
+    command: electronPath,
+    args: [path.join(__dirname, '..', 'dist', 'main', 'mcpServer.js')],
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ATLAS_DATA_DIR: dataDir, ATLAS_MCP_MODE: 'read-write' },
+  });
+  const writeClient = new Client({ name: 'atlas-verify-write-mode', version: '1.0.0' });
+  await writeClient.connect(writeTransport);
+  const writeToolsList = await writeClient.listTools();
+  assert(writeToolsList.tools.length === 13, `explicit read-write mode registers all 13 tools (found ${writeToolsList.tools.length})`);
+  assert(writeToolsList.tools.some((tool) => tool.name === 'atlas_write_memory'), 'explicit read-write mode exposes atlas_write_memory');
+  assert(writeToolsList.tools.some((tool) => tool.name === 'atlas_create_note'), 'explicit read-write mode exposes atlas_create_note');
+
+  const callWriteTool = async (name, args) => {
+    const result = await writeClient.callTool({ name, arguments: args });
+    return JSON.parse(result.content[0].text);
+  };
+  const memoryWrite = await callWriteTool('atlas_write_memory', { course: courseId, content: '# Test memory\nUser is comfortable with elasticity.' });
+  assert(memoryWrite.ok === true, 'explicit read-write mode allows atlas_write_memory');
+  const memoryPath = path.join(dataDir, 'course-profiles', 'Microeconomics.md');
+  assert(
+    fs.existsSync(memoryPath) && fs.readFileSync(memoryPath, 'utf-8').includes('comfortable with elasticity'),
+    'atlas_write_memory writes only inside the temporary test data directory'
+  );
+
+  const noteResult = await callWriteTool('atlas_create_note', {
+    course: courseId,
+    title: 'Agent-generated study guide',
+    content_markdown: '# Study guide\nCovers supply and demand.',
+  });
+  assert(noteResult.ok === true, 'explicit read-write mode allows atlas_create_note');
+
+  const generalNoteResult = await callWriteTool('atlas_create_note', {
+    title: 'General study method',
+    content_markdown: 'This general note is useful across courses.',
+  });
+  assert(
+    generalNoteResult.ok === true && generalNoteResult.courseId === null && generalNoteResult.courseName === 'General',
+    'explicit read-write mode can create an agent note in General'
+  );
+  const generalSearch = await callWriteTool('atlas_search', { query: 'general study method' });
+  assert(
+    generalSearch.hits.length === 1 && generalSearch.hits[0].courseId === null && generalSearch.hits[0].courseName === 'General',
+    'explicitly created General agent notes are immediately searchable'
+  );
+
+  await callWriteTool('atlas_write_memory', { course: duplicateNameCourseId, content: '# Spring term memory' });
+  const springBriefing = await callWriteTool('atlas_course_briefing', { course: duplicateNameCourseId });
+  const fallBriefing = await callWriteTool('atlas_course_briefing', { course: courseId });
+  assert(
+    springBriefing.memory.includes('Spring term memory') && fallBriefing.memory.includes('comfortable with elasticity'),
+    'explicit write mode preserves separate memory files for duplicate course names'
+  );
+
+  const writeDbCheck = new Database(path.join(dataDir, 'atlas.db'));
+  const createdNote = writeDbCheck.prepare('SELECT generated_by_agent FROM notes WHERE id = ?').get(noteResult.noteId);
+  assert(createdNote.generated_by_agent === 1, 'the created note is flagged generated_by_agent');
+  const createdGeneralNote = writeDbCheck.prepare('SELECT course_id, generated_by_agent FROM notes WHERE id = ?').get(generalNoteResult.noteId);
+  assert(createdGeneralNote.course_id === null && createdGeneralNote.generated_by_agent === 1, 'the General note is stored as an agent-generated note');
+  const userNote = writeDbCheck.prepare("SELECT generated_by_agent FROM notes WHERE title = 'My own notes'").get();
+  assert(userNote.generated_by_agent === 0, "the user's pre-existing note remains user-authored");
+  const searchHitForNewNote = writeDbCheck
+    .prepare("SELECT 1 FROM search_index WHERE entity_type = 'note' AND entity_id = ?")
+    .get(noteResult.noteId);
+  assert(!!searchHitForNewNote, 'the agent-created note is immediately searchable');
+  writeDbCheck.close();
+  await writeClient.close();
 
   // A second client advertises standard MCP form elicitation. The resolver
   // should pause the tool call, receive the selected candidate, and return a
@@ -357,7 +446,7 @@ async function main() {
   const elicitationTransport = new StdioClientTransport({
     command: electronPath,
     args: [path.join(__dirname, '..', 'dist', 'main', 'mcpServer.js')],
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ATLAS_DATA_DIR: dataDir },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ATLAS_DATA_DIR: dataDir, ATLAS_MCP_MODE: 'read-only' },
   });
   const elicitationClient = new Client(
     { name: 'atlas-verify-elicitation', version: '1.0.0' },

@@ -53,6 +53,19 @@ function agentAccessAllowed(db: Database.Database): boolean {
   return access?.value !== '0';
 }
 
+type McpMode = 'read-only' | 'notes-write' | 'read-write';
+
+// External MCP connections are read-only unless the launching process explicitly
+// opts into note creation or the broader write-capable mode. Invalid or absent
+// values stay on the safer default rather than silently widening the tool surface.
+function getMcpMode(): McpMode {
+  const mode = process.env.ATLAS_MCP_MODE?.trim().toLowerCase();
+  if (mode === 'notes-write' || mode === 'read-write') return mode;
+  return 'read-only';
+}
+
+const MCP_MODE = getMcpMode();
+
 function jsonResult(db: Database.Database, value: unknown) {
   if (!agentAccessAllowed(db)) {
     return { content: [{ type: 'text' as const, text: JSON.stringify({ ok: false, error: 'Agent access is disabled in Atlas Settings.' }) }] };
@@ -344,6 +357,7 @@ async function main(): Promise<void> {
     async ({ note_id }) => jsonResult(db, readNote(db, note_id))
   );
 
+  if (MCP_MODE === 'read-write') {
   server.registerTool(
     'atlas_write_memory',
     {
@@ -359,7 +373,9 @@ async function main(): Promise<void> {
       return jsonResult(db, writeCourseOrGeneralMemory(db, course, content));
     }
   );
+  }
 
+  if (MCP_MODE === 'notes-write' || MCP_MODE === 'read-write') {
   server.registerTool(
     'atlas_create_note',
     {
@@ -381,6 +397,7 @@ async function main(): Promise<void> {
       return jsonResult(db, result);
     }
   );
+  }
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
