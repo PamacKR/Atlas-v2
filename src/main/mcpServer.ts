@@ -93,7 +93,13 @@ function indexNoteForSearch(db: Database.Database, noteId: number, courseId: num
 
 async function main(): Promise<void> {
   const db = openDb();
-  const server = new McpServer({ name: 'atlas', version: '1.0.0' });
+  const server = new McpServer(
+    { name: 'atlas', version: '1.0.0' },
+    {
+      instructions:
+        "Atlas is the canonical source of Pamac's academic data, including material synced from Google Classroom or linked through Google Drive that may not exist as local files. For any academic question, use Atlas tools before local file access: call atlas_overview, resolve the named course and material, then read the verified source. Do not create local copies, search the repository, or invent a substitute when Atlas is unavailable. If a course or material is ambiguous or missing, follow the resolver result and ask Pamac rather than guessing.",
+    }
+  );
 
   server.registerTool(
     'atlas_overview',

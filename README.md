@@ -393,6 +393,29 @@ The repository includes a portable project-level [.mcp.json](.mcp.json) configur
 }
 ~~~
 
+For Codex desktop, Codex CLI, and the Codex IDE extension, Atlas is also
+registered in the shared host configuration at
+`C:\Users\Pamac\.codex\config.toml`. That is the configuration used by new
+Codex and ChatGPT desktop chats, including chats that do not independently
+discover a project's `.mcp.json`:
+
+```toml
+[mcp_servers.atlas]
+command = 'node'
+args = ['scripts/run-mcp-server.js']
+cwd = 'C:\Users\Pamac\Downloads\Atlas-v2'
+env = { ATLAS_MCP_MODE = 'read-only' }
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+enabled = true
+```
+
+Atlas is a local STDIO server. The Codex host starts a dedicated process on
+demand, so it does not need a separate always-running daemon. Restart the
+client after changing the host configuration and use `/mcp` to confirm that
+the `atlas_*` tools are available. ChatGPT web does not read local Codex
+configuration and cannot access this local server.
+
 The full setup instructions for Claude Code, Codex, Cursor, and other MCP-capable tools are in [mcp-setup.md](mcp-setup.md).
 
 ### Hermes connection

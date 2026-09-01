@@ -8,6 +8,12 @@ Atlas is the source of truth. The connected agent is responsible for reasoning a
 
 Useful output is better than forced output. If the requested material is not present, say so plainly. Never invent a lecture, infer its contents from a nearby file, or continue broadening a search indefinitely just to produce a summary.
 
+## Default for Pamac
+
+For every academic-related request, use Atlas MCP before local files. Atlas may contain Google Classroom and Google Drive material that has no local copy, so creating a local working file or searching the repository is not an acceptable first response.
+
+If the `atlas_*` tools are not available in the current client, treat that as a connection or configuration problem. Restore or diagnose the MCP connection when possible; do not silently answer from local files, ask Pamac to repeat the MCP instruction, or pretend that a local-only result is complete. If the connection cannot be restored, report the limitation and use a fallback only after Pamac explicitly authorises it.
+
 ## Connection mode and write boundary
 
 The standard external-agent connection is read-only. With no override, or with

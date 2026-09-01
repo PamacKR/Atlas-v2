@@ -183,6 +183,14 @@ async function main() {
   const client = new Client({ name: 'atlas-verify', version: '1.0.0' });
   await client.connect(transport);
 
+  const serverInstructions = client.getInstructions() || '';
+  assert(
+    serverInstructions.includes('canonical source') &&
+      serverInstructions.includes('academic question') &&
+      serverInstructions.includes('Google Classroom'),
+    'the MCP server advertises the academic-first retrieval rule in its initialization instructions'
+  );
+
   const toolsList = await client.listTools();
   const expectedReadOnlyTools = [
     'atlas_overview',

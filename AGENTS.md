@@ -18,6 +18,15 @@ Any time a design choice is ambiguous, resolve it against this line. Concretely:
 - Never design a feature where the AI agent becomes a place academic data is stored or where the user is expected to re-upload the same material repeatedly. Atlas is the persistent store; the agent is stateless w.r.t. academic content between sessions.
 - AI-generated associations (e.g., "this email probably relates to this assignment") may be used transiently to build context for a single request, but must never be written back into the canonical database as if they were fact (PRD §17). If a feature wants to do that, it needs an explicit user confirmation step first — at that point it's a user-originated relationship, not an AI-inferred one.
 
+## Academic data access default
+
+For any academic-related request from Pamac, use the connected Atlas MCP server first. Atlas is the canonical source because some course material is synced from Google Classroom or linked through Google Drive and may not exist as a local file on the computer.
+
+- Do not create local copies, search the repository or local folders, or ask Pamac to re-upload material as a substitute when Atlas MCP is available.
+- If the `atlas_*` tools are missing, treat that as a connection or host-configuration failure. Check and restore the MCP connection where possible instead of silently falling back to local files or asking Pamac to repeat the instruction.
+- If the connection cannot be restored in the current environment, say so before answering. Use a local export or other fallback only after Pamac explicitly authorises it.
+- This covers course questions, lecture and reading summaries, notes, assignments, deadlines, announcements, and study planning based on Pamac's academic records. It does not prevent ordinary local repository work when the request is about Atlas's software itself.
+
 ## Hard guardrails (do not revisit without the user explicitly reopening them)
 
 - **No AI/LLM API calls from inside Atlas, ever** — not Anthropic, not OpenAI, not Google Gemini, not NVIDIA NIM, none. The only reasoning engine is whatever AI coding agent/model the user is running as its own external process (against their own subscription or API key). Do not add an "AI feature" to Atlas itself, even something that seems small or convenient (e.g. "just call an API to auto-summarize this"). If a request seems to need one, say so and propose the same external-agent-via-MCP path Atlas already uses instead of quietly implementing an API call.

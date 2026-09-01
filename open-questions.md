@@ -392,3 +392,20 @@ Right now these 9 files are permanently unreadable to the AI agent: not a failur
 The user's Google Drive and Google Classroom refresh tokens were rejected with `invalid_grant` after the app had not been launched for several days. The app still opened, but background sync printed a long library error and the Settings page could continue to look connected because a refresh token was present.
 
 **Status:** Resolved/built (2026-08-06). Atlas now recognizes expired or revoked Google authorization separately from ordinary sync failures, stops that source's repeating schedule, and shows a plain-language “Reconnect required” state in Settings with a one-click reconnect action. Reconnecting clears the stale error, waits for one immediate scan even when background syncing is Off, and restores the configured schedule; later background results update the open Settings page through a live status event. Drive and Classroom remain independent. Moving the OAuth consent screen from Testing to Production is still a separate public-release decision, not required for this recovery flow.
+
+### 31. Default academic retrieval path for agent clients
+
+Should an external agent use Atlas MCP automatically for Pamac's academic
+requests, including material that exists only in Google Classroom or Google
+Drive, rather than creating local copies or searching local files first?
+
+**Status:** Resolved (2026-09-01). Atlas MCP is the default and required first
+retrieval path for academic questions, summaries, readings, lecture notes,
+assignments, deadlines, announcements, and study planning based on Atlas data.
+The agent must use the connected `atlas_*` tools without waiting for Pamac to
+name the server. If those tools are missing, that is treated as a client or
+host-configuration failure to diagnose and restore, not as permission to
+silently substitute local files. A local export or other fallback requires
+Pamac's explicit authorisation. Atlas's MCP server now also returns this rule
+as server-wide initialization instructions, and the local Codex host is
+registered to start it on demand for new desktop/CLI/IDE chats.

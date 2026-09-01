@@ -33,6 +33,30 @@ This repo already ships a working **`.mcp.json`** at its root:
 }
 ```
 
+### Shared Codex host configuration
+
+For Codex desktop, Codex CLI, and the Codex IDE extension, the reliable shared
+configuration is the host-level `C:\Users\Pamac\.codex\config.toml`. Add this
+table there, using the actual path to this checkout if it ever moves:
+
+```toml
+[mcp_servers.atlas]
+command = 'node'
+args = ['scripts/run-mcp-server.js']
+cwd = 'C:\Users\Pamac\Downloads\Atlas-v2'
+env = { ATLAS_MCP_MODE = 'read-only' }
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+enabled = true
+```
+
+The ChatGPT desktop app, Codex CLI, and IDE extension share this host
+configuration. Atlas uses a local STDIO server, so the Codex host starts its
+own server process when a client needs it. A separate permanently running
+daemon is not necessary and would not be the process that a new chat uses.
+Restart the client after changing the configuration, then use `/mcp` to check
+that `atlas_*` tools are present.
+
 ## Safe MCP mode
 
 Atlas MCP connections default to **read-only**. If `ATLAS_MCP_MODE` is absent,
@@ -61,7 +85,16 @@ setting remains the master switch and can disable all MCP operations.
 
 **Claude Code** picks this up automatically — just open this project and (re)start Claude Code; you'll likely get a one-time prompt to approve running the `atlas` server. No path needed at all.
 
-**Codex / Cursor**: check whether the tool reads project-level `.mcp.json` directly (many do, since it's becoming a de facto convention). If not, copy the same `command`/`args` into that tool's own MCP config file — still no absolute path, since `node` and a path relative to the project root are portable regardless of which tool launches it, as long as it runs with this project as its working directory.
+**Codex desktop / CLI / IDE** should use the shared host configuration above. Do
+not rely on the project-level `.mcp.json` being discovered by those clients.
+
+**ChatGPT web** does not read local Codex configuration files and cannot start
+this local server. It can use remote MCP-backed tools supplied by installed
+plugins, but local Atlas retrieval should use the ChatGPT desktop app or a
+local Codex client.
+
+**Cursor and other MCP clients** can use the project-level `.mcp.json` or their
+own native MCP configuration.
 
 After it's connected, the project read-only configuration should list exactly
 11 `atlas_*` tools. A permanent Hermes profile configured with
