@@ -43,6 +43,9 @@ export interface Resource {
   synced_at: string | null;
   ocr_text: string | null;
   extraction_status: 'pending' | 'done' | 'empty' | 'unsupported' | 'failed';
+  remote_source: 'drive' | 'gmail' | null;
+  remote_ref: string | null;
+  link_kind: string | null;
 }
 
 export interface ExtractionBackfillProgress {
@@ -166,9 +169,20 @@ export interface DriveFolder {
   name: string;
 }
 
+export interface DriveSource {
+  id: number;
+  folder_id: string;
+  folder_name: string;
+  default_course_id: number | null;
+  enabled: number;
+}
+
 export interface DrivePendingFile {
   id: number;
   drive_file_id: string;
+  source_id: number | null;
+  source_name: string | null;
+  default_course_id: number | null;
   name: string;
   mime_type: string;
   modified_time: string | null;
@@ -263,6 +277,7 @@ contextBridge.exposeInMainWorld('atlas', {
   deleteAllAtlasData: (): Promise<{ ok: true } | { ok: false; error: string }> => ipcRenderer.invoke('settings:deleteAllAtlasData'),
   setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off'): Promise<void> => ipcRenderer.invoke('settings:setBackupFrequency', frequency),
   isDriveConnected: (): Promise<boolean> => ipcRenderer.invoke('google:isDriveConnected'),
+  isDriveFolderAccessAvailable: (): Promise<boolean> => ipcRenderer.invoke('google:isDriveFolderAccessAvailable'),
   connectDrive: (): Promise<{ ok: true } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:connectDrive'),
   disconnectDrive: (): Promise<void> => ipcRenderer.invoke('google:disconnectDrive'),
@@ -277,6 +292,12 @@ contextBridge.exposeInMainWorld('atlas', {
   syncNow: (source: 'drive' | 'classroom'): Promise<void> => ipcRenderer.invoke('sync:now', source),
   syncAllNow: (): Promise<void> => ipcRenderer.invoke('sync:nowAll'),
   getDriveFolder: (): Promise<DriveFolder | null> => ipcRenderer.invoke('google:getDriveFolder'),
+  listDriveSources: (): Promise<DriveSource[]> => ipcRenderer.invoke('google:listDriveSources'),
+  addDriveSource: (link: string, defaultCourseId: number | null): Promise<{ ok: true; folderId: string; name: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('google:addDriveSource', link, defaultCourseId),
+  updateDriveSource: (sourceId: number, defaultCourseId: number | null, enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('google:updateDriveSource', sourceId, defaultCourseId, enabled),
+  removeDriveSource: (sourceId: number): Promise<void> => ipcRenderer.invoke('google:removeDriveSource', sourceId),
   setDriveFolder: (link: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('google:setDriveFolder', link),
   listPendingDriveFiles: (): Promise<DrivePendingFile[]> =>
@@ -285,8 +306,9 @@ contextBridge.exposeInMainWorld('atlas', {
     driveFileId: string,
     name: string,
     courseId: number,
-    importAs: 'resource' | 'note'
-  ): Promise<unknown> => ipcRenderer.invoke('google:importDriveFile', driveFileId, name, courseId, importAs),
+    importAs: 'resource' | 'note',
+    storageMode?: 'remote' | 'local'
+  ): Promise<unknown> => ipcRenderer.invoke('google:importDriveFile', driveFileId, name, courseId, importAs, storageMode),
   ignoreDriveFile: (driveFileId: string): Promise<void> => ipcRenderer.invoke('google:ignoreDriveFile', driveFileId),
   onDriveChanged: (handler: () => void): void => {
     ipcRenderer.on('google:driveChanged', () => handler());

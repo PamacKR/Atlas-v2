@@ -2090,7 +2090,7 @@ button#sync-now-all:hover {
   gap: 0.5rem;
 }
 
-#drive-folder-input {
+#drive-source-input {
   flex: 1;
   min-width: 0;
   padding: 0.5rem 0.7rem;
@@ -2101,11 +2101,11 @@ button#sync-now-all:hover {
   font-size: 0.85rem;
 }
 
-#drive-folder-input:focus {
+#drive-source-input:focus {
   outline: 2px solid var(--color-accent);
 }
 
-button#drive-folder-save {
+button#drive-source-add {
   flex-shrink: 0;
   padding: 0.5rem 1rem;
   border-radius: 4px;
@@ -2116,8 +2116,62 @@ button#drive-folder-save {
   font-size: 0.85rem;
 }
 
-button#drive-folder-save:hover {
+button#drive-source-add:hover {
   opacity: 0.9;
+}
+
+#drive-folder-row {
+  flex-wrap: wrap;
+}
+
+#drive-source-course {
+  width: 190px;
+  flex-shrink: 0;
+}
+
+#drive-sources-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.drive-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border-soft);
+  background: var(--color-bg-elevated);
+}
+
+.drive-source-info {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.drive-source-info strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.drive-source-info span {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.drive-source-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.drive-source-course {
+  width: 170px;
 }
 
 #dashboard-drive-widget #drive-pending-status:not([hidden]) {
@@ -5595,7 +5649,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 #settings-panels #sync-now-all:not([hidden]),
 #settings-panels #drive-connect-button:not([hidden]),
 #settings-panels #drive-disconnect-button:not([hidden]),
-#settings-panels #drive-folder-save:not([hidden]),
+#settings-panels #drive-source-add:not([hidden]),
 #settings-panels #drive-review-button:not([hidden]),
 #settings-panels #drive-clear-preview-cache-button:not([hidden]),
 #settings-panels #classroom-connect-button:not([hidden]),
@@ -5623,7 +5677,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 #settings-panels #sync-now-all:hover,
 #settings-panels #drive-connect-button:hover,
 #settings-panels #drive-disconnect-button:hover,
-#settings-panels #drive-folder-save:hover,
+#settings-panels #drive-source-add:hover,
 #settings-panels #drive-review-button:hover,
 #settings-panels #drive-clear-preview-cache-button:hover,
 #settings-panels #classroom-connect-button:hover,

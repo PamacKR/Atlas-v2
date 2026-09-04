@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import Database from 'better-sqlite3';
 import { google } from 'googleapis';
 import { getDb } from './db/database';
-import { getDriveClient } from './googleAuth';
+import { getBackupsDir } from './paths';
+import { getClassroomClient, getDriveClient } from './googleAuth';
 
 const FOLDER_ID_SETTING_KEY = 'google_drive_folder_id';
 const FOLDER_NAME_SETTING_KEY = 'google_drive_folder_name';
@@ -36,13 +38,26 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 // surfaced as an importable-then-failing item.
 const GOOGLE_NATIVE_MIME_PREFIX = 'application/vnd.google-apps.';
 
+type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
+
 export interface DrivePendingFile {
   id: number;
   drive_file_id: string;
+  source_id: number | null;
+  source_name: string | null;
+  default_course_id: number | null;
   name: string;
   mime_type: string;
   modified_time: string | null;
   detected_at: string;
+}
+
+export interface DriveSource {
+  id: number;
+  folder_id: string;
+  folder_name: string;
+  default_course_id: number | null;
+  enabled: number;
 }
 
 function getSetting(key: string): string | null {
@@ -60,6 +75,28 @@ function setSetting(key: string, value: string): void {
   ).run(key, value, value);
 }
 
+function deleteSetting(key: string): void {
+  getDb().prepare('DELETE FROM app_settings WHERE key = ?').run(key);
+}
+
+// A folder may be shared to the college account used for Classroom rather
+// than the personal account used for Atlas-created Drive previews. Classroom
+// already requests drive.readonly for Classroom-linked material, so it is a
+// valid read path for a folder explicitly selected by the user. Keep the
+// personal Drive client as a fallback for existing inboxes shared there.
+function folderAccessClients(): OAuth2Client[] {
+  const clients: OAuth2Client[] = [];
+  const classroomClient = getClassroomClient();
+  if (classroomClient) clients.push(classroomClient);
+  const driveClient = getDriveClient();
+  if (driveClient) clients.push(driveClient);
+  return clients;
+}
+
+export function isDriveFolderAccessAvailable(): boolean {
+  return folderAccessClients().length > 0;
+}
+
 // Accepts either a raw folder ID or a full Drive folder URL
 // (https://drive.google.com/drive/folders/<ID>?...) — no Picker widget, the
 // user just pastes whatever's in their browser's address bar.
@@ -69,10 +106,59 @@ function extractFolderId(input: string): string {
   return match ? match[1] : trimmed;
 }
 
+function ensureLegacyDriveSource(): void {
+  const legacyId = getSetting(FOLDER_ID_SETTING_KEY);
+  if (!legacyId) return;
+  const db = getDb();
+  const existing = db.prepare('SELECT id FROM drive_sources WHERE folder_id = ?').get(legacyId) as { id: number } | undefined;
+  if (existing) {
+    db.prepare('UPDATE drive_pending_files SET source_id = ? WHERE source_id IS NULL').run(existing.id);
+    return;
+  }
+  const result = db.prepare('INSERT INTO drive_sources (folder_id, folder_name) VALUES (?, ?)').run(
+    legacyId,
+    getSetting(FOLDER_NAME_SETTING_KEY) ?? legacyId
+  );
+  db.prepare('UPDATE drive_pending_files SET source_id = ? WHERE source_id IS NULL').run(Number(result.lastInsertRowid));
+
+  // The previous single-folder setting was overwritten whenever the user
+  // switched inboxes. If a dated Atlas backup still contains the old value,
+  // recover it as a second source once, so upgrading does not lose a folder
+  // the user had already configured.
+  const recovered = getSetting('drive_sources_recovered_from_backups');
+  if (recovered === '1') return;
+  try {
+    const backupDir = getBackupsDir();
+    const backupNames = fs.readdirSync(backupDir).filter((name) => name.endsWith('.db')).sort().reverse();
+    for (const backupName of backupNames) {
+      const backup = new Database(path.join(backupDir, backupName), { readonly: true });
+      try {
+        const oldId = (backup.prepare("SELECT value FROM app_settings WHERE key = 'google_drive_folder_id'").get() as { value: string } | undefined)?.value;
+        const oldName = (backup.prepare("SELECT value FROM app_settings WHERE key = 'google_drive_folder_name'").get() as { value: string } | undefined)?.value;
+        if (oldId && oldId !== legacyId) {
+          db.prepare('INSERT OR IGNORE INTO drive_sources (folder_id, folder_name) VALUES (?, ?)').run(oldId, oldName ?? oldId);
+        }
+      } finally {
+        backup.close();
+      }
+    }
+  } catch {
+    // Backups are optional. The Settings UI still allows the user to add any
+    // missing folder manually if none can be recovered.
+  }
+  setSetting('drive_sources_recovered_from_backups', '1');
+}
+
+export function listDriveSources(): DriveSource[] {
+  ensureLegacyDriveSource();
+  return getDb().prepare('SELECT id, folder_id, folder_name, default_course_id, enabled FROM drive_sources ORDER BY id').all() as DriveSource[];
+}
+
 export function getDriveFolder(): { id: string; name: string } | null {
-  const id = getSetting(FOLDER_ID_SETTING_KEY);
-  if (!id) return null;
-  return { id, name: getSetting(FOLDER_NAME_SETTING_KEY) ?? id };
+  const sources = listDriveSources();
+  const source = sources.find((item) => item.enabled) ?? sources[0];
+  if (source) return { id: source.folder_id, name: source.folder_name };
+  return null;
 }
 
 // Validates the folder is real and accessible before saving it, so a bad
@@ -81,28 +167,59 @@ export function getDriveFolder(): { id: string; name: string } | null {
 export async function setDriveFolder(
   input: string
 ): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
-  const client = getDriveClient();
-  if (!client) return { ok: false, error: 'Google Drive is not connected yet.' };
-
-  const folderId = extractFolderId(input);
-  const drive = google.drive({ version: 'v3', auth: client });
-  try {
-    const res = await drive.files.get({ fileId: folderId, fields: 'id, name, mimeType' });
-    if (res.data.mimeType !== 'application/vnd.google-apps.folder') {
-      return { ok: false, error: 'That link is not a folder.' };
-    }
-    setSetting(FOLDER_ID_SETTING_KEY, folderId);
-    setSetting(FOLDER_NAME_SETTING_KEY, res.data.name ?? folderId);
-    return { ok: true, name: res.data.name ?? folderId };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  const result = await addDriveSource(input);
+  if (result.ok) {
+    setSetting(FOLDER_ID_SETTING_KEY, result.folderId);
+    setSetting(FOLDER_NAME_SETTING_KEY, result.name);
+    return { ok: true, name: result.name };
   }
+  return result;
+}
+
+export async function addDriveSource(
+  input: string,
+  defaultCourseId: number | null = null
+): Promise<{ ok: true; folderId: string; name: string } | { ok: false; error: string }> {
+  const folderId = extractFolderId(input);
+  const clients = folderAccessClients();
+  if (clients.length === 0) return { ok: false, error: 'Google Drive or Classroom is not connected yet.' };
+
+  let lastError: unknown;
+  for (const client of clients) {
+    const drive = google.drive({ version: 'v3', auth: client });
+    try {
+      const res = await drive.files.get({ fileId: folderId, fields: 'id, name, mimeType' });
+      if (res.data.mimeType !== 'application/vnd.google-apps.folder') {
+        return { ok: false, error: 'That link is not a folder.' };
+      }
+      const db = getDb();
+      const name = res.data.name ?? folderId;
+      const existing = db.prepare('SELECT id FROM drive_sources WHERE folder_id = ?').get(folderId) as { id: number } | undefined;
+      if (existing) {
+        db.prepare("UPDATE drive_sources SET folder_name = ?, default_course_id = COALESCE(?, default_course_id), enabled = 1, updated_at = datetime('now') WHERE id = ?")
+          .run(name, defaultCourseId, existing.id);
+      } else {
+        db.prepare('INSERT INTO drive_sources (folder_id, folder_name, default_course_id) VALUES (?, ?, ?)')
+          .run(folderId, name, defaultCourseId);
+      }
+      return { ok: true, folderId, name };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  return { ok: false, error: lastError instanceof Error ? lastError.message : String(lastError) };
 }
 
 export function listPendingDriveFiles(): DrivePendingFile[] {
+  ensureLegacyDriveSource();
   const db = getDb();
   return db
-    .prepare('SELECT * FROM drive_pending_files WHERE ignored = 0 ORDER BY detected_at DESC')
+    .prepare(`SELECT drive_pending_files.*, drive_sources.folder_name AS source_name,
+                     drive_sources.default_course_id
+              FROM drive_pending_files
+              LEFT JOIN drive_sources ON drive_sources.id = drive_pending_files.source_id
+              WHERE drive_pending_files.ignored = 0
+              ORDER BY drive_pending_files.detected_at DESC`)
     .all() as DrivePendingFile[];
 }
 
@@ -168,52 +285,68 @@ async function listDriveFilesRecursively(
 // (open-questions.md #19). Returns whether the pending list actually
 // changed, so the caller only needs to notify the renderer when it did.
 export async function scanDriveFolder(): Promise<boolean> {
-  const client = getDriveClient();
-  const folder = getDriveFolder();
-  if (!client || !folder) return false;
-
-  // Recurses into any subfolders under the configured folder too — the user
-  // organizes the watched folder with subfolders (e.g. one per course) and
-  // still wants every file found anywhere underneath it to count.
-  const drive = google.drive({ version: 'v3', auth: client });
-  const files = await listDriveFilesRecursively(drive, folder.id);
+  const sources = listDriveSources().filter((source) => source.enabled);
+  const clients = folderAccessClients();
+  if (clients.length === 0 || sources.length === 0) return false;
 
   const db = getDb();
-
-  // Mirror deletion: a file removed from Drive (or moved out of the folder)
-  // before it was ever reviewed shouldn't linger in the pending list forever
-  // — same reconciliation idea as local watched folders (reconcileWatchedFolder
-  // in main.ts), just done on every scan here rather than only at watcher
-  // start, since polling already runs regularly.
-  const stillPresentIds = new Set(files.map((f) => f.id).filter((id): id is string => Boolean(id)));
-  const pending = db.prepare('SELECT drive_file_id FROM drive_pending_files').all() as {
-    drive_file_id: string;
-  }[];
-  const deleteStalePending = db.prepare('DELETE FROM drive_pending_files WHERE drive_file_id = ?');
   let changed = false;
-  for (const row of pending) {
-    if (!stillPresentIds.has(row.drive_file_id)) {
-      deleteStalePending.run(row.drive_file_id);
-      changed = true;
+  for (const source of sources) {
+    // Recurses into any subfolders under the configured folder too — the user
+    // can organize each source with subfolders and still have every file
+    // underneath it appear in one review inbox.
+    let files: DriveFileEntry[] | null = null;
+    let lastError: unknown;
+    for (const client of clients) {
+      try {
+        const drive = google.drive({ version: 'v3', auth: client });
+        files = await listDriveFilesRecursively(drive, source.folder_id);
+        break;
+      } catch (err) {
+        lastError = err;
+      }
     }
-  }
+    if (!files) throw lastError instanceof Error ? lastError : new Error(String(lastError));
 
-  const alreadyImported = (driveFileId: string): boolean => {
-    const inResources = db.prepare('SELECT 1 FROM resources WHERE drive_file_id = ?').get(driveFileId);
-    const inNotes = db.prepare('SELECT 1 FROM notes WHERE drive_file_id = ?').get(driveFileId);
-    return Boolean(inResources || inNotes);
-  };
+    // Mirror deletion, but only within this source. A file removed from one
+    // folder must not clear a pending item found in another active folder.
+    const stillPresentIds = new Set(files.map((f) => f.id).filter((id): id is string => Boolean(id)));
+    const pending = db.prepare('SELECT drive_file_id FROM drive_pending_files WHERE source_id = ?').all(source.id) as {
+      drive_file_id: string;
+    }[];
+    const deleteStalePending = db.prepare('DELETE FROM drive_pending_files WHERE drive_file_id = ? AND source_id = ?');
+    for (const row of pending) {
+      if (!stillPresentIds.has(row.drive_file_id)) {
+        deleteStalePending.run(row.drive_file_id, source.id);
+        changed = true;
+      }
+    }
 
-  const insertPending = db.prepare(
-    'INSERT OR IGNORE INTO drive_pending_files (drive_file_id, name, mime_type, modified_time) VALUES (?, ?, ?, ?)'
-  );
+    const alreadyImported = (driveFileId: string): boolean => {
+      const inResources = db
+        .prepare("SELECT 1 FROM resources WHERE drive_file_id = ? OR (remote_source = 'drive' AND remote_ref = ?)")
+        .get(driveFileId, driveFileId);
+      const inNotes = db.prepare('SELECT 1 FROM notes WHERE drive_file_id = ?').get(driveFileId);
+      return Boolean(inResources || inNotes);
+    };
 
-  for (const file of files) {
-    if (!file.id || !file.name) continue;
-    if (file.mimeType?.startsWith(GOOGLE_NATIVE_MIME_PREFIX)) continue;
-    if (alreadyImported(file.id)) continue;
-    const result = insertPending.run(file.id, file.name, file.mimeType ?? 'application/octet-stream', file.modifiedTime ?? null);
-    if (result.changes > 0) changed = true;
+    const insertPending = db.prepare(
+      'INSERT OR IGNORE INTO drive_pending_files (drive_file_id, source_id, name, mime_type, modified_time) VALUES (?, ?, ?, ?, ?)'
+    );
+
+    for (const file of files) {
+      if (!file.id || !file.name) continue;
+      if (file.mimeType?.startsWith(GOOGLE_NATIVE_MIME_PREFIX)) continue;
+      if (alreadyImported(file.id)) continue;
+      const result = insertPending.run(
+        file.id,
+        source.id,
+        file.name,
+        file.mimeType ?? 'application/octet-stream',
+        file.modifiedTime ?? null
+      );
+      if (result.changes > 0) changed = true;
+    }
   }
   return changed;
 }
@@ -224,11 +357,36 @@ export async function scanDriveFolder(): Promise<boolean> {
 // dispatched by the type the user assigns in the review panel, since a
 // Drive file has no per-type distinction of its own until then.
 export async function downloadDriveFileContent(driveFileId: string): Promise<Buffer> {
-  const client = getDriveClient();
-  if (!client) throw new Error('Google Drive is not connected.');
-  const drive = google.drive({ version: 'v3', auth: client });
-  const res = await drive.files.get({ fileId: driveFileId, alt: 'media' }, { responseType: 'arraybuffer' });
-  return Buffer.from(res.data as ArrayBuffer);
+  const clients = folderAccessClients();
+  if (clients.length === 0) throw new Error('Google Drive or Classroom is not connected.');
+
+  let lastError: unknown;
+  for (const client of clients) {
+    try {
+      const drive = google.drive({ version: 'v3', auth: client });
+      const res = await drive.files.get({ fileId: driveFileId, alt: 'media' }, { responseType: 'arraybuffer' });
+      return Buffer.from(res.data as ArrayBuffer);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+export function updateDriveSource(sourceId: number, defaultCourseId: number | null, enabled: boolean): void {
+  getDb()
+    .prepare("UPDATE drive_sources SET default_course_id = ?, enabled = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(defaultCourseId, enabled ? 1 : 0, sourceId);
+}
+
+export function removeDriveSource(sourceId: number): void {
+  const db = getDb();
+  const source = db.prepare('SELECT folder_id FROM drive_sources WHERE id = ?').get(sourceId) as { folder_id: string } | undefined;
+  db.prepare('DELETE FROM drive_sources WHERE id = ?').run(sourceId);
+  if (source?.folder_id === getSetting(FOLDER_ID_SETTING_KEY)) {
+    deleteSetting(FOLDER_ID_SETTING_KEY);
+    deleteSetting(FOLDER_NAME_SETTING_KEY);
+  }
 }
 
 export function removePendingDriveFile(driveFileId: string): void {

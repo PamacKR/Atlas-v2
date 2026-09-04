@@ -21,6 +21,11 @@ import {
 } from './googleAuth';
 import {
   getDriveFolder,
+  listDriveSources,
+  addDriveSource,
+  updateDriveSource,
+  removeDriveSource,
+  isDriveFolderAccessAvailable,
   setDriveFolder,
   listPendingDriveFiles,
   scanDriveFolder,
@@ -331,6 +336,20 @@ function uniqueDestPath(dir: string, filename: string): string {
   return path.join(dir, candidate);
 }
 
+// Drive filenames can contain characters that are legal in Drive but not in
+// Windows filenames. Keep the readable name while making imported files safe
+// to write into Atlas's local managed storage.
+function sanitizeResourceFilename(filename: string): string {
+  const originalExt = path.extname(filename);
+  const ext = originalExt.replace(/[\\/:*?"<>|]/g, '-');
+  const base = path
+    .basename(filename, originalExt)
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .trim()
+    .replace(/[. ]+$/, '');
+  return `${base || 'file'}${ext}`;
+}
+
 // Kinds textExtraction.ts knows how to read. Everything else (image, zip,
 // other, link) is marked 'unsupported' immediately rather than left
 // 'pending' forever — 'pending' is meant to mean "extraction hasn't run
@@ -462,6 +481,32 @@ function backfillPreExistingRemoteAttachments(): void {
   }
 }
 
+// Drive inbox files imported by the older workflow may have had their local
+// copies removed by the user. Keep the Atlas resource as a remote Drive
+// resource instead of allowing the course-storage reconciliation pass to
+// delete it and the next Drive scan to present it as brand new again.
+function backfillMissingDriveImportsToRemote(): void {
+  const db = getDb();
+  const candidates = db
+    .prepare(
+      `SELECT id, drive_file_id, file_path
+       FROM resources
+       WHERE source = 'drive' AND drive_file_id IS NOT NULL AND remote_source IS NULL`
+    )
+    .all() as { id: number; drive_file_id: string; file_path: string }[];
+  const update = db.prepare(
+    `UPDATE resources
+     SET drive_file_id = NULL, remote_source = 'drive', remote_ref = ?,
+         file_path = ?, link_kind = 'driveFile', extraction_status = 'pending',
+         extracted_at = NULL, extraction_error = NULL
+     WHERE id = ?`
+  );
+  for (const resource of candidates) {
+    if (fs.existsSync(resource.file_path)) continue;
+    update.run(resource.drive_file_id, `https://drive.google.com/file/d/${resource.drive_file_id}/view`, resource.id);
+  }
+}
+
 async function extractAllPendingResources(): Promise<void> {
   const db = getDb();
   resetExtractionForNewLogicVersion();
@@ -578,10 +623,11 @@ function importBufferIntoCourse(
     | undefined;
   if (!course) return null;
 
+  const safeFilename = sanitizeResourceFilename(originalFilename);
   const courseFilesDir = path.join(getFilesDir(), course.folder_name);
   fs.mkdirSync(courseFilesDir, { recursive: true });
 
-  const destPath = uniqueDestPath(courseFilesDir, originalFilename);
+  const destPath = uniqueDestPath(courseFilesDir, safeFilename);
   fs.writeFileSync(destPath, buffer);
 
   const insertResult = db
@@ -591,17 +637,62 @@ function importBufferIntoCourse(
     )
     .run(
       courseId,
-      originalFilename,
-      kindFromExtension(originalFilename),
+      safeFilename,
+      kindFromExtension(safeFilename),
       driveFileId ? 'drive' : 'manual',
       destPath,
-      originalFilename,
+      safeFilename,
       driveFileId
     );
 
   const resourceId = Number(insertResult.lastInsertRowid);
   updateSearchIndexForResource(resourceId);
-  scheduleExtraction(resourceId, kindFromExtension(originalFilename), destPath);
+  scheduleExtraction(resourceId, kindFromExtension(safeFilename), destPath);
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
+  sendAtlasChange({ entity: 'resource', action: 'created', id: resourceId, courseId });
+  return resource;
+}
+
+// Drive inbox imports are remote by default. Atlas stores the metadata and
+// extracted text, but the original bytes stay in Drive until the user chooses
+// an explicit local copy in a future import flow.
+function importRemoteDriveResource(
+  courseId: number,
+  name: string,
+  mimeType: string,
+  modifiedTime: string | null,
+  driveFileId: string,
+  sourceId: number | null
+): unknown {
+  const db = getDb();
+  const course = db.prepare('SELECT id FROM courses WHERE id = ?').get(courseId);
+  if (!course) return null;
+
+  const existing = db
+    .prepare("SELECT * FROM resources WHERE remote_source = 'drive' AND remote_ref = ? LIMIT 1")
+    .get(driveFileId);
+  if (existing) return existing;
+
+  const insertResult = db
+    .prepare(
+      `INSERT INTO resources
+        (course_id, title, kind, source, file_path, original_filename, drive_source_id,
+         remote_source, remote_ref, remote_mime_type, remote_fetched_version, link_kind)
+       VALUES (?, ?, ?, 'drive', ?, ?, ?, 'drive', ?, ?, ?, 'driveFile')`
+    )
+    .run(
+      courseId,
+      name,
+      kindFromExtension(name),
+      `https://drive.google.com/file/d/${driveFileId}/view`,
+      name,
+      sourceId,
+      driveFileId,
+      mimeType,
+      modifiedTime
+    );
+  const resourceId = Number(insertResult.lastInsertRowid);
+  updateSearchIndexForResource(resourceId);
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
   sendAtlasChange({ entity: 'resource', action: 'created', id: resourceId, courseId });
   return resource;
@@ -782,7 +873,7 @@ function reconcileCourseStorage(courseId: number): void {
   // function actually manages (a real file under this course's own storage
   // folder) should ever be reconciled here.
   const resources = db
-    .prepare("SELECT id, file_path FROM resources WHERE course_id = ? AND kind != 'link'")
+    .prepare("SELECT id, file_path FROM resources WHERE course_id = ? AND kind != 'link' AND remote_source IS NULL")
     .all(courseId) as { id: number; file_path: string }[];
   // Same fix as reconcileWatchedFolder above, same reason: this runs once
   // per course at every launch, and an unconditional rebuild here meant one
@@ -1016,6 +1107,8 @@ app.whenReady().then(() => {
       resolveLocalServerReady?.();
       resolveLocalServerReady = null;
     }
+
+  backfillMissingDriveImportsToRemote();
 
   const watchedFolders = db.prepare('SELECT * FROM watched_folders').all() as {
     id: number;
@@ -1678,6 +1771,7 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
 // This is deliberately just the connect/disconnect handshake for now — the
 // folder-scanning/review-panel work is a separate, not-yet-built step.
 ipcMain.handle('google:isDriveConnected', () => isGoogleDriveConnected());
+ipcMain.handle('google:isDriveFolderAccessAvailable', () => isDriveFolderAccessAvailable());
 
 ipcMain.handle('google:connectDrive', async () => {
   try {
@@ -1883,7 +1977,7 @@ ipcMain.handle('sync:nowAll', async () => {
 async function scanDriveAndNotify(): Promise<void> {
   try {
     const foundNew = await scanDriveFolder();
-    if (foundNew && mainWindow) mainWindow.webContents.send('google:driveChanged');
+    if (foundNew && mainWindow) mainWindow.webContents.send('google:driveChanged', { launch: false });
     recordSyncResult('drive', true, null);
   } catch (err) {
     if (recordSyncFailure('drive', err)) {
@@ -1895,6 +1989,23 @@ async function scanDriveAndNotify(): Promise<void> {
 }
 
 ipcMain.handle('google:getDriveFolder', () => getDriveFolder());
+
+ipcMain.handle('google:listDriveSources', () => listDriveSources());
+
+ipcMain.handle('google:addDriveSource', async (_event, link: string, defaultCourseId: number | null) => {
+  const result = await addDriveSource(link, defaultCourseId);
+  if (result.ok) void scanDriveAndNotify();
+  return result;
+});
+
+ipcMain.handle('google:updateDriveSource', (_event, sourceId: number, defaultCourseId: number | null, enabled: boolean) => {
+  updateDriveSource(sourceId, defaultCourseId, enabled);
+  void scanDriveAndNotify();
+});
+
+ipcMain.handle('google:removeDriveSource', (_event, sourceId: number) => {
+  removeDriveSource(sourceId);
+});
 
 ipcMain.handle('google:setDriveFolder', async (_event, link: string) => {
   const result = await setDriveFolder(link);
@@ -1911,7 +2022,31 @@ ipcMain.handle('google:listPendingDriveFiles', () => listPendingDriveFiles());
 // note, anything tagged "Resource" lands exactly like a manual upload.
 ipcMain.handle(
   'google:importDriveFile',
-  async (_event, driveFileId: string, name: string, courseId: number, importAs: 'resource' | 'note') => {
+  async (
+    _event,
+    driveFileId: string,
+    name: string,
+    courseId: number,
+    importAs: 'resource' | 'note',
+    storageMode: 'remote' | 'local' = 'remote'
+  ) => {
+    const pending = listPendingDriveFiles().find((file) => file.drive_file_id === driveFileId);
+    if (!pending) throw new Error('That Drive file is no longer waiting for import. Scan again to refresh the inbox.');
+
+    if (storageMode === 'remote' && importAs === 'resource') {
+      const result = importRemoteDriveResource(
+        courseId,
+        name,
+        pending.mime_type,
+        pending.modified_time,
+        driveFileId,
+        pending.source_id
+      );
+      removePendingDriveFile(driveFileId);
+      void runRemoteExtractionAndNotify();
+      return result;
+    }
+
     const buffer = await downloadDriveFileContent(driveFileId);
 
     let result: unknown;
@@ -2563,7 +2698,7 @@ ipcMain.on('folders:contextMenu', (event, folderId: number) => {
 ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   const db = getDb();
   const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId) as
-    | { file_path: string; drive_preview_file_id: string | null; course_id: number }
+    | { file_path: string; drive_preview_file_id: string | null; remote_source: string | null; course_id: number }
     | undefined;
   // Best-effort, not awaited — deleting the resource locally must succeed
   // regardless of whether Drive is reachable right now; a stray leftover
@@ -2573,7 +2708,7 @@ ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
   removeSearchIndexRow('resource', resourceId);
   if (resource) sendAtlasChange({ entity: 'resource', action: 'deleted', id: resourceId, courseId: resource.course_id });
-  if (resource) {
+  if (resource && !resource.remote_source) {
     setImmediate(() => fs.rmSync(resource.file_path, { force: true }));
   }
 });
@@ -3175,6 +3310,7 @@ function deleteAllAtlasData(): void {
     db.prepare('DELETE FROM announcements').run();
     db.prepare('DELETE FROM assignments').run();
     db.prepare('DELETE FROM watched_folders').run();
+    db.prepare('DELETE FROM drive_sources').run();
     db.prepare('DELETE FROM drive_pending_files').run();
     db.prepare('DELETE FROM classroom_pending_courses').run();
     db.prepare('DELETE FROM classwork_materials').run();
@@ -3187,6 +3323,7 @@ function deleteAllAtlasData(): void {
     // future sync starts with a clean local workspace.
     db.prepare(`DELETE FROM app_settings WHERE key IN (
       'google_drive_folder_id', 'google_drive_folder_name',
+      'drive_sources_recovered_from_backups',
       'google_drive_preview_folder_id', 'ashoka_planner_db_path',
       'sync_drive_last_success', 'sync_drive_last_error',
       'sync_classroom_last_success', 'sync_classroom_last_error',

@@ -68,6 +68,9 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('drive_file_id')) {
     db.exec('ALTER TABLE resources ADD COLUMN drive_file_id TEXT');
   }
+  if (!resourceColumns.includes('drive_source_id')) {
+    db.exec('ALTER TABLE resources ADD COLUMN drive_source_id INTEGER REFERENCES drive_sources(id) ON DELETE SET NULL');
+  }
   if (!resourceColumns.includes('classroom_attachment_id')) {
     db.exec('ALTER TABLE resources ADD COLUMN classroom_attachment_id TEXT');
   }
@@ -208,6 +211,9 @@ function migrate(db: Database.Database): void {
   ).map((c) => c.name);
   if (!drivePendingColumns.includes('ignored')) {
     db.exec('ALTER TABLE drive_pending_files ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!drivePendingColumns.includes('source_id')) {
+    db.exec('ALTER TABLE drive_pending_files ADD COLUMN source_id INTEGER REFERENCES drive_sources(id) ON DELETE CASCADE');
   }
 
   const announcementColumns = (

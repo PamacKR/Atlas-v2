@@ -2,7 +2,7 @@
 
 Living snapshot of where the project actually is. This is the first thing to read (after `AGENTS.md`) in a new chat or after context compaction — it should be possible to resume correctly from this file alone plus the other docs it points to, without the user having to re-explain anything.
 
-**Last updated:** 2026-09-01 (academic MCP retrieval is now an explicit standing rule, the MCP server advertises it in initialization instructions, and Atlas is registered in the shared local Codex host configuration; no product data changed.)
+**Last updated:** 2026-09-04 (Drive inbox redesign implemented: multiple active folders, launch-time review popup, and remote-by-default resource imports.)
 
 ## Next session — start here
 
@@ -11,6 +11,9 @@ Read `AGENTS.md`, this current-session section, `open-questions.md`, and `DESIGN
 The performance measurement and implementation phases are complete; the benchmark comparison and regression results are documented below.
 
 The performance measurement and implementation work is complete for the personal-use scope; benchmark and regression results are documented below.
+
+- **Multi-source Drive inbox, 2026-09-04:** replaced the single-folder setting with a source table and a unified inbox. Multiple folders can remain enabled at once, each can have a default Atlas course, and the source list supports pausing/removing folders without deleting Atlas content. The existing college Classroom OAuth-first folder access remains in place, and the previous Atlas Fileshare folder is recovered from the dated Atlas backup during migration when available.
+- **Launch-time Drive review, 2026-09-04:** pending files now open the existing review overlay automatically after launch, and new files detected while Atlas is running refresh/open the same overlay. Drive Resource imports are remote by default, so Atlas stores metadata and extracted text without keeping another copy of the original file under `Atlas-Storage/files/`; Note imports retain the local note workflow. Missing local copies from the older Drive import are converted to remote resources during startup instead of being deleted and re-queued.
 
 - **Academic MCP default, 2026-09-01:** recorded the user's standing instruction that all academic requests must use Atlas MCP first because Classroom/Drive material may not exist locally. The repository `AGENTS.md` and `MCP_AGENT_GUIDE.md`, plus a user-level `C:\Users\Pamac\AGENTS.md`, now tell agents to diagnose a missing `atlas_*` connection instead of silently creating local files or asking for a re-upload; local fallbacks require explicit authorisation. The MCP server now returns the same rule as server-wide initialization instructions. Atlas was registered as a read-only STDIO server in `C:\Users\Pamac\.codex\config.toml`, which is shared by ChatGPT desktop, Codex CLI, and the IDE extension. The server is started on demand by the host, so no separate daemon is needed. Documentation in `mcp-setup.md` and `README.md` records the setup and the ChatGPT web limitation.
 

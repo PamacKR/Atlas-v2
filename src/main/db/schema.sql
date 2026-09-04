@@ -97,6 +97,9 @@ CREATE TABLE IF NOT EXISTS resources (
   -- want (the same Drive file can be referenced by several resource rows —
   -- a Classroom attachment and a discovered link both pointing at it).
   remote_ref TEXT,
+  -- The watched Drive source that produced this remote resource. NULL for
+  -- Classroom attachments and older Drive imports.
+  drive_source_id INTEGER REFERENCES drive_sources(id) ON DELETE SET NULL,
   -- MIME type as reported by the source at fetch time — picks the
   -- alt:media vs. files.export() branch and which export format to ask for.
   remote_mime_type TEXT,
@@ -281,18 +284,33 @@ CREATE TABLE IF NOT EXISTS assignments (
   classroom_removed INTEGER NOT NULL DEFAULT 0
 );
 
--- Files seen in the user's designated Google Drive "inbox" folder
+-- Drive folders the user has chosen as inbox sources. More than one can be
+-- enabled at once, so the user can keep a course folder and an Atlas
+-- Fileshare folder active without switching settings.
+CREATE TABLE IF NOT EXISTS drive_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folder_id TEXT NOT NULL UNIQUE,
+  folder_name TEXT NOT NULL,
+  default_course_id INTEGER REFERENCES courses(id) ON DELETE SET NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Files seen in the user's configured Google Drive inbox folders
 -- (open-questions.md #19) that haven't been assigned a course/type yet.
 -- A file lives here from the moment a scan first detects it until the user
 -- tags it (course + Resource/handwritten-Note/typed-Note) via the review
 -- panel — at which point it's downloaded into local managed storage as a
--- real resource/note (drive_file_id set there too) and this row is deleted.
+-- real resource/note (drive_file_id or remote_ref set there too) and this row
+-- is deleted.
 -- Deliberately not auto-resolved: which course/type a file belongs to is a
 -- user decision, same reasoning as watched_folders (open-questions.md
 -- #11) and "Atlas owns the data" (AGENTS.md).
 CREATE TABLE IF NOT EXISTS drive_pending_files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   drive_file_id TEXT NOT NULL UNIQUE,
+  source_id INTEGER REFERENCES drive_sources(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   mime_type TEXT NOT NULL,
   modified_time TEXT,

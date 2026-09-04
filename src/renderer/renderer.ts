@@ -37,6 +37,7 @@ interface Resource {
   // Remote-attachment reading (remote-attachment architecture §4) — see
   // schema.sql for the full field-by-field reasoning.
   remote_source: 'drive' | 'gmail' | null;
+  remote_ref: string | null;
   link_kind: 'driveFile' | 'youTubeVideo' | 'link' | 'form' | null;
 }
 
@@ -135,9 +136,20 @@ interface DriveFolder {
   name: string;
 }
 
+interface DriveSource {
+  id: number;
+  folder_id: string;
+  folder_name: string;
+  default_course_id: number | null;
+  enabled: number;
+}
+
 interface DrivePendingFile {
   id: number;
   drive_file_id: string;
+  source_id: number | null;
+  source_name: string | null;
+  default_course_id: number | null;
   name: string;
   mime_type: string;
   modified_time: string | null;
@@ -309,6 +321,7 @@ interface AtlasApi {
   deleteAllAtlasData: () => Promise<{ ok: true } | { ok: false; error: string }>;
   setBackupFrequency: (frequency: 'daily' | 'weekly' | 'off') => Promise<void>;
   isDriveConnected: () => Promise<boolean>;
+  isDriveFolderAccessAvailable: () => Promise<boolean>;
   connectDrive: () => Promise<{ ok: true } | { ok: false; error: string }>;
   disconnectDrive: () => Promise<void>;
   clearDrivePreviewCache: () => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -320,11 +333,16 @@ interface AtlasApi {
   getDriveFolder: () => Promise<DriveFolder | null>;
   setDriveFolder: (link: string) => Promise<{ ok: true; name: string } | { ok: false; error: string }>;
   listPendingDriveFiles: () => Promise<DrivePendingFile[]>;
+  listDriveSources: () => Promise<DriveSource[]>;
+  addDriveSource: (link: string, defaultCourseId: number | null) => Promise<{ ok: true; folderId: string; name: string } | { ok: false; error: string }>;
+  updateDriveSource: (sourceId: number, defaultCourseId: number | null, enabled: boolean) => Promise<void>;
+  removeDriveSource: (sourceId: number) => Promise<void>;
   importDriveFile: (
     driveFileId: string,
     name: string,
     courseId: number,
-    importAs: 'resource' | 'note'
+    importAs: 'resource' | 'note',
+    storageMode?: 'remote' | 'local'
   ) => Promise<unknown>;
   ignoreDriveFile: (driveFileId: string) => Promise<void>;
   onDriveChanged: (handler: () => void) => void;
@@ -1987,29 +2005,75 @@ interface SourceRenderContext {
 }
 
 async function renderDriveStatus(syncStatus?: SyncStatus): Promise<void> {
-  const connected = await atlasApi.isDriveConnected();
+  const driveConnected = await atlasApi.isDriveConnected();
+  const folderAccessConnected = await atlasApi.isDriveFolderAccessAvailable();
+  const connected = folderAccessConnected;
   const syncStatusValue = syncStatus ?? (await atlasApi.getSyncStatus());
-  const authRequired = syncStatusValue.drive.authRequired;
+  const authRequired = syncStatusValue.drive.authRequired && !folderAccessConnected;
   const status = document.getElementById('drive-status')!;
   const connectButton = document.getElementById('drive-connect-button') as HTMLButtonElement;
   const disconnectButton = document.getElementById('drive-disconnect-button') as HTMLButtonElement;
   const hint = document.getElementById('drive-status-hint')!;
   status.classList.toggle('is-auth-error', authRequired);
   hint.classList.toggle('is-auth-error', authRequired);
-  status.innerHTML = `<span class="settings-status-dot${connected && !authRequired ? ' is-connected' : ''}${authRequired ? ' is-auth-error' : ''}"></span>${authRequired ? 'Reconnect required.' : connected ? 'Connected.' : 'Not connected.'}`;
-  connectButton.hidden = connected && !authRequired;
+  const statusLabel = authRequired
+    ? 'Reconnect required.'
+    : driveConnected
+      ? 'Connected.'
+      : folderAccessConnected
+        ? 'Available through Classroom.'
+        : 'Not connected.';
+  status.innerHTML = `<span class="settings-status-dot${connected && !authRequired ? ' is-connected' : ''}${authRequired ? ' is-auth-error' : ''}"></span>${statusLabel}`;
+  connectButton.hidden = driveConnected && !authRequired;
   connectButton.textContent = authRequired ? 'Reconnect Google Drive' : 'Connect Google Drive';
-  disconnectButton.hidden = !connected;
-  hint.textContent = authRequired ? GOOGLE_REAUTH_HINT : 'Connect Drive to watch a folder and open Office files in Drive.';
+  disconnectButton.hidden = !driveConnected;
+  hint.textContent = authRequired
+    ? GOOGLE_REAUTH_HINT
+    : !driveConnected && folderAccessConnected
+      ? 'The connected Classroom account can watch and import files from Drive. Connect Drive separately to open Atlas files in Drive.'
+      : 'Connect Drive to watch a folder and open Office files in Drive.';
   (document.getElementById('drive-folder-form') as HTMLElement).hidden = !connected;
 
   const folder = connected ? await atlasApi.getDriveFolder() : null;
-  if (folder) {
-    const input = document.getElementById('drive-folder-input') as HTMLInputElement;
-    if (folder) input.value = folder.name;
-  }
-
+  await renderDriveSources();
   await renderDrivePendingStatus({ connected, authRequired, folder });
+}
+
+async function renderDriveSources(): Promise<void> {
+  const list = document.getElementById('drive-sources-list')!;
+  const input = document.getElementById('drive-source-input') as HTMLInputElement;
+  const coursePicker = document.getElementById('drive-source-course')!;
+  const sources = await atlasApi.listDriveSources();
+  const courses = await atlasApi.listCourses();
+  const courseOptions: DriveReviewOption[] = [
+    { value: '', label: 'No default course' },
+    ...courses.map((course) => ({ value: String(course.id), label: course.name })),
+  ];
+  renderDriveReviewSelect(coursePicker, courseOptions, '');
+  list.innerHTML = '';
+  for (const source of sources) {
+    const row = document.createElement('div');
+    row.className = 'drive-source-row';
+    row.innerHTML = `
+      <div class="drive-source-info"><strong>${escapeHtml(source.folder_name)}</strong><span>${source.enabled ? 'Watching for new files' : 'Paused'}</span></div>
+      <div class="drive-source-actions"><div class="dselect drive-source-course"></div><button type="button" class="settings-button drive-source-toggle">${source.enabled ? 'Pause' : 'Resume'}</button><button type="button" class="settings-button drive-source-remove">Remove</button></div>`;
+    const selector = row.querySelector<HTMLElement>('.drive-source-course')!;
+    renderDriveReviewSelect(selector, courseOptions, source.default_course_id === null ? '' : String(source.default_course_id));
+    selector.querySelectorAll<HTMLButtonElement>('.dselect-option').forEach((option) => option.addEventListener('click', () => {
+      void atlasApi.updateDriveSource(source.id, driveReviewSelectValue(selector) ? Number(driveReviewSelectValue(selector)) : null, source.enabled === 1);
+    }));
+    row.querySelector('.drive-source-toggle')!.addEventListener('click', async () => {
+      await atlasApi.updateDriveSource(source.id, source.default_course_id, source.enabled !== 1);
+      await renderDriveStatus();
+    });
+    row.querySelector('.drive-source-remove')!.addEventListener('click', async () => {
+      await atlasApi.removeDriveSource(source.id);
+      await renderDriveStatus();
+    });
+    list.appendChild(row);
+  }
+  if (sources.length === 0) list.innerHTML = '<p class="muted">No Drive folders are being watched yet.</p>';
+  input.value = '';
 }
 
 async function renderDrivePendingStatus(context?: SourceRenderContext): Promise<void> {
@@ -2023,7 +2087,8 @@ async function renderDrivePendingStatus(context?: SourceRenderContext): Promise<
   const pendingStatus = document.getElementById('drive-pending-status') as HTMLElement;
   const reviewButton = document.getElementById('drive-review-button') as HTMLButtonElement;
 
-  if (!connected || !folder) {
+  const sources = connected ? await atlasApi.listDriveSources() : [];
+  if (!connected || sources.length === 0) {
     pendingStatus.hidden = true;
     reviewButton.hidden = true;
     return;
@@ -2040,8 +2105,8 @@ async function renderDrivePendingStatus(context?: SourceRenderContext): Promise<
   pendingStatus.hidden = false;
   pendingStatus.textContent =
     pending.length === 0
-      ? `Watching "${folder.name}" — no new files.`
-      : `${pending.length} new file${pending.length === 1 ? '' : 's'} found in "${folder.name}".`;
+      ? `Watching ${sources.length} Drive folder${sources.length === 1 ? '' : 's'} — no new files.`
+      : `${pending.length} new file${pending.length === 1 ? '' : 's'} found across ${sources.length} Drive folder${sources.length === 1 ? '' : 's'}.`;
   reviewButton.hidden = pending.length === 0;
 }
 
@@ -2077,18 +2142,20 @@ async function clearDrivePreviewCache(): Promise<void> {
   status.textContent = result.ok ? 'Cleared.' : `Failed: ${result.error}`;
 }
 
-async function saveDriveFolder(): Promise<void> {
-  const input = document.getElementById('drive-folder-input') as HTMLInputElement;
+async function addDriveSourceFromSettings(): Promise<void> {
+  const input = document.getElementById('drive-source-input') as HTMLInputElement;
+  const coursePicker = document.getElementById('drive-source-course')!;
   const status = document.getElementById('drive-status')!;
   const link = input.value.trim();
   if (!link) return;
-  const result = await atlasApi.setDriveFolder(link);
+  const courseValue = driveReviewSelectValue(coursePicker);
+  const result = await atlasApi.addDriveSource(link, courseValue ? Number(courseValue) : null);
   if (!result.ok) {
     status.textContent = `Couldn't use that folder: ${result.error}`;
     return;
   }
-  input.value = result.name;
   status.textContent = 'Connected.';
+  await renderDriveSources();
   await renderDrivePendingStatus();
 }
 
@@ -2158,8 +2225,8 @@ async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promis
   const pending = await atlasApi.listPendingDriveFiles();
   list.innerHTML = '';
   document.getElementById('drive-review-subtitle')!.textContent = pending.length === 1
-    ? '1 new file found since the last sync.'
-    : `${pending.length} new files found since the last sync.`;
+    ? 'Detected 1 new file. Choose what to import.'
+    : `Detected ${pending.length} new files. Choose what to import.`;
 
   for (const file of pending) {
     const li = document.createElement('li');
@@ -2169,11 +2236,15 @@ async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promis
     li.innerHTML = `
       <input type="checkbox" class="drive-review-row-check" />
       <div class="r-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>
-      <div class="r-main"><div class="r-title drive-review-row-name">${escapeHtml(file.name)}</div><div class="r-sub">Choose where to add this file.</div></div>
+      <div class="r-main"><div class="r-title drive-review-row-name">${escapeHtml(file.name)}</div><div class="r-sub">${escapeHtml(file.source_name ? `From ${file.source_name} · saved as a Drive link` : 'Saved as a Drive link by default.')}</div></div>
       <div class="drive-review-row-controls"><div class="dselect drive-review-select"></div><div class="dselect drive-review-select drive-review-type-select"></div></div>
       <div class="drive-review-row-actions"><button type="button" class="drive-review-row-import btn">Import</button><button type="button" class="drive-review-row-ignore btn">Ignore</button></div>
     `;
-    renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-select')!, courseOptions, courseOptions[0]?.value ?? '');
+    renderDriveReviewSelect(
+      li.querySelector<HTMLElement>('.drive-review-select')!,
+      courseOptions,
+      file.default_course_id === null ? courseOptions[0]?.value ?? '' : String(file.default_course_id)
+    );
     renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-type-select')!, DRIVE_REVIEW_TYPES, 'resource');
     li.querySelector('.drive-review-row-import')!.addEventListener('click', () => importOneDriveFile(li));
     li.querySelector('.drive-review-row-ignore')!.addEventListener('click', () => ignoreOneDriveFile(li));
@@ -2208,9 +2279,16 @@ async function importOneDriveFile(row: HTMLElement): Promise<void> {
 
   button.disabled = true;
   button.textContent = 'Importing…';
-  await atlasApi.importDriveFile(driveFileId, name, courseId, importAs);
-  row.remove();
-  await afterDriveRowResolved();
+  try {
+    await atlasApi.importDriveFile(driveFileId, name, courseId, importAs);
+    row.remove();
+    await afterDriveRowResolved();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = 'Import';
+    const message = error instanceof Error ? error.message : String(error);
+    alert(`Could not import "${name}": ${message}`);
+  }
 }
 
 // The opposite of import — nothing is downloaded, the file just stops
@@ -4649,6 +4727,11 @@ function setImageZoom(zoom: number): void {
 const DRIVE_PREVIEW_KINDS = new Set(['pdf', 'image', 'pptx', 'docx', 'xlsx']);
 
 async function openPreview(resource: Resource): Promise<void> {
+  if (resource.remote_source === 'drive' && resource.remote_ref) {
+    await atlasApi.openExternalUrl(`https://drive.google.com/file/d/${resource.remote_ref}/view`);
+    return;
+  }
+
   // Classroom attachments that are links (including Drive files, YouTube,
   // Forms, and ordinary URLs) already have their destination in file_path.
   // Send them straight to the browser instead of opening a dead-end preview
@@ -7293,13 +7376,16 @@ async function init(): Promise<void> {
   document
     .getElementById('drive-clear-preview-cache-button')!
     .addEventListener('click', () => void clearDrivePreviewCache());
-  document.getElementById('drive-folder-save')!.addEventListener('click', saveDriveFolder);
+  document.getElementById('drive-source-add')!.addEventListener('click', () => void addDriveSourceFromSettings());
   document.getElementById('drive-review-button')!.addEventListener('click', openDriveReviewPanel);
   document.getElementById('drive-review-close')!.addEventListener('click', closeDriveReviewPanel);
   document.getElementById('drive-review-select-all')!.addEventListener('click', toggleDriveReviewSelectAll);
   document.getElementById('drive-review-bulk-import')!.addEventListener('click', importSelectedDriveFiles);
   document.getElementById('drive-review-bulk-ignore')!.addEventListener('click', ignoreSelectedDriveFiles);
-  atlasApi.onDriveChanged(() => void renderDrivePendingStatus());
+  atlasApi.onDriveChanged(() => {
+    void renderDrivePendingStatus();
+    void openDriveReviewPanel();
+  });
   atlasApi.onSyncStatusChanged((source) => {
     void renderSyncStatus();
     if (source === 'drive') void renderDriveStatus();
@@ -7850,6 +7936,16 @@ async function init(): Promise<void> {
       document.getElementById('search-results')!.hidden = true;
     }
   });
+
+  // The first scan can finish before renderer listeners receive its event.
+  // Check once after the initial page is usable so launch-time detection is
+  // still immediate and never depends on opening Settings manually.
+  setTimeout(async () => {
+    const pending = await atlasApi.listPendingDriveFiles();
+    if (pending.length > 0 && document.getElementById('drive-review-overlay')!.hidden) {
+      await openDriveReviewPanel();
+    }
+  }, 0);
 }
 
 init();

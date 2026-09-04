@@ -482,11 +482,13 @@
                 <div class="settings-row-controls"><button id="drive-connect-button" type="button" class="settings-button">Connect Google Drive</button><button id="drive-disconnect-button" type="button" class="settings-button" hidden>Disconnect</button></div>
               </div>
               <div id="drive-folder-form" hidden>
-                <label for="drive-folder-input">Drive folder to watch</label>
+                <label for="drive-source-input">Drive folders to watch</label>
                 <div id="drive-folder-row">
-                  <input id="drive-folder-input" type="text" placeholder="Paste your Drive folder link" />
-                  <button id="drive-folder-save" type="button" class="settings-button">Save</button>
+                  <input id="drive-source-input" type="text" placeholder="Paste a Drive folder link" />
+                  <div id="drive-source-course" class="dselect"></div>
+                  <button id="drive-source-add" type="button" class="settings-button">Add folder</button>
                 </div>
+                <div id="drive-sources-list"></div>
               </div>
               <p id="drive-pending-status" class="muted" hidden></p>
               <button id="drive-review-button" type="button" class="settings-button" hidden>Review new files</button>
