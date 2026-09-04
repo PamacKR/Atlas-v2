@@ -5745,7 +5745,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 #drive-review-panel .drive-review-body { flex: 1; min-height: 0; padding: var(--space-3) var(--space-5) var(--space-4); overflow: auto; }
 #drive-review-bulk.drive-review-bulk {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 160px 112px auto auto;
+  grid-template-columns: minmax(0, 1fr) 160px 112px 130px auto auto;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
@@ -5785,7 +5785,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 #drive-review-list > .muted { padding: var(--space-4) 0; color: var(--text-faint); font-size: var(--text-sm); }
 .drive-review-row {
   display: grid;
-  grid-template-columns: 14px 32px minmax(0, 1fr) minmax(260px, 310px) auto;
+  grid-template-columns: 14px 32px minmax(0, 1fr) minmax(400px, 430px) auto;
   align-items: center;
   gap: var(--space-3);
   margin: 0;
@@ -5804,6 +5804,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 .drive-review-row-controls { justify-content: flex-end; }
 .drive-review-row-controls .drive-review-select:first-child { min-width: 150px; }
 .drive-review-row-controls .drive-review-type-select { width: 110px; }
+.drive-review-row-controls .drive-review-storage-select { width: 130px; }
 .drive-review-row-actions .btn { height: 30px; padding: 0 var(--space-3); font-size: var(--text-sm); }
 .drive-review-row-actions .drive-review-row-import { border-color: var(--rule-strong); color: var(--text); }
 .drive-review-row-actions .drive-review-row-ignore { color: var(--text-muted); }

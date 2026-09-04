@@ -2160,8 +2160,8 @@ async function addDriveSourceFromSettings(): Promise<void> {
 }
 
 // --- Google Drive review panel ---
-// One row per pending file — course + Resource/Note assignable individually
-// or, via the bulk controls, to every checked row at once. "Later" (the
+// One row per pending file — course + Resource/Note + storage mode assignable
+// individually or, via the bulk controls, to every checked row at once. "Later" (the
 // close button) just hides the panel; nothing is dismissed or lost, the
 // pending list is exactly what a fresh scan would find again.
 async function openDriveReviewPanel(): Promise<void> {
@@ -2173,6 +2173,7 @@ async function openDriveReviewPanel(): Promise<void> {
     { value: 'resource', label: 'Resource' },
     { value: 'note', label: 'Note' },
   ], 'resource');
+  renderDriveReviewSelect(document.getElementById('drive-review-bulk-storage')!, DRIVE_REVIEW_STORAGE, 'remote');
 
   overlay.hidden = false;
   await renderDriveReviewList(courseOptions);
@@ -2187,6 +2188,11 @@ type DriveReviewOption = { value: string; label: string };
 const DRIVE_REVIEW_TYPES: DriveReviewOption[] = [
   { value: 'resource', label: 'Resource' },
   { value: 'note', label: 'Note' },
+];
+
+const DRIVE_REVIEW_STORAGE: DriveReviewOption[] = [
+  { value: 'remote', label: 'Keep in Drive' },
+  { value: 'local', label: 'Save local copy' },
 ];
 
 function renderDriveReviewSelect(root: HTMLElement, options: DriveReviewOption[], selectedValue: string): void {
@@ -2237,7 +2243,7 @@ async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promis
       <input type="checkbox" class="drive-review-row-check" />
       <div class="r-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg></div>
       <div class="r-main"><div class="r-title drive-review-row-name">${escapeHtml(file.name)}</div><div class="r-sub">${escapeHtml(file.source_name ? `From ${file.source_name} · saved as a Drive link` : 'Saved as a Drive link by default.')}</div></div>
-      <div class="drive-review-row-controls"><div class="dselect drive-review-select"></div><div class="dselect drive-review-select drive-review-type-select"></div></div>
+      <div class="drive-review-row-controls"><div class="dselect drive-review-select"></div><div class="dselect drive-review-select drive-review-type-select"></div><div class="dselect drive-review-select drive-review-storage-select"></div></div>
       <div class="drive-review-row-actions"><button type="button" class="drive-review-row-import btn">Import</button><button type="button" class="drive-review-row-ignore btn">Ignore</button></div>
     `;
     renderDriveReviewSelect(
@@ -2246,6 +2252,7 @@ async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promis
       file.default_course_id === null ? courseOptions[0]?.value ?? '' : String(file.default_course_id)
     );
     renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-type-select')!, DRIVE_REVIEW_TYPES, 'resource');
+    renderDriveReviewSelect(li.querySelector<HTMLElement>('.drive-review-storage-select')!, DRIVE_REVIEW_STORAGE, 'remote');
     li.querySelector('.drive-review-row-import')!.addEventListener('click', () => importOneDriveFile(li));
     li.querySelector('.drive-review-row-ignore')!.addEventListener('click', () => ignoreOneDriveFile(li));
     list.appendChild(li);
@@ -2275,12 +2282,13 @@ async function importOneDriveFile(row: HTMLElement): Promise<void> {
   const name = row.dataset.fileName!;
   const courseId = Number(driveReviewSelectValue(row.querySelector('.drive-review-select')!));
   const importAs = driveReviewSelectValue(row.querySelector('.drive-review-type-select')!) as 'resource' | 'note';
+  const storageMode = driveReviewSelectValue(row.querySelector('.drive-review-storage-select')!) as 'remote' | 'local';
   const button = row.querySelector('.drive-review-row-import') as HTMLButtonElement;
 
   button.disabled = true;
   button.textContent = 'Importing…';
   try {
-    await atlasApi.importDriveFile(driveFileId, name, courseId, importAs);
+    await atlasApi.importDriveFile(driveFileId, name, courseId, importAs, storageMode);
     row.remove();
     await afterDriveRowResolved();
   } catch (error) {
@@ -2306,6 +2314,7 @@ async function ignoreOneDriveFile(row: HTMLElement): Promise<void> {
 async function importSelectedDriveFiles(): Promise<void> {
   const bulkCourseId = driveReviewSelectValue(document.getElementById('drive-review-bulk-course')!);
   const bulkType = driveReviewSelectValue(document.getElementById('drive-review-bulk-type')!);
+  const bulkStorage = driveReviewSelectValue(document.getElementById('drive-review-bulk-storage')!);
   const rows = Array.from(document.querySelectorAll('.drive-review-row')) as HTMLElement[];
 
   for (const row of rows) {
@@ -2313,6 +2322,7 @@ async function importSelectedDriveFiles(): Promise<void> {
     if (!checkbox.checked) continue;
     (row.querySelector('.drive-review-select') as HTMLElement).dataset.value = bulkCourseId;
     (row.querySelector('.drive-review-type-select') as HTMLElement).dataset.value = bulkType;
+    (row.querySelector('.drive-review-storage-select') as HTMLElement).dataset.value = bulkStorage;
     await importOneDriveFile(row);
   }
 }
