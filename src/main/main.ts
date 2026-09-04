@@ -654,8 +654,8 @@ function importBufferIntoCourse(
 }
 
 // Drive inbox imports are remote by default. Atlas stores the metadata and
-// extracted text, but the original bytes stay in Drive until the user chooses
-// an explicit local copy in a future import flow.
+// extracted text, but the original bytes stay in Drive unless the user chooses
+// the explicit local-copy option in the review panel.
 function importRemoteDriveResource(
   courseId: number,
   name: string,
