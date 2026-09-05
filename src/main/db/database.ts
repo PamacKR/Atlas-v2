@@ -123,6 +123,23 @@ function migrate(db: Database.Database): void {
   if (!resourceColumns.includes('remote_fetched_version')) {
     db.exec('ALTER TABLE resources ADD COLUMN remote_fetched_version TEXT');
   }
+  if (!resourceColumns.includes('remote_detected_version')) {
+    db.exec('ALTER TABLE resources ADD COLUMN remote_detected_version TEXT');
+    // Older Atlas versions incorrectly wrote Drive's observed modifiedTime
+    // into remote_fetched_version at import time. Preserve that value as the
+    // observed version, but clear it for rows that never reached a terminal
+    // extraction state so the repair pass will actually process them.
+    db.exec(`
+      UPDATE resources
+      SET remote_detected_version = remote_fetched_version
+      WHERE remote_source = 'drive' AND remote_fetched_version IS NOT NULL
+    `);
+    db.exec(`
+      UPDATE resources
+      SET remote_fetched_version = NULL
+      WHERE remote_source = 'drive' AND extraction_status = 'pending'
+    `);
+  }
   if (!resourceColumns.includes('link_kind')) {
     db.exec('ALTER TABLE resources ADD COLUMN link_kind TEXT');
   }

@@ -677,7 +677,7 @@ function importRemoteDriveResource(
     .prepare(
       `INSERT INTO resources
         (course_id, title, kind, source, file_path, original_filename, drive_source_id,
-         remote_source, remote_ref, remote_mime_type, remote_fetched_version, link_kind)
+         remote_source, remote_ref, remote_mime_type, remote_detected_version, link_kind)
        VALUES (?, ?, ?, 'drive', ?, ?, ?, 'drive', ?, ?, ?, 'driveFile')`
     )
     .run(
@@ -953,6 +953,18 @@ function stopWatchingCourseStorage(courseId: number): void {
 }
 
 let mainWindow: BrowserWindow | null = null;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 let localServerReady: Promise<void> = Promise.resolve();
 let resolveLocalServerReady: (() => void) | null = null;
 
@@ -1081,6 +1093,7 @@ function createWindow(): void {
 Menu.setApplicationMenu(null);
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
   const db = getDb(); // initializes DB + schema in Downloads/Atlas on first launch
   // Create the window before waiting for the loopback browser server. The
   // BrowserWindow icon and Atlas App User Model ID can then reach Windows
@@ -2141,7 +2154,10 @@ async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: Cla
 // exactly how the original hyperlink-destroying bug went unnoticed for
 // weeks, per STATUS.md). A hit discovery/fan-out cap is surfaced to the
 // console rather than swallowed — the spec's "never silent" rule (§5.5.3).
-async function runRemoteExtractionAndNotify(): Promise<void> {
+let remoteExtractionPromise: Promise<void> | null = null;
+let remoteExtractionRequested = false;
+
+async function runRemoteExtractionPassAndNotify(): Promise<void> {
   try {
     const { changed, capped } = await processPendingRemoteResources((progress) => {
       if (mainWindow) mainWindow.webContents.send('extraction:backfillProgress', progress);
@@ -2156,6 +2172,24 @@ async function runRemoteExtractionAndNotify(): Promise<void> {
   } catch (err) {
     console.error('Remote attachment extraction failed:', err);
   }
+}
+
+// Launch, Classroom completion and Drive-import paths can all request remote
+// extraction. Coalesce those requests into one sequential pass so the same
+// pending resources cannot be downloaded and parsed twice concurrently.
+function runRemoteExtractionAndNotify(): void {
+  remoteExtractionRequested = true;
+  if (remoteExtractionPromise) return;
+
+  remoteExtractionPromise = (async () => {
+    do {
+      remoteExtractionRequested = false;
+      await runRemoteExtractionPassAndNotify();
+    } while (remoteExtractionRequested);
+  })().finally(() => {
+    remoteExtractionPromise = null;
+    if (remoteExtractionRequested) runRemoteExtractionAndNotify();
+  });
 }
 
 

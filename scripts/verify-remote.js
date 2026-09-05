@@ -81,13 +81,14 @@ function seed() {
     )
     .run(courseId).lastInsertRowid;
 
-  // Simulates a resource whose text was already fetched in a prior sync
-  // (remote_fetched_version stored) but got reset to 'pending' since —
-  // exercises the §6 unchanged-file-skip path.
+  // A pending resource must be processed even if an older Atlas version left
+  // a fetched-version marker behind. Pending means there is no valid terminal
+  // extraction result yet; the migration moves that old marker to the detected
+  // version column and clears the fetched column.
   const cachedId = db
     .prepare(
-      "INSERT INTO resources (course_id, title, kind, source, file_path, remote_source, remote_ref, link_kind, extraction_status, classroom_attachment_id, remote_fetched_version) " +
-        "VALUES (?, 'Old handout', 'link', 'classroom', 'https://drive.google.com/file/d/FILE_CACHED/view', 'drive', 'FILE_CACHED', 'driveFile', 'pending', 'a-cached', 'V1')"
+      "INSERT INTO resources (course_id, title, kind, source, file_path, remote_source, remote_ref, link_kind, extraction_status, classroom_attachment_id, remote_fetched_version, remote_detected_version) " +
+        "VALUES (?, 'Old handout', 'link', 'classroom', 'https://drive.google.com/file/d/FILE_CACHED/view', 'drive', 'FILE_CACHED', 'driveFile', 'pending', 'a-cached', 'V1', 'V1')"
     )
     .run(courseId).lastInsertRowid;
   db.prepare(
@@ -139,7 +140,7 @@ async function main() {
       parts: [{ ordinal: 1, label: 'Page 1', text: 'handout content' }],
       discoveredLinks: [],
       mimeType: 'application/pdf',
-      fetchedVersion: 'V1', // matches the already-stored remote_fetched_version — "unchanged"
+      fetchedVersion: 'V1', // matches the old marker, but pending still needs a real commit
     },
   };
   remoteFetch.fetchRemoteDriveFile = async (fileId) => {
@@ -194,16 +195,19 @@ async function main() {
     assert(fetchCalls['CHILD1'] === 1, 'the child was fetched exactly once');
   }
 
-  // --- Unchanged file on re-sync is skipped (§6) ---
-  const cachedBefore = partsOf(ids.cachedId);
-  assert(cachedBefore.some((p) => p.label === 'Sentinel'), 'sanity: the sentinel row exists before the run');
-  db.prepare("UPDATE resources SET extraction_status = 'pending' WHERE id = ?").run(ids.cachedId); // simulate a later pass
+  // --- A pending resource is never skipped by an old version marker ---
   await processPendingRemoteResources();
   const cachedAfter = partsOf(ids.cachedId);
   assert(
-    cachedAfter.some((p) => p.label === 'Sentinel'),
-    'an unchanged remote file is skipped on re-sync — its document_parts are left untouched, not rewritten'
+    cachedAfter.some((p) => p.text === 'handout content'),
+    'a pending remote file is extracted and committed even when an old fetched-version marker matches'
   );
+  const cachedStatus = statusOf(ids.cachedId);
+  assert(cachedStatus.extraction_status === 'done', 'the repaired pending resource reaches a terminal done state');
+  assert(cachedStatus.extraction_error === null, 'the repaired pending resource has no extraction error');
+  const cachedCallsAfterRepair = fetchCalls.FILE_CACHED;
+  await processPendingRemoteResources();
+  assert(fetchCalls.FILE_CACHED === cachedCallsAfterRepair, 'a terminal remote resource is not fetched again on the next pass');
 
   db.close();
   // database.ts's getDb() (used internally by remoteSync.ts) caches its own

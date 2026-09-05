@@ -55,18 +55,39 @@ interface RemoteResourceRow {
   course_id: number;
   remote_ref: string | null;
   remote_fetched_version: string | null;
+  remote_detected_version: string | null;
   discovery_depth: number;
   title: string;
 }
 
-function writeDocumentParts(resourceId: number, parts: { ordinal: number; label: string; text: string }[]): void {
+function commitRemoteExtraction(
+  resourceId: number,
+  result: {
+    status: string;
+    parts: { ordinal: number; label: string; text: string }[];
+    error?: string;
+    mimeType?: string;
+    fetchedVersion?: string;
+  }
+): void {
   const db = getDb();
   const insertPart = db.prepare(
     'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
   );
   db.transaction(() => {
     db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resourceId);
-    for (const part of parts) insertPart.run(resourceId, part.ordinal, part.label, part.text, 'extracted');
+    for (const part of result.parts) insertPart.run(resourceId, part.ordinal, part.label, part.text, 'extracted');
+    db.prepare(
+      `UPDATE resources SET extraction_status = ?, extraction_error = ?, extracted_at = datetime('now'),
+       remote_mime_type = ?, remote_fetched_version = COALESCE(?, remote_detected_version, remote_fetched_version)
+       WHERE id = ?`
+    ).run(
+      result.status,
+      result.error ?? null,
+      result.mimeType ?? null,
+      result.fetchedVersion ?? null,
+      resourceId
+    );
   })();
 }
 
@@ -92,10 +113,19 @@ function tryLocalTwin(resourceId: number, driveFileId: string): boolean {
     .all(twin.id) as { ordinal: number; label: string; text: string }[];
   if (twinParts.length === 0) return false; // twin not extracted yet — retry next pass
 
-  writeDocumentParts(resourceId, twinParts);
-  db.prepare(
-    "UPDATE resources SET extraction_status = 'done', extraction_error = NULL, extracted_at = datetime('now'), local_twin_id = ? WHERE id = ?"
-  ).run(twin.id, resourceId);
+  db.transaction(() => {
+    db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resourceId);
+    const insertPart = db.prepare(
+      'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
+    );
+    for (const part of twinParts) insertPart.run(resourceId, part.ordinal, part.label, part.text, 'extracted');
+    db.prepare(
+      `UPDATE resources SET extraction_status = 'done', extraction_error = NULL,
+       extracted_at = datetime('now'), local_twin_id = ?,
+       remote_fetched_version = COALESCE(remote_detected_version, remote_fetched_version)
+       WHERE id = ?`
+    ).run(twin.id, resourceId);
+  })();
   return true;
 }
 
@@ -116,17 +146,6 @@ async function extractOneRemoteResource(resource: RemoteResourceRow): Promise<Di
 
   const result = await fetchRemoteDriveFile(resource.remote_ref);
 
-  // Unchanged since last successful fetch (§6) — nothing to redo. Detected
-  // after tryLocalTwin/metadata fetch rather than skipped up front, since
-  // the metadata call itself is what tells us the current modifiedTime.
-  if (
-    result.fetchedVersion &&
-    result.fetchedVersion === resource.remote_fetched_version &&
-    result.status === 'done'
-  ) {
-    return [];
-  }
-
   // A transient failure (network hiccup, rate limit) must stay 'pending' so
   // the next sync retries it — only a genuinely permanent condition
   // (restricted, unsupported, too large) is worth recording as 'failed'
@@ -138,11 +157,7 @@ async function extractOneRemoteResource(resource: RemoteResourceRow): Promise<Di
     return result.discoveredLinks;
   }
 
-  writeDocumentParts(resource.id, result.parts);
-  db.prepare(
-    `UPDATE resources SET extraction_status = ?, extraction_error = ?, extracted_at = datetime('now'),
-     remote_mime_type = ?, remote_fetched_version = COALESCE(?, remote_fetched_version) WHERE id = ?`
-  ).run(result.status, result.error ?? null, result.mimeType ?? null, result.fetchedVersion ?? null, resource.id);
+  commitRemoteExtraction(resource.id, result);
 
   return result.discoveredLinks;
 }
@@ -200,7 +215,7 @@ function createChildResources(
     fanOut++;
     if (result.changes > 0) {
       const row = db
-        .prepare('SELECT id, course_id, remote_ref, remote_fetched_version, discovery_depth, title FROM resources WHERE id = ?')
+        .prepare('SELECT id, course_id, remote_ref, remote_fetched_version, remote_detected_version, discovery_depth, title FROM resources WHERE id = ?')
         .get(result.lastInsertRowid) as RemoteResourceRow;
       created.push(row);
     }
@@ -241,7 +256,7 @@ export async function processPendingRemoteResources(
     // created by following links out of them.
     let queue = db
       .prepare(
-        "SELECT id, course_id, remote_ref, remote_fetched_version, discovery_depth, title FROM resources " +
+        "SELECT id, course_id, remote_ref, remote_fetched_version, remote_detected_version, discovery_depth, title FROM resources " +
           "WHERE course_id = ? AND remote_source = 'drive' AND extraction_status = 'pending' ORDER BY id"
       )
       .all(course.id) as RemoteResourceRow[];

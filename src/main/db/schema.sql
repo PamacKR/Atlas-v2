@@ -104,9 +104,13 @@ CREATE TABLE IF NOT EXISTS resources (
   -- alt:media vs. files.export() branch and which export format to ask for.
   remote_mime_type TEXT,
   -- Drive's modifiedTime (or a future Gmail message's immutable id) as of
-  -- the last successful fetch — a re-sync compares and skips the network
-  -- call entirely when unchanged (§6).
+  -- the last successfully committed extraction. This is never populated
+  -- merely because a file was discovered or downloaded.
   remote_fetched_version TEXT,
+  -- The latest Drive version observed during import/metadata refresh. A
+  -- pending resource must not be treated as successfully fetched just
+  -- because this matches remote_fetched_version.
+  remote_detected_version TEXT,
   -- Classroom material kind for a 'link'-kind resource: 'driveFile' |
   -- 'youTubeVideo' | 'link' | 'form'. Lets code tell a fetchable Drive file
   -- apart from a YouTube video or a plain external URL without re-deriving
