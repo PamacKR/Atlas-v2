@@ -18,10 +18,12 @@
     "verify:master-delete": "npm run build && node scripts/verify-master-delete.js",
     "verify:search-index": "npm run build && node scripts/verify-search-index.js",
     "measure:performance": "npm run build && node scripts/run-as-electron-node.js scripts/measure-performance.js",
+    "measure:cold-start": "node scripts/measure-cold-start.js",
     "mcp:server": "node scripts/run-mcp-server.js",
     "verify:mcp": "npm run build && node scripts/run-as-electron-node.js scripts/verify-mcp.js",
     "verify:extraction": "npm run build && node scripts/run-as-electron-node.js scripts/verify-extraction.js",
     "verify:remote": "npm run build && node scripts/run-as-electron-node.js scripts/verify-remote.js",
+    "verify:remote-migration": "npm run build && node scripts/run-as-electron-node.js scripts/verify-remote-migration.js",
     "package:win": "npm run build && electron-builder --win"
   },
   "build": {
