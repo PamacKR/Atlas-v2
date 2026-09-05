@@ -305,6 +305,7 @@ interface AtlasApi {
   createCourse: (name: string, code: string | null, term: string | null) => Promise<Course>;
   getResourceBrowserUrl: (resourceId: number) => Promise<string>;
   getAppVersion: () => Promise<string>;
+  rendererReady: () => Promise<void>;
   windowControls: {
     minimize: () => Promise<void>;
     toggleMaximize: () => Promise<boolean>;
@@ -7956,6 +7957,10 @@ async function init(): Promise<void> {
       await openDriveReviewPanel();
     }
   }, 0);
+
+  // Release main-process repair, sync and extraction work only after the
+  // initial Dashboard is rendered and its event wiring is installed.
+  await atlasApi.rendererReady();
 }
 
 init();

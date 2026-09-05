@@ -2,6 +2,8 @@
 
 **Status:** Implementation in progress from 2026-09-05 approval. Checkpoints are being applied incrementally; the live database repair remains gated behind copied-data verification.
 
+**Progress:** Checkpoints 1 and 2 are implemented and verified. Remote state correction, single-flight extraction requests, single-instance protection, lazy heavy-module loading and the renderer-ready startup gate are in place. The live 29-row repair and final cold-cache benchmark remain pending.
+
 ## Problem statement
 
 Atlas has two separate but interacting faults:

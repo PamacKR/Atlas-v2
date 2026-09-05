@@ -5,46 +5,7 @@ import { watch, FSWatcher } from 'chokidar';
 import { randomUUID } from 'crypto';
 import { getDb, closeDb } from './db/database';
 import { getFilesDir, getNoteImagesDir, getScanImagesDir, getDataDir, getBackupsDir, getDbPath } from './paths';
-import { getPreview } from './preview';
-import { extractTextFromScan, endOcrBatch, OCR_PAGE_SEPARATOR } from './ocr';
-import { extractDocumentParts } from './textExtraction';
-import { processPendingRemoteResources, driveFileIdFromUrl } from './remoteSync';
-import { ensureCourseMemoryFile, ensureGeneralMemoryFile, deleteCourseMemoryFile } from './memoryFiles';
-import { toFtsQuery, getCourseBriefing, getCourseReadiness } from './contextBuilder';
-import {
-  isGoogleDriveConnected,
-  authorizeGoogleDrive,
-  disconnectGoogleDrive,
-  isGoogleClassroomConnected,
-  authorizeGoogleClassroom,
-  disconnectGoogleClassroom,
-} from './googleAuth';
-import {
-  getDriveFolder,
-  listDriveSources,
-  addDriveSource,
-  updateDriveSource,
-  removeDriveSource,
-  isDriveFolderAccessAvailable,
-  setDriveFolder,
-  listPendingDriveFiles,
-  scanDriveFolder,
-  downloadDriveFileContent,
-  removePendingDriveFile,
-  ignoreDrivePendingFile,
-  uploadResourceForPreview,
-  deletePreviewCopy,
-  clearAllPreviewCopies,
-} from './googleDrive';
-import {
-  scanClassroom,
-  listPendingClassroomCourses,
-  ignorePendingClassroomCourse,
-  removePendingClassroomCourse,
-  linkClassroomCourseToExisting,
-  listAvailableClassroomCoursesForLinking,
-  ClassroomSyncError,
-} from './googleClassroom';
+import type { ClassroomSyncError } from './googleClassroom';
 import {
   getAshokaPlannerDbPath,
   setAshokaPlannerDbPath,
@@ -52,13 +13,23 @@ import {
   getAshokaSemesterHint,
   AshokaCourseCandidate,
 } from './ashokaPlanner';
-import {
-  startLocalServer,
-  stopLocalServer,
-  getResourceBrowserUrl,
-  getNoteBrowserUrl,
-  getNoteImageUrl,
-} from './localServer';
+
+// These modules pull in the largest parts of Atlas's dependency graph. Keep
+// their access lazy so the first window does not wait for Google clients,
+// Office/PDF parsers, OCR and preview code that the initial Dashboard does
+// not need.
+const getPreviewModule = () => require('./preview') as typeof import('./preview');
+const getOcrModule = () => require('./ocr') as typeof import('./ocr');
+const getTextExtractionModule = () => require('./textExtraction') as typeof import('./textExtraction');
+const getRemoteSyncModule = () => require('./remoteSync') as typeof import('./remoteSync');
+const getMemoryFilesModule = () => require('./memoryFiles') as typeof import('./memoryFiles');
+const getContextBuilderModule = () => require('./contextBuilder') as typeof import('./contextBuilder');
+const getGoogleAuthModule = () => require('./googleAuth') as typeof import('./googleAuth');
+const getGoogleDriveModule = () => require('./googleDrive') as typeof import('./googleDrive');
+const getGoogleClassroomModule = () => require('./googleClassroom') as typeof import('./googleClassroom');
+const getLocalServerModule = () => require('./localServer') as typeof import('./localServer');
+
+const OCR_PAGE_SEPARATOR = '\n\n---\n\n';
 
 if (process.platform === 'win32') app.setAppUserModelId('com.atlas.desktop');
 
@@ -374,7 +345,7 @@ function scheduleExtraction(resourceId: number, kind: string, filePath: string):
     return;
   }
 
-  void extractDocumentParts(kind, filePath).then((result) => {
+  void getTextExtractionModule().extractDocumentParts(kind, filePath).then((result) => {
     const db2 = getDb();
     const insertPart = db2.prepare(
       'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
@@ -476,7 +447,7 @@ function backfillPreExistingRemoteAttachments(): void {
     "UPDATE resources SET remote_source = 'drive', remote_ref = ?, link_kind = 'driveFile', extraction_status = 'pending' WHERE id = ?"
   );
   for (const resource of candidates) {
-    const fileId = driveFileIdFromUrl(resource.file_path);
+    const fileId = getRemoteSyncModule().driveFileIdFromUrl(resource.file_path);
     if (fileId) update.run(fileId, resource.id);
   }
 }
@@ -538,7 +509,7 @@ async function extractAllPendingResources(): Promise<void> {
       continue;
     }
 
-    const result = await extractDocumentParts(resource.kind, resource.file_path);
+    const result = await getTextExtractionModule().extractDocumentParts(resource.kind, resource.file_path);
     db.transaction(() => {
       db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resource.id);
       for (const part of result.parts) {
@@ -967,6 +938,8 @@ if (!hasSingleInstanceLock) {
 }
 let localServerReady: Promise<void> = Promise.resolve();
 let resolveLocalServerReady: (() => void) | null = null;
+let rendererReady: Promise<void> = Promise.resolve();
+let resolveRendererReady: (() => void) | null = null;
 
 type AtlasChangeEntity = 'course' | 'resource' | 'note' | 'deadline' | 'sync';
 type AtlasChangeAction = 'created' | 'updated' | 'deleted';
@@ -1103,17 +1076,27 @@ app.whenReady().then(() => {
   localServerReady = new Promise<void>((resolve) => {
     resolveLocalServerReady = resolve;
   });
+  rendererReady = new Promise<void>((resolve) => {
+    resolveRendererReady = resolve;
+  });
 
   // Everything below is repair, watching, indexing, sync, extraction, or
   // file maintenance. Let the renderer reach its first usable page before
   // doing that work. URL handlers await localServerReady when needed.
   setImmediate(async () => {
+    // The renderer explicitly signals after its initial Dashboard render.
+    // Keep a bounded fallback so a renderer crash cannot permanently prevent
+    // maintenance from running on a later recovery launch.
+    await Promise.race([
+      rendererReady,
+      new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+    ]);
     setTimeout(() => {
       createScheduledBackupIfDue();
       setInterval(createScheduledBackupIfDue, 60 * 60 * 1000);
     }, 0);
     try {
-      await startLocalServer();
+      await getLocalServerModule().startLocalServer();
     } catch (error) {
       console.error('Local browser server failed to start:', error);
     } finally {
@@ -1169,7 +1152,7 @@ app.whenReady().then(() => {
   // — covers a resource left 'pending' from a previous run when Classroom
   // sync is set to Off, so remote attachments still get picked up on launch.
   void runRemoteExtractionAndNotify();
-  ensureGeneralMemoryFile();
+  getMemoryFilesModule().ensureGeneralMemoryFile();
   // Courses created before Phase 4 shipped never got a memory file, since
   // ensureCourseMemoryFile only runs at creation time — without this every
   // pre-existing course reports `memory: null` to the agent forever.
@@ -1179,7 +1162,7 @@ app.whenReady().then(() => {
     name: string;
     folder_name: string;
   }[]) {
-    ensureCourseMemoryFile(course.folder_name, course.name);
+    getMemoryFilesModule().ensureCourseMemoryFile(course.folder_name, course.name);
   }
 
   });
@@ -1213,14 +1196,14 @@ app.on('window-all-closed', () => {
   globalShortcut.unregisterAll();
   for (const folderId of activeWatchers.keys()) stopWatchingFolder(folderId);
   for (const courseId of activeCourseStorageWatchers.keys()) stopWatchingCourseStorage(courseId);
-  stopLocalServer();
+  getLocalServerModule().stopLocalServer();
   closeDb();
   // The shared Tesseract worker (src/main/ocr.ts) may still be resident if a
   // scan was ever dropped via notes:importScanBuffer, which doesn't
   // terminate it itself (each drop is a separate IPC call, so terminating
   // after every single one would lose the point of reusing one worker
   // across a multi-file drop) — best-effort cleanup on the way out.
-  void endOcrBatch();
+  void getOcrModule().endOcrBatch();
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -1236,7 +1219,7 @@ ipcMain.handle('search:query', (_event, query: string) => {
   const trimmed = query.trim();
   if (!trimmed) return [];
   const db = getDb();
-  const ftsQuery = toFtsQuery(query);
+  const ftsQuery = getContextBuilderModule().toFtsQuery(query);
 
   // Courses aren't part of the FTS5 search_index at all (that table only
   // holds resource/note/announcement/assignment/document_part rows) — a
@@ -1643,7 +1626,7 @@ ipcMain.handle('courses:setArchived', (_event, courseId: number, archived: boole
 // course's context" means.
 ipcMain.handle('courses:exportContext', (_event, courseId: number) => {
   const db = getDb();
-  const briefing = getCourseBriefing(db, courseId);
+  const briefing = getContextBuilderModule().getCourseBriefing(db, courseId);
   if (!briefing.ok) return { ok: false as const, error: briefing.error };
 
   const lines: string[] = [
@@ -1773,7 +1756,7 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
   const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
   db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
   startWatchingCourseStorage(Number(courseId), folderName);
-  ensureCourseMemoryFile(folderName, name);
+  getMemoryFilesModule().ensureCourseMemoryFile(folderName, name);
 
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
   sendAtlasChange({ entity: 'course', action: 'created', id: Number(courseId), courseId: Number(courseId) });
@@ -1783,12 +1766,12 @@ ipcMain.handle('courses:create', (_event, name: string, code: string | null, ter
 // --- Google Drive connection (Phase 3, open-questions.md #19) ---
 // This is deliberately just the connect/disconnect handshake for now — the
 // folder-scanning/review-panel work is a separate, not-yet-built step.
-ipcMain.handle('google:isDriveConnected', () => isGoogleDriveConnected());
-ipcMain.handle('google:isDriveFolderAccessAvailable', () => isDriveFolderAccessAvailable());
+ipcMain.handle('google:isDriveConnected', () => getGoogleAuthModule().isGoogleDriveConnected());
+ipcMain.handle('google:isDriveFolderAccessAvailable', () => getGoogleDriveModule().isDriveFolderAccessAvailable());
 
 ipcMain.handle('google:connectDrive', async () => {
   try {
-    await authorizeGoogleDrive();
+    await getGoogleAuthModule().authorizeGoogleDrive();
     setSyncSetting('sync_drive_last_error', '');
     await applySyncSchedule('drive', true);
     return { ok: true as const };
@@ -1798,7 +1781,7 @@ ipcMain.handle('google:connectDrive', async () => {
 });
 
 ipcMain.handle('google:disconnectDrive', () => {
-  disconnectGoogleDrive();
+  getGoogleAuthModule().disconnectGoogleDrive();
   clearSyncInterval('drive');
   setSyncSetting('sync_drive_last_error', '');
 });
@@ -1809,7 +1792,7 @@ ipcMain.handle('google:disconnectDrive', () => {
 // stale uploads, rather than needing to hunt them down by hand in Drive.
 ipcMain.handle('google:clearDrivePreviewCache', async () => {
   try {
-    await clearAllPreviewCopies();
+    await getGoogleDriveModule().clearAllPreviewCopies();
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
@@ -1989,7 +1972,7 @@ ipcMain.handle('sync:nowAll', async () => {
 // doesn't wait for the next interval tick.
 async function scanDriveAndNotify(): Promise<void> {
   try {
-    const foundNew = await scanDriveFolder();
+    const foundNew = await getGoogleDriveModule().scanDriveFolder();
     if (foundNew && mainWindow) mainWindow.webContents.send('google:driveChanged', { launch: false });
     recordSyncResult('drive', true, null);
   } catch (err) {
@@ -2001,32 +1984,32 @@ async function scanDriveAndNotify(): Promise<void> {
   }
 }
 
-ipcMain.handle('google:getDriveFolder', () => getDriveFolder());
+ipcMain.handle('google:getDriveFolder', () => getGoogleDriveModule().getDriveFolder());
 
-ipcMain.handle('google:listDriveSources', () => listDriveSources());
+ipcMain.handle('google:listDriveSources', () => getGoogleDriveModule().listDriveSources());
 
 ipcMain.handle('google:addDriveSource', async (_event, link: string, defaultCourseId: number | null) => {
-  const result = await addDriveSource(link, defaultCourseId);
+  const result = await getGoogleDriveModule().addDriveSource(link, defaultCourseId);
   if (result.ok) void scanDriveAndNotify();
   return result;
 });
 
 ipcMain.handle('google:updateDriveSource', (_event, sourceId: number, defaultCourseId: number | null, enabled: boolean) => {
-  updateDriveSource(sourceId, defaultCourseId, enabled);
+  getGoogleDriveModule().updateDriveSource(sourceId, defaultCourseId, enabled);
   void scanDriveAndNotify();
 });
 
 ipcMain.handle('google:removeDriveSource', (_event, sourceId: number) => {
-  removeDriveSource(sourceId);
+  getGoogleDriveModule().removeDriveSource(sourceId);
 });
 
 ipcMain.handle('google:setDriveFolder', async (_event, link: string) => {
-  const result = await setDriveFolder(link);
+  const result = await getGoogleDriveModule().setDriveFolder(link);
   if (result.ok) void scanDriveAndNotify();
   return result;
 });
 
-ipcMain.handle('google:listPendingDriveFiles', () => listPendingDriveFiles());
+ipcMain.handle('google:listPendingDriveFiles', () => getGoogleDriveModule().listPendingDriveFiles());
 
 // Downloads a pending file's content and imports it via the same
 // buffer-based paths manual upload/drag-and-drop already use, branching on
@@ -2043,7 +2026,7 @@ ipcMain.handle(
     importAs: 'resource' | 'note',
     storageMode: 'remote' | 'local' = 'remote'
   ) => {
-    const pending = listPendingDriveFiles().find((file) => file.drive_file_id === driveFileId);
+    const pending = getGoogleDriveModule().listPendingDriveFiles().find((file) => file.drive_file_id === driveFileId);
     if (!pending) throw new Error('That Drive file is no longer waiting for import. Scan again to refresh the inbox.');
 
     if (storageMode === 'remote' && importAs === 'resource') {
@@ -2055,12 +2038,12 @@ ipcMain.handle(
         driveFileId,
         pending.source_id
       );
-      removePendingDriveFile(driveFileId);
-      void runRemoteExtractionAndNotify();
+      getGoogleDriveModule().removePendingDriveFile(driveFileId);
+      runRemoteExtractionAndNotify();
       return result;
     }
 
-    const buffer = await downloadDriveFileContent(driveFileId);
+    const buffer = await getGoogleDriveModule().downloadDriveFileContent(driveFileId);
 
     let result: unknown;
     if (importAs === 'resource') {
@@ -2071,7 +2054,7 @@ ipcMain.handle(
       result = importTypedNoteFromBuffer(courseId, buffer, driveFileId);
     }
 
-    removePendingDriveFile(driveFileId);
+    getGoogleDriveModule().removePendingDriveFile(driveFileId);
     return result;
   }
 );
@@ -2080,7 +2063,7 @@ ipcMain.handle(
 // showing up as "new" (see ignoreDrivePendingFile for why the row stays
 // rather than being deleted outright).
 ipcMain.handle('google:ignoreDriveFile', (_event, driveFileId: string) => {
-  ignoreDrivePendingFile(driveFileId);
+  getGoogleDriveModule().ignoreDrivePendingFile(driveFileId);
 });
 
 // --- Google Classroom connection (Phase 3, ARCHITECTURE.md §4b) ---
@@ -2089,11 +2072,11 @@ ipcMain.handle('google:ignoreDriveFile', (_event, driveFileId: string) => {
 // (open-questions.md #8). No folder-config step (Classroom has no
 // folder concept) and no background polling interval, unlike Drive — see
 // scanClassroomAndNotify below.
-ipcMain.handle('classroom:isConnected', () => isGoogleClassroomConnected());
+ipcMain.handle('classroom:isConnected', () => getGoogleAuthModule().isGoogleClassroomConnected());
 
 ipcMain.handle('classroom:connect', async () => {
   try {
-    await authorizeGoogleClassroom();
+    await getGoogleAuthModule().authorizeGoogleClassroom();
     setSyncSetting('sync_classroom_last_error', '');
     await applySyncSchedule('classroom', true);
     return { ok: true as const };
@@ -2103,7 +2086,7 @@ ipcMain.handle('classroom:connect', async () => {
 });
 
 ipcMain.handle('classroom:disconnect', () => {
-  disconnectGoogleClassroom();
+  getGoogleAuthModule().disconnectGoogleClassroom();
   clearSyncInterval('classroom');
   setSyncSetting('sync_classroom_last_error', '');
 });
@@ -2120,7 +2103,7 @@ ipcMain.handle('classroom:disconnect', () => {
 // looking identical to "nothing new."
 async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: ClassroomSyncError[] }> {
   try {
-    const { changed, errors } = await scanClassroom();
+    const { changed, errors } = await getGoogleClassroomModule().scanClassroom();
     if (changed && mainWindow) {
       mainWindow.webContents.send('classroom:changed');
       sendAtlasChange({ entity: 'sync', action: 'updated', id: 0 });
@@ -2134,7 +2117,7 @@ async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: Cla
     // Runs after coursework sync completes, sequentially, never blocking it
     // (remote-attachment architecture §8) — new Classroom attachments just
     // discovered above are exactly what this reads.
-    void runRemoteExtractionAndNotify();
+    runRemoteExtractionAndNotify();
     return { changed, errors };
   } catch (err) {
     const requiresReauth = recordSyncFailure('classroom', err);
@@ -2159,7 +2142,7 @@ let remoteExtractionRequested = false;
 
 async function runRemoteExtractionPassAndNotify(): Promise<void> {
   try {
-    const { changed, capped } = await processPendingRemoteResources((progress) => {
+    const { changed, capped } = await getRemoteSyncModule().processPendingRemoteResources((progress) => {
       if (mainWindow) mainWindow.webContents.send('extraction:backfillProgress', progress);
     });
     if (changed) {
@@ -2193,7 +2176,7 @@ function runRemoteExtractionAndNotify(): void {
 }
 
 
-ipcMain.handle('classroom:listAvailableCoursesForLinking', () => listAvailableClassroomCoursesForLinking());
+ipcMain.handle('classroom:listAvailableCoursesForLinking', () => getGoogleClassroomModule().listAvailableClassroomCoursesForLinking());
 
 // Only used to open a 'link'-kind resource's external URL (Drive file/link/
 // YouTube/Form attachment, see preview.ts's 'link' Preview type) — never
@@ -2203,10 +2186,10 @@ ipcMain.handle('app:openExternalUrl', (_event, url: string) => {
   void shell.openExternal(url);
 });
 
-ipcMain.handle('classroom:listPendingCourses', () => listPendingClassroomCourses());
+ipcMain.handle('classroom:listPendingCourses', () => getGoogleClassroomModule().listPendingClassroomCourses());
 
 ipcMain.handle('classroom:ignorePendingCourse', (_event, classroomCourseId: string) => {
-  ignorePendingClassroomCourse(classroomCourseId);
+  getGoogleClassroomModule().ignorePendingClassroomCourse(classroomCourseId);
 });
 
 // Immediately syncs coursework/announcements for the just-mapped course
@@ -2217,7 +2200,7 @@ ipcMain.handle('classroom:ignorePendingCourse', (_event, classroomCourseId: stri
 ipcMain.handle(
   'classroom:mapCourseToExisting',
   async (_event, classroomCourseId: string, atlasCourseId: number) => {
-    linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
+    getGoogleClassroomModule().linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
     const { errors } = await scanClassroomAndNotify();
     return { errors };
   }
@@ -2239,9 +2222,9 @@ ipcMain.handle(
     const folderName = uniqueCourseFolderName(sanitizeFolderName(name), getFilesDir());
     db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
     startWatchingCourseStorage(Number(courseId), folderName);
-    ensureCourseMemoryFile(folderName, name);
+    getMemoryFilesModule().ensureCourseMemoryFile(folderName, name);
 
-    removePendingClassroomCourse(classroomCourseId);
+    getGoogleClassroomModule().removePendingClassroomCourse(classroomCourseId);
     sendAtlasChange({ entity: 'course', action: 'created', id: Number(courseId), courseId: Number(courseId) });
     const { errors } = await scanClassroomAndNotify();
     return { course: db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId), errors };
@@ -2255,7 +2238,7 @@ ipcMain.handle(
 ipcMain.handle(
   'classroom:connectCourseToClassroom',
   async (_event, atlasCourseId: number, classroomCourseId: string) => {
-    linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
+    getGoogleClassroomModule().linkClassroomCourseToExisting(classroomCourseId, atlasCourseId);
     const { errors } = await scanClassroomAndNotify();
     return { errors };
   }
@@ -2387,7 +2370,7 @@ ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidat
     const folderName = uniqueCourseFolderName(sanitizeFolderName(candidate.title), getFilesDir());
     db.prepare('UPDATE courses SET folder_name = ? WHERE id = ?').run(folderName, courseId);
     startWatchingCourseStorage(Number(courseId), folderName);
-    ensureCourseMemoryFile(folderName, candidate.title);
+    getMemoryFilesModule().ensureCourseMemoryFile(folderName, candidate.title);
 
     const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(courseId);
     created.push(course);
@@ -2397,6 +2380,11 @@ ipcMain.handle('ashoka:importCourses', (_event, candidates: AshokaCourseCandidat
 });
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
+
+ipcMain.handle('app:rendererReady', () => {
+  resolveRendererReady?.();
+  resolveRendererReady = null;
+});
 
 ipcMain.handle('app:getSetting', (_event, key: string) => {
   const db = getDb();
@@ -2417,7 +2405,7 @@ ipcMain.handle('app:setSetting', (_event, key: string, value: string) => {
 
 ipcMain.handle('resources:browserUrl', async (_event, resourceId: number) => {
   await localServerReady;
-  return getResourceBrowserUrl(resourceId);
+  return getLocalServerModule().getResourceBrowserUrl(resourceId);
 });
 
 ipcMain.handle('resources:listByCourse', (_event, courseId: number) => {
@@ -2431,7 +2419,7 @@ ipcMain.handle('resources:listByCourse', (_event, courseId: number) => {
 // for the external agent. It deliberately does not judge academic coverage or
 // comprehension, and it does not call an AI service.
 ipcMain.handle('courses:getReadiness', (_event, courseId: number) => {
-  return getCourseReadiness(getDb(), courseId);
+  return getContextBuilderModule().getCourseReadiness(getDb(), courseId);
 });
 
 ipcMain.handle('resources:upload', async (_event, courseId: number) => {
@@ -2465,7 +2453,7 @@ ipcMain.handle('resources:getPreview', async (_event, resourceId: number) => {
     | { kind: string; file_path: string; zoom_level: number | null }
     | undefined;
   if (!resource) return { type: 'unsupported' };
-  return getPreview(resource.kind, resource.file_path, resource.zoom_level);
+  return getPreviewModule().getPreview(resource.kind, resource.file_path, resource.zoom_level);
 });
 
 // On-demand OCR for PDFs Atlas can't already read as text (e.g. a scanned
@@ -2479,7 +2467,7 @@ ipcMain.handle('resources:runOcr', async (event, resourceId: number) => {
     | { file_path: string; kind: string }
     | undefined;
   if (!resource || resource.kind !== 'pdf') return null;
-  return extractTextFromScan(resource.file_path, (page, totalPages) => {
+  return getOcrModule().extractTextFromScan(resource.file_path, (page, totalPages) => {
     event.sender.send('resources:ocrProgress', { resourceId, page, totalPages });
   });
 });
@@ -2558,10 +2546,10 @@ const DRIVE_PREVIEW_KINDS = new Set(['pdf', 'image', 'pptx', 'docx', 'xlsx']);
 async function openResourceInGoogleDrive(resourceId: number, sender: Electron.WebContents): Promise<void> {
   sender.send('resources:driveOpenStart', resourceId);
   try {
-    if (!isGoogleDriveConnected()) {
+    if (!getGoogleAuthModule().isGoogleDriveConnected()) {
       throw new Error('Google Drive is not connected. Connect it in Settings first.');
     }
-    const { viewUrl } = await uploadResourceForPreview(resourceId);
+    const { viewUrl } = await getGoogleDriveModule().uploadResourceForPreview(resourceId);
     void shell.openExternal(viewUrl);
     sender.send('resources:driveOpenSuccess', resourceId);
   } catch (err) {
@@ -2598,7 +2586,7 @@ ipcMain.on('resources:contextMenu', (event, resourceId: number) => {
         if (isLink) {
           void shell.openExternal(resource.file_path);
         } else {
-          void localServerReady.then(() => shell.openExternal(getResourceBrowserUrl(resourceId)));
+          void localServerReady.then(() => shell.openExternal(getLocalServerModule().getResourceBrowserUrl(resourceId)));
         }
       },
     },
@@ -2636,7 +2624,7 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
   const previewFileIds = db
     .prepare("SELECT drive_preview_file_id FROM resources WHERE course_id = ? AND drive_preview_file_id IS NOT NULL")
     .all(courseId) as { drive_preview_file_id: string }[];
-  for (const row of previewFileIds) void deletePreviewCopy(row.drive_preview_file_id);
+  for (const row of previewFileIds) void getGoogleDriveModule().deletePreviewCopy(row.drive_preview_file_id);
   // Stop watching any folders mapped to this course before the watched_folders
   // rows cascade-delete — an orphaned live watcher would keep importing files
   // into a course that no longer exists.
@@ -2659,7 +2647,7 @@ ipcMain.handle('courses:delete', (_event, courseId: number) => {
     setImmediate(() => {
       try {
         fs.rmSync(courseFilesDir, { recursive: true, force: true });
-        deleteCourseMemoryFile(course.folder_name);
+        getMemoryFilesModule().deleteCourseMemoryFile(course.folder_name);
       } catch (error) {
         console.error(`Failed to clean up deleted course ${courseId}:`, error);
       }
@@ -2737,7 +2725,7 @@ ipcMain.handle('resources:delete', (_event, resourceId: number) => {
   // Best-effort, not awaited — deleting the resource locally must succeed
   // regardless of whether Drive is reachable right now; a stray leftover
   // file in the preview folder is a cosmetic issue, not a data-loss one.
-  if (resource?.drive_preview_file_id) void deletePreviewCopy(resource.drive_preview_file_id);
+  if (resource?.drive_preview_file_id) void getGoogleDriveModule().deletePreviewCopy(resource.drive_preview_file_id);
   removeSearchIndexDocumentPartsForResource(resourceId);
   db.prepare('DELETE FROM resources WHERE id = ?').run(resourceId);
   removeSearchIndexRow('resource', resourceId);
@@ -3058,12 +3046,12 @@ ipcMain.handle('notes:saveImage', async (_event, courseId: number, buffer: Array
   const filename = `${randomUUID()}${safeExt}`;
   fs.writeFileSync(path.join(dir, filename), Buffer.from(buffer));
   await localServerReady;
-  return getNoteImageUrl(courseId, filename);
+  return getLocalServerModule().getNoteImageUrl(courseId, filename);
 });
 
 ipcMain.handle('notes:browserUrl', async (_event, noteId: number) => {
   await localServerReady;
-  return getNoteBrowserUrl(noteId);
+  return getLocalServerModule().getNoteBrowserUrl(noteId);
 });
 
 // Read-only in the browser, deliberately — an editable browser copy would
@@ -3075,7 +3063,7 @@ ipcMain.on('notes:contextMenu', (event, noteId: number) => {
   const menu = Menu.buildFromTemplate([
     {
       label: 'Open in browser',
-      click: () => void localServerReady.then(() => shell.openExternal(getNoteBrowserUrl(noteId))),
+      click: () => void localServerReady.then(() => shell.openExternal(getLocalServerModule().getNoteBrowserUrl(noteId))),
     },
     { type: 'separator' },
     {
@@ -3227,7 +3215,7 @@ ipcMain.handle('notes:getScanPreview', (_event, noteId: number) => {
     | { image_path: string | null }
     | undefined;
   if (!note?.image_path) return null;
-  return getPreview(kindFromExtension(note.image_path), note.image_path);
+  return getPreviewModule().getPreview(kindFromExtension(note.image_path), note.image_path);
 });
 
 ipcMain.handle('notes:importScanBuffer', (_event, courseId: number, filename: string, buffer: ArrayBuffer) => {
@@ -3246,7 +3234,7 @@ ipcMain.handle('notes:runOcr', async (event, noteId: number) => {
     | { image_path: string | null }
     | undefined;
   if (!note?.image_path) return null;
-  return extractTextFromScan(note.image_path, (page, totalPages) => {
+  return getOcrModule().extractTextFromScan(note.image_path, (page, totalPages) => {
     event.sender.send('notes:ocrProgress', { noteId, page, totalPages });
   });
 });
@@ -3384,7 +3372,7 @@ function deleteAllAtlasData(): void {
   // General memory is an empty, app-managed starting point rather than user
   // content. Recreate its template so the external MCP interface remains
   // immediately usable after the reset.
-  ensureGeneralMemoryFile();
+  getMemoryFilesModule().ensureGeneralMemoryFile();
 }
 
 type BackupFrequency = 'daily' | 'weekly' | 'off';

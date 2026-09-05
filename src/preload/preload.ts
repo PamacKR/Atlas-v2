@@ -259,6 +259,7 @@ contextBridge.exposeInMainWorld('atlas', {
   exportCourseContext: (courseId: number): Promise<{ ok: true; filePath: string } | { ok: false; error: string }> =>
     ipcRenderer.invoke('courses:exportContext', courseId),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  rendererReady: (): Promise<void> => ipcRenderer.invoke('app:rendererReady'),
   windowControls: {
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggleMaximize'),
