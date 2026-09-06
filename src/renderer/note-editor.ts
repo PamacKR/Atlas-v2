@@ -7,6 +7,7 @@ export interface NoteEditorOptions {
   root: HTMLElement;
   defaultValue: string;
   courseId: number | null;
+  latexPreviewOnlyByDefault?: boolean;
   saveImage: (file: File) => Promise<string>;
   onMarkdownUpdated: () => void;
 }
@@ -41,6 +42,61 @@ const autoboldHeadingPlugin = $prose(
     })
 );
 
+// Crepe keeps the code block's preview/edit choice inside each Vue node view.
+// ProseMirror can tear that view down and recreate it when another block is
+// edited or when an off-screen block comes back into view, which otherwise
+// makes a manually hidden LaTeX source unexpectedly reappear. Track the
+// choice at the note-editor level for agent notes and reapply the default only
+// to newly created LaTeX blocks. A deliberate click on Edit is respected for
+// the lifetime of that block instance.
+function installLatexPreviewDefaults(root: HTMLElement): () => void {
+  const manuallyExpanded = new WeakSet<HTMLElement>();
+
+  const isLatexBlock = (block: HTMLElement): boolean => {
+    const language = block.querySelector<HTMLButtonElement>('.language-button');
+    return language?.textContent?.trim().toLowerCase().startsWith('latex') ?? false;
+  };
+
+  const applyDefaults = (): void => {
+    root.querySelectorAll('.milkdown-code-block').forEach((element) => {
+      const block = element as HTMLElement;
+      if (!isLatexBlock(block)) return;
+      block.classList.add('atlas-latex-block');
+      if (manuallyExpanded.has(block)) return;
+
+      const toggle = block.querySelector('.preview-toggle-button') as HTMLButtonElement | null;
+      if (toggle?.textContent?.trim().toLowerCase().includes('hide')) toggle.click();
+    });
+  };
+
+  const onClick = (event: MouseEvent): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const toggle = target.closest('.preview-toggle-button') as HTMLButtonElement | null;
+    const block = toggle?.closest('.milkdown-code-block') as HTMLElement | null;
+    if (!toggle || !block || !isLatexBlock(block)) return;
+
+    // Before the click, Edit means the source is hidden and the user is
+    // deliberately opening it. Hide means the source is visible and the user
+    // is deliberately closing it again.
+    if (toggle.textContent?.trim().toLowerCase().includes('edit')) {
+      manuallyExpanded.add(block);
+    } else {
+      manuallyExpanded.delete(block);
+    }
+  };
+
+  const observer = new MutationObserver(applyDefaults);
+  root.addEventListener('click', onClick, true);
+  observer.observe(root, { childList: true, subtree: true });
+  applyDefaults();
+
+  return () => {
+    observer.disconnect();
+    root.removeEventListener('click', onClick, true);
+  };
+}
+
 async function createNoteEditor(options: NoteEditorOptions): Promise<AtlasNoteEditor> {
   const crepe = new Crepe({
     root: options.root,
@@ -68,7 +124,17 @@ async function createNoteEditor(options: NoteEditorOptions): Promise<AtlasNoteEd
     listener.markdownUpdated(options.onMarkdownUpdated);
   });
   await crepe.create();
-  return crepe;
+  const removeLatexPreviewDefaults = options.latexPreviewOnlyByDefault
+    ? installLatexPreviewDefaults(options.root)
+    : null;
+
+  return {
+    getMarkdown: () => crepe.getMarkdown(),
+    destroy: async () => {
+      removeLatexPreviewDefaults?.();
+      return crepe.destroy();
+    },
+  };
 }
 
 (window as any).atlasNoteEditor = { create: createNoteEditor };

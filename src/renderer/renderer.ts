@@ -492,6 +492,7 @@ type AtlasNoteEditorApi = {
     root: HTMLElement;
     defaultValue: string;
     courseId: number | null;
+    latexPreviewOnlyByDefault?: boolean;
     saveImage: (file: File) => Promise<string>;
     onMarkdownUpdated: () => void;
   }): Promise<AtlasNoteEditor>;
@@ -3845,6 +3846,7 @@ async function mountNoteEditor(note: Note): Promise<void> {
     root,
     defaultValue: note.content_markdown,
     courseId: note.course_id,
+    latexPreviewOnlyByDefault: note.generated_by_agent === 1,
     saveImage,
     onMarkdownUpdated: scheduleNoteSave,
   });
