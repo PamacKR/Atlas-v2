@@ -5563,6 +5563,8 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 
 #drive-review-overlay:not([hidden]) {
   display: flex;
+  position: fixed;
+  inset: 0;
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
@@ -5570,10 +5572,15 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
   z-index: 60;
 }
 
+#drive-review-overlay {
+  position: fixed;
+  inset: 0;
+}
+
 #drive-review-panel.overlay-panel {
   display: flex;
   flex-direction: column;
-  width: min(620px, 100%);
+  width: min(820px, calc(100vw - (var(--space-4) * 2)));
   max-width: none;
   max-height: min(680px, calc(100vh - (var(--space-4) * 2)));
   padding: 0;
@@ -5618,7 +5625,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 #drive-review-panel .drive-review-body { flex: 1; min-height: 0; padding: var(--space-3) var(--space-5) var(--space-4); overflow: auto; }
 #drive-review-bulk.drive-review-bulk {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px 130px;
+  grid-template-columns: auto minmax(180px, 1fr) 112px 130px auto auto;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
@@ -5627,9 +5634,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
-#drive-review-bulk label { display: inline-flex; grid-column: 1 / -1; align-items: center; gap: var(--space-2); }
-#drive-review-bulk #drive-review-bulk-import { grid-column: 1; }
-#drive-review-bulk #drive-review-bulk-ignore { grid-column: 2; }
+#drive-review-bulk label { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 #drive-review-panel input[type='checkbox'] { appearance: none; position: relative; width: 14px; height: 14px; margin: 0; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--bg); cursor: pointer; }
 #drive-review-panel input[type='checkbox']:checked { border-color: var(--accent); background: var(--accent); }
 #drive-review-panel input[type='checkbox']:checked::after { content: ''; position: absolute; inset: 0; width: 4px; height: 8px; margin: auto; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
@@ -5687,6 +5692,7 @@ ul#deadline-list.view-list li.deadline-item .deadline-kind-icon { width: 18px; h
 
 @media (max-width: 760px) {
   #drive-review-bulk.drive-review-bulk { grid-template-columns: minmax(0, 1fr) 110px; }
+  #drive-review-bulk label { grid-column: 1 / -1; }
   #drive-review-bulk #drive-review-bulk-storage { grid-column: 1 / -1; }
   #drive-review-bulk #drive-review-bulk-import { grid-column: 1; }
   #drive-review-bulk #drive-review-bulk-ignore { grid-column: 2; }
