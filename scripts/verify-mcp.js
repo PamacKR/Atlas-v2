@@ -187,8 +187,10 @@ async function main() {
   assert(
     serverInstructions.includes('canonical source') &&
       serverInstructions.includes('academic question') &&
-      serverInstructions.includes('Google Classroom'),
-    'the MCP server advertises the academic-first retrieval rule in its initialization instructions'
+      serverInstructions.includes('Google Classroom') &&
+      serverInstructions.includes('durable response preferences') &&
+      serverInstructions.includes('reusable academic notes'),
+    'the MCP server advertises retrieval, adaptive profile, and automatic note-persistence rules'
   );
 
   const toolsList = await client.listTools();
@@ -391,6 +393,18 @@ async function main() {
   assert(writeToolsList.tools.length === 13, `explicit read-write mode registers all 13 tools (found ${writeToolsList.tools.length})`);
   assert(writeToolsList.tools.some((tool) => tool.name === 'atlas_write_memory'), 'explicit read-write mode exposes atlas_write_memory');
   assert(writeToolsList.tools.some((tool) => tool.name === 'atlas_create_note'), 'explicit read-write mode exposes atlas_create_note');
+  const memoryTool = writeToolsList.tools.find((tool) => tool.name === 'atlas_write_memory');
+  const noteTool = writeToolsList.tools.find((tool) => tool.name === 'atlas_create_note');
+  assert(
+    memoryTool?.description?.includes('durable response preference') &&
+      memoryTool.description.includes('do not ask for a separate save confirmation'),
+    'atlas_write_memory tells agents to persist durable preferences without a second confirmation'
+  );
+  assert(
+    noteTool?.description?.includes('reusable academic notes') &&
+      noteTool.description.includes('do not ask Pamac to separately say'),
+    'atlas_create_note treats a note-like request as authorization to save it'
+  );
 
   const callWriteTool = async (name, args) => {
     const result = await writeClient.callTool({ name, arguments: args });

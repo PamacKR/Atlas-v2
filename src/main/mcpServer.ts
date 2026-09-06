@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     { name: 'atlas', version: '1.0.0' },
     {
       instructions:
-        "Atlas is the canonical source of Pamac's academic data, including material synced from Google Classroom or linked through Google Drive that may not exist as local files. For any academic question, use Atlas tools before local file access: call atlas_overview, resolve the named course and material, then read the verified source. Do not create local copies, search the repository, or invent a substitute when Atlas is unavailable. If a course or material is ambiguous or missing, follow the resolver result and ask Pamac rather than guessing.",
+        "Atlas is the canonical source of Pamac's academic data, including material synced from Google Classroom or linked through Google Drive that may not exist as local files. For any academic question, use Atlas tools before local file access: call atlas_overview, resolve the named course and material, then read the verified source. Do not create local copies, search the repository, or invent a substitute when Atlas is unavailable. If a course or material is ambiguous or missing, follow the resolver result and ask Pamac rather than guessing. When atlas_write_memory is available, automatically maintain course profiles from durable response preferences Pamac expresses or clearly establishes through correction; expressing the standing preference is authorization to record it, so do not ask for a separate save confirmation. Do not persist a one-off formatting request or infer a preference from silence. When atlas_create_note is available, a request for reusable academic notes, a study guide, revision material, or a similar note-like artifact authorizes saving it in Atlas in the same turn without a second save request; do not save ordinary question-and-answer responses as notes.",
     }
   );
 
@@ -368,7 +368,7 @@ async function main(): Promise<void> {
     'atlas_write_memory',
     {
       description:
-        'Only call this after the user explicitly asks you to update persistent memory. Replace the memory about the user or a course — what they\'re familiar with, how they like things explained, how a course runs, what\'s already been done. Omit `course` to write the general (cross-course) memory. This fully replaces the file, so include everything still worth keeping, not just what changed. Once explicitly authorized, the write itself does not ask for a second confirmation.',
+        'Maintain persistent general or per-course memory. Call this automatically when Pamac expresses a durable response preference (for example preferred detail, reasoning depth, simplification, bullets, derivations, or citations) or clearly establishes one through a correction. Expressing the standing preference authorizes recording it; do not ask for a separate save confirmation. Do not persist a one-off formatting request, infer a preference from silence, or record uncertain academic claims as fact. Before writing, read the current memory with atlas_overview or atlas_course_briefing and preserve all useful non-conflicting content. Omit `course` for general cross-course memory. This fully replaces the file, so send the complete updated memory rather than only the new sentence.',
       inputSchema: {
         course: z.union([z.string(), z.number()]).optional(),
         content: z.string(),
@@ -386,7 +386,7 @@ async function main(): Promise<void> {
     'atlas_create_note',
     {
       description:
-        'Only call this after the user explicitly asks you to create a note. Create a new note in a course, or omit/null `course` to create it in General/unsorted (e.g. a study guide, summary, or cross-course reference). The note is saved and searchable later. This can only create a new note — it can never edit or overwrite a note the user wrote themselves.',
+        'Create a new persistent Atlas note in a course, or omit/null `course` for General/unsorted. A request for reusable academic notes, a study guide, revision material, a lecture summary intended as notes, or a similar note-like artifact authorizes saving it in Atlas in the same turn; do not ask Pamac to separately say "save this". Do not save ordinary question-and-answer responses, transient drafts, or casual explanations unless Pamac asks for a note-like artifact. The note is saved and searchable later. This can only create a new note and can never edit or overwrite a note Pamac wrote.',
       inputSchema: {
         course: z.union([z.string(), z.number()]).nullable().optional(),
         title: z.string(),

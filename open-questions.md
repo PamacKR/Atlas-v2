@@ -409,3 +409,25 @@ silently substitute local files. A local export or other fallback requires
 Pamac's explicit authorisation. Atlas's MCP server now also returns this rule
 as server-wide initialization instructions, and the local Codex host is
 registered to start it on demand for new desktop/CLI/IDE chats.
+
+### 32. Automatic course-profile learning and persistent academic notes
+
+Should Pamac have to explicitly say "save this" every time an academic agent
+learns a durable response preference or produces reusable notes?
+
+**Status:** Resolved/built (2026-09-06). No. When Pamac expresses an ongoing
+course-specific or general response requirement, or clearly establishes one by
+correcting an answer, the agent updates the relevant profile in the same turn.
+It first reads the existing memory and preserves non-conflicting content.
+One-off constraints such as making a single answer short are not persisted
+unless Pamac frames them as ongoing or repeats the correction; silence is never
+treated as evidence of a preference.
+
+Likewise, asking for reusable academic notes, a study guide, revision material,
+or a lecture summary intended as notes authorises creation of an agent-owned
+Atlas note without a second persistence request. Ordinary Q&A remains in chat
+and does not create clutter. Pamac's normal project and shared Codex MCP
+configuration therefore uses `ATLAS_MCP_MODE=read-write`, whose only write
+capabilities are replacing agent memory and creating a new agent-owned note. It
+cannot edit canonical academic records, overwrite user-authored notes, or
+delete data.

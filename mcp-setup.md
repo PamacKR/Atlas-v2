@@ -26,7 +26,7 @@ This repo already ships a working **`.mcp.json`** at its root:
       "command": "node",
       "args": ["scripts/run-mcp-server.js"],
       "env": {
-        "ATLAS_MCP_MODE": "read-only"
+        "ATLAS_MCP_MODE": "read-write"
       }
     }
   }
@@ -44,7 +44,7 @@ table there, using the actual path to this checkout if it ever moves:
 command = 'node'
 args = ['scripts/run-mcp-server.js']
 cwd = 'C:\Users\Pamac\Downloads\Atlas-v2'
-env = { ATLAS_MCP_MODE = 'read-only' }
+env = { ATLAS_MCP_MODE = 'read-write' }
 startup_timeout_sec = 30
 tool_timeout_sec = 60
 enabled = true
@@ -57,16 +57,18 @@ daemon is not necessary and would not be the process that a new chat uses.
 Restart the client after changing the configuration, then use `/mcp` to check
 that `atlas_*` tools are present.
 
-## Safe MCP mode
+## MCP modes
 
-Atlas MCP connections default to **read-only**. If `ATLAS_MCP_MODE` is absent,
-invalid, or set to `read-only`, the server exposes exactly the 11 read-only
-`atlas_*` tools. The project configuration above sets the safe value explicitly.
+The Atlas server falls back to **read-only** if `ATLAS_MCP_MODE` is absent,
+invalid, or set to `read-only`. That exposes exactly the 11 retrieval and visual
+`atlas_*` tools. Pamac's project and shared Codex configurations deliberately
+use `read-write`, because persistent course profiles and durable agent-created
+notes are core personal-use requirements.
 
 `ATLAS_MCP_MODE=notes-write` exposes the 11 read-only tools plus
-`atlas_create_note` for explicitly requested agent-owned study notes. It does
-not expose `atlas_write_memory`. This is the recommended mode for Pamac's
-permanent default Hermes connection.
+`atlas_create_note` for agent-owned study notes. It does not expose
+`atlas_write_memory` and remains useful for clients that should not adapt
+course profiles.
 
 The full write-capable mode is separate:
 
@@ -79,8 +81,10 @@ A process may explicitly opt into the full surface with:
 ATLAS_MCP_MODE=read-write
 ```
 
-`read-write` exposes all 13 tools and must not be added to the normal Hermes or
-Codex client configuration without a deliberate decision. The `agentAccess`
+`read-write` exposes all 13 tools. Pamac explicitly selected it as the normal
+Codex mode on 2026-09-06 so a request for reusable academic notes can save the
+artifact immediately and durable course-response preferences can update the
+relevant profile without an extra "save this" round trip. The `agentAccess`
 setting remains the master switch and can disable all MCP operations.
 
 **Claude Code** picks this up automatically — just open this project and (re)start Claude Code; you'll likely get a one-time prompt to approve running the `atlas` server. No path needed at all.
@@ -96,11 +100,9 @@ local Codex client.
 **Cursor and other MCP clients** can use the project-level `.mcp.json` or their
 own native MCP configuration.
 
-After it's connected, the project read-only configuration should list exactly
-11 `atlas_*` tools. A permanent Hermes profile configured with
-`ATLAS_MCP_MODE=notes-write` should list 12 tools, adding only
-`atlas_create_note`; `atlas_write_memory` should remain absent. The full
-`read-write` mode lists all 13 tools and is not the recommended normal mode.
+After it is connected with the project or shared Codex configuration, the
+client should list all 13 `atlas_*` tools. A restricted `read-only` connection
+lists 11; `notes-write` lists 12, adding only `atlas_create_note`.
 Clients that support standard MCP form elicitation can receive the resolver's
 blocking candidate question directly; other clients receive a structured
 fallback result.
@@ -122,12 +124,13 @@ from Classroom Drive attachments — Docs, Slides, Sheets, and PDFs the professo
 shared, plus links discovered inside them — fetched and extracted without ever
 being downloaded into Atlas's local storage.
 
-Write operations are deliberately opt-in and unavailable in the default mode.
-`notes-write` enables only `atlas_create_note`, for explicit requests such as
-saving a generated study guide or revision notes. `read-write` additionally
-enables `atlas_write_memory`, which replaces course or general agent memory and
-should remain disabled for normal study-note creation. Both operations still
-require an explicit user request under `MCP_AGENT_GUIDE.md`.
+Write operations are unavailable in the server's read-only fallback.
+`notes-write` enables only `atlas_create_note`. `read-write` additionally
+enables `atlas_write_memory`, which replaces course or general agent memory.
+Under `MCP_AGENT_GUIDE.md`, a request for reusable academic notes is itself
+authorisation to create the finished note in Atlas, and a durable response
+preference is authorisation to update the relevant profile. Ordinary answers
+and one-off formatting constraints are not silently persisted.
 
 ## If your AI tool doesn't support MCP
 

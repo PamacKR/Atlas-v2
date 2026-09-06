@@ -4,7 +4,7 @@
       "command": "node",
       "args": ["scripts/run-mcp-server.js"],
       "env": {
-        "ATLAS_MCP_MODE": "read-only"
+        "ATLAS_MCP_MODE": "read-write"
       }
     }
   }

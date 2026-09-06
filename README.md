@@ -348,9 +348,12 @@ The default project MCP surface is read-only and contains eleven tools:
 | atlas_read_note | Read a note's full Markdown content |
 | atlas_read_classroom_item | Read a full locally synced announcement or assignment |
 
-For explicit study-note saves, `ATLAS_MCP_MODE=notes-write` adds only
-`atlas_create_note`. The broader `ATLAS_MCP_MODE=read-write` mode adds both
-`atlas_create_note` and `atlas_write_memory`; it is not the normal mode.
+`ATLAS_MCP_MODE=notes-write` adds only `atlas_create_note`. The broader
+`ATLAS_MCP_MODE=read-write` mode adds both `atlas_create_note` and
+`atlas_write_memory`. Pamac's normal project and shared Codex configurations
+use `read-write` so requested reusable academic notes are saved in Atlas and
+durable per-course response preferences are learned without a separate save
+command.
 
 ### Retrieval behavior
 
@@ -365,7 +368,7 @@ The MCP workflow is intentionally bounded:
 - A requested item is not silently replaced with a nearby lecture or unrelated search hit.
 - Document outlines and page ranges keep large reads targeted.
 - Visual reads use Atlas ids only; the agent cannot provide an arbitrary filesystem path.
-- Read-only connections cannot write Atlas data. `notes-write` permits only `atlas_create_note` after an explicit request; `read-write` additionally permits memory replacement. Neither mode permits arbitrary edits or deletes.
+- The server's read-only fallback cannot write Atlas data. Pamac's normal `read-write` connection may create agent-owned notes when he asks for a reusable note-like artifact and may update course memory when he expresses a durable response preference. It still cannot edit canonical academic records, overwrite user-authored notes, or delete anything.
 
 When a connected client supports standard MCP form elicitation, an ambiguous material lookup can pause and ask the user to choose from the returned candidates. Clients without that capability receive the same structured clarification data for their own interaction mechanism.
 
@@ -386,7 +389,7 @@ The repository includes a portable project-level [.mcp.json](.mcp.json) configur
       "command": "node",
       "args": ["scripts/run-mcp-server.js"],
       "env": {
-        "ATLAS_MCP_MODE": "read-only"
+        "ATLAS_MCP_MODE": "read-write"
       }
     }
   }
@@ -404,7 +407,7 @@ discover a project's `.mcp.json`:
 command = 'node'
 args = ['scripts/run-mcp-server.js']
 cwd = 'C:\Users\Pamac\Downloads\Atlas-v2'
-env = { ATLAS_MCP_MODE = 'read-only' }
+env = { ATLAS_MCP_MODE = 'read-write' }
 startup_timeout_sec = 30
 tool_timeout_sec = 60
 enabled = true
@@ -431,13 +434,14 @@ mcp_servers:
     args:
       - C:/Users/Pamac/Downloads/Atlas-v2/scripts/run-mcp-server.js
     env:
-      ATLAS_MCP_MODE: notes-write
+      ATLAS_MCP_MODE: read-write
 ```
 
-Use `notes-write` when Pamac explicitly wants requests such as "create these
-revision notes and save them in Atlas" to persist an agent-owned note. Keep
-`ATLAS_MCP_MODE=read-write` disabled unless memory replacement is separately
-approved. Restart Hermes after changing its native MCP configuration.
+Use `read-write` for Pamac's normal personal workflow so note-like academic
+requests persist as agent-owned notes and durable response preferences update
+course profiles. Use `notes-write` only for a deliberately restricted client
+that may create notes but must not adapt profiles. Restart Hermes after changing
+its native MCP configuration.
 
 ## Data ownership and privacy
 

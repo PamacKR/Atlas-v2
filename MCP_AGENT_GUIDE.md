@@ -16,19 +16,66 @@ If the `atlas_*` tools are not available in the current client, treat that as a 
 
 ## Connection mode and write boundary
 
-The standard external-agent connection is read-only. With no override, or with
-`ATLAS_MCP_MODE=read-only`, Atlas exposes the 11 retrieval and visual tools but
-does not register `atlas_write_memory` or `atlas_create_note`.
+The server itself still defaults to read-only when no mode is selected. Pamac's
+normal project and shared Codex configurations deliberately use
+`ATLAS_MCP_MODE=read-write`, which exposes the 11 retrieval tools plus
+`atlas_write_memory` and `atlas_create_note`. This is the intended personal-use
+surface: profile learning and note persistence are core Atlas workflows, not
+exceptional administration tasks.
 
-`ATLAS_MCP_MODE=notes-write` adds only `atlas_create_note`, allowing an agent to
-save explicitly requested study guides or revision notes as agent-owned Atlas
-notes. `ATLAS_MCP_MODE=read-write` additionally exposes `atlas_write_memory`.
-A process must explicitly select one of these modes before any write tool exists.
+`ATLAS_MCP_MODE=notes-write` remains available for clients that should create
+agent-owned notes but not update profiles. `ATLAS_MCP_MODE=read-only` remains
+available for retrieval-only clients. The Atlas `agentAccess` setting is the
+master switch for all modes.
 
-The Atlas `agentAccess` setting remains the master switch for all modes. A
-read-only connection does not authorise writes, and a notes-write connection
-still requires the user to explicitly request note creation. Do not infer
-permission from the fact that a client can see a tool.
+The write boundary is narrow. `atlas_write_memory` only replaces a general or
+course memory file. `atlas_create_note` only creates a new agent-owned note; it
+cannot edit a note Pamac wrote. Neither tool can edit courses, resources,
+deadlines, announcements, assignments, or source data.
+
+## Adaptive course profiles
+
+Course memory exists so a fresh conversation can immediately answer each
+course in the way Pamac wants. Treat the following as durable profile signals:
+
+- a standing phrase such as "for this course", "always", "from now on", or
+  "when you explain this subject";
+- a direct course-specific preference about detail, reasoning, simplification,
+  bullets, prose, derivations, examples, citations, or tone;
+- a correction that clearly describes how future answers for that course
+  should differ.
+
+When one of those signals appears, resolve the course, read its current memory
+with `atlas_course_briefing`, and update it in the same turn. Expressing the
+standing preference is authorisation to store it. Do not ask Pamac to repeat
+the preference as a separate save command.
+
+Do not persist a one-off constraint such as "answer this in three bullets" or
+"keep this particular answer short" unless Pamac frames it as ongoing or later
+repeats the correction. Do not infer preferences from silence, guess that a
+subject requires a particular style, or store uncertain academic claims as
+facts. Because `atlas_write_memory` fully replaces the file, preserve all
+useful non-conflicting existing content and revise or remove only what the new
+instruction supersedes.
+
+General preferences belong in general memory. Course-specific preferences
+belong only in that course's memory. A preference supplied by Pamac is
+user-originated profile data, not an AI-inferred canonical academic
+relationship prohibited by PRD section 17.
+
+## Persistent note creation
+
+When Pamac asks for reusable academic notes, a study guide, revision material,
+or a lecture summary intended as notes, create the finished artifact in Atlas
+with `atlas_create_note` in the same turn. The note-like request itself
+authorises persistence, so do not require the extra phrase "save this". Use the
+resolved course when one is clear; use General only for genuinely cross-course
+or unsorted material.
+
+Do not save ordinary factual answers, quick explanations, transient drafts, or
+casual question-and-answer exchanges. If the user asks only for an answer, give
+an answer. If the user asks for notes, the durable Atlas note is the primary
+artifact and the response should state where it was saved.
 
 ## Resolve the request in bounded steps
 
@@ -82,7 +129,7 @@ Ask the user when:
 - multiple resources could be the requested lecture;
 - a numbered item is missing but adjacent items are present;
 - the source exists but is unsupported, empty, or awaiting OCR and another source would change the answer;
-- the requested action would write, move, delete, or otherwise change Atlas data and the user has not clearly authorized it.
+- the requested action would move, delete, overwrite user-authored content, or otherwise change canonical Atlas data and the user has not clearly authorised it.
 
 When the client supports structured user input, use it for a short choice list. For Codex specifically, use the blocking structured question interaction used in Plan mode: the current task must pause until the user answers. Do not continue searching, spend tokens on more guesses, or produce the final answer while waiting for that response. Otherwise ask the same question in plain language. Do not hide a clarification question inside a long explanation.
 
@@ -113,9 +160,10 @@ Then give the closest verified candidates, if any, and ask one focused question.
 
 ## Data boundary
 
-MCP reads and writes are separate responsibilities. The default read-only
-connection cannot create notes or change memory. A `notes-write` connection can
-only create a new agent-owned note after an explicit user request. The broader
-`read-write` mode also permits memory replacement and should remain disabled for
-normal study-note creation. Reading and summarizing never authorises moving,
-deleting, or otherwise changing Atlas data.
+MCP reads and writes remain separate responsibilities. Pamac's normal
+`read-write` connection can update agent memory and create agent-owned notes
+under the rules above, but it cannot mutate canonical academic records. Asking
+for a note-like artifact authorises creation of that new note. Expressing a
+durable response preference authorises the corresponding profile update.
+Reading or summarising alone never authorises moving, deleting, overwriting
+user-authored content, or otherwise changing Atlas data.

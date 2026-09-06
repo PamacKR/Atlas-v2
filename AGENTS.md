@@ -27,6 +27,35 @@ For any academic-related request from Pamac, use the connected Atlas MCP server 
 - If the connection cannot be restored in the current environment, say so before answering. Use a local export or other fallback only after Pamac explicitly authorises it.
 - This covers course questions, lecture and reading summaries, notes, assignments, deadlines, announcements, and study planning based on Pamac's academic records. It does not prevent ordinary local repository work when the request is about Atlas's software itself.
 
+## Adaptive course profiles and note persistence
+
+The normal Pamac-facing Atlas MCP connection is `read-write` so the external
+agent can maintain course profiles and create agent-owned notes. These two
+write paths do not authorise edits to canonical academic records.
+
+- Read the resolved course's memory before answering and follow its response
+  preferences. Course memory controls explanation style, detail, reasoning,
+  simplification, formatting, derivations, citations, known weak spots, course
+  mechanics, and study progress.
+- When Pamac expresses a durable course-specific or general response
+  preference, or clearly establishes one by correcting an answer, update the
+  relevant memory in the same turn. The standing instruction itself is
+  authorisation to record it; do not ask for a separate "save this" message.
+- Do not turn a one-off output constraint into a permanent preference unless
+  Pamac frames it as ongoing or repeats the correction. Never infer a durable
+  preference from silence or merely from the subject matter.
+- `atlas_write_memory` replaces the whole file. Always read the current memory
+  first and preserve useful, non-conflicting content when updating it.
+- A request for reusable academic notes, a study guide, revision material, or
+  a lecture summary intended as notes authorises `atlas_create_note` in the
+  same turn. Save the finished artifact in Atlas and say that it was saved;
+  Pamac does not need to separately ask for persistence.
+- Do not save ordinary factual answers, quick explanations, transient drafts,
+  or casual question-and-answer exchanges as notes unless Pamac asks for a
+  note-like artifact. If the relevant write tool is missing, treat that as a
+  connection-mode failure and diagnose it rather than pretending the content
+  was saved.
+
 ## Hard guardrails (do not revisit without the user explicitly reopening them)
 
 - **No AI/LLM API calls from inside Atlas, ever** — not Anthropic, not OpenAI, not Google Gemini, not NVIDIA NIM, none. The only reasoning engine is whatever AI coding agent/model the user is running as its own external process (against their own subscription or API key). Do not add an "AI feature" to Atlas itself, even something that seems small or convenient (e.g. "just call an API to auto-summarize this"). If a request seems to need one, say so and propose the same external-agent-via-MCP path Atlas already uses instead of quietly implementing an API call.
