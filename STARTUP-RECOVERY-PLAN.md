@@ -1,8 +1,8 @@
 # Atlas cold-start and extraction recovery plan
 
-**Status:** Implementation in progress from 2026-09-05 approval. Checkpoints are being applied incrementally; the live database repair remains gated behind copied-data verification.
+**Status:** Historical 2026-09-05 implementation plan. The remote extraction repair and fast first-window work are complete. Post-window responsiveness was reopened by live evidence on 2026-09-06 and is now planned separately in `POST-LAUNCH-RESPONSIVENESS-PLAN.md`.
 
-**Progress:** The core recovery is implemented and verified. Remote state correction, single-flight extraction requests, single-instance protection, lazy heavy-module loading, the renderer-ready startup gate, live 29-row repair and cold-like benchmarking are complete. Utility-process parsing and richer retry backoff remain optional follow-up hardening because the measured startup and live repair objectives are already met.
+**Progress:** Remote state correction, single-flight extraction requests, single-instance protection, lazy heavy-module loading, the renderer-ready startup gate, live 29-row repair and cold-like shell benchmarking were completed. The later connected-launch trace proved that lazy loading merely moved a substantial synchronous pause behind the visible window. Utility-process parsing, Google service isolation and continuous responsiveness measurement are therefore no longer optional; their replacement plan is `POST-LAUNCH-RESPONSIVENESS-PLAN.md`.
 
 ## Problem statement
 
