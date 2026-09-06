@@ -348,8 +348,8 @@ The default project MCP surface is read-only and contains eleven tools:
 | atlas_read_note | Read a note's full Markdown content |
 | atlas_read_classroom_item | Read a full locally synced announcement or assignment |
 
-`ATLAS_MCP_MODE=notes-write` adds only `atlas_create_note`. The broader
-`ATLAS_MCP_MODE=read-write` mode adds both `atlas_create_note` and
+`ATLAS_MCP_MODE=notes-write` adds `atlas_create_note` and `atlas_update_note`.
+The broader `ATLAS_MCP_MODE=read-write` mode adds those note tools and
 `atlas_write_memory`. Pamac's normal project and shared Codex configurations
 use `read-write` so requested reusable academic notes are saved in Atlas and
 durable per-course response preferences are learned without a separate save

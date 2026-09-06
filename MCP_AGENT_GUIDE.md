@@ -19,7 +19,7 @@ If the `atlas_*` tools are not available in the current client, treat that as a 
 The server itself still defaults to read-only when no mode is selected. Pamac's
 normal project and shared Codex configurations deliberately use
 `ATLAS_MCP_MODE=read-write`, which exposes the 11 retrieval tools plus
-`atlas_write_memory` and `atlas_create_note`. This is the intended personal-use
+`atlas_write_memory`, `atlas_create_note`, and `atlas_update_note`. This is the intended personal-use
 surface: profile learning and note persistence are core Atlas workflows, not
 exceptional administration tasks.
 
@@ -29,9 +29,13 @@ available for retrieval-only clients. The Atlas `agentAccess` setting is the
 master switch for all modes.
 
 The write boundary is narrow. `atlas_write_memory` only replaces a general or
-course memory file. `atlas_create_note` only creates a new agent-owned note; it
-cannot edit a note Pamac wrote. Neither tool can edit courses, resources,
-deadlines, announcements, assignments, or source data.
+course memory file. `atlas_create_note` creates a new agent-owned note, and
+`atlas_update_note` revises an existing agent-owned note in place when Pamac
+asks for a correction, reformat, or other maintenance. `atlas_update_note`
+rejects user-authored notes. Neither note tool can edit courses, resources,
+deadlines, announcements, assignments, or source data. For equations, use
+Atlas's native math syntax: `$...$` for inline maths and `$$...$$` for display
+maths.
 
 ## Adaptive course profiles
 
@@ -67,7 +71,9 @@ relationship prohibited by PRD section 17.
 
 When Pamac asks for reusable academic notes, a study guide, revision material,
 or a lecture summary intended as notes, create the finished artifact in Atlas
-with `atlas_create_note` in the same turn. The note-like request itself
+with `atlas_create_note` in the same turn. If the requested artifact already
+exists as an agent-generated note, use `atlas_update_note` instead of creating
+a duplicate. The note-like request itself
 authorises persistence, so do not require the extra phrase "save this". Use the
 resolved course when one is clear; use General only for genuinely cross-course
 or unsorted material.

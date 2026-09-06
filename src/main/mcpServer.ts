@@ -29,6 +29,7 @@ import {
   resolveVisualSource,
   writeCourseOrGeneralMemory,
   createAgentNote,
+  updateAgentNote,
 } from './contextBuilder';
 import { renderVisual } from './mcpVisual';
 
@@ -97,7 +98,7 @@ async function main(): Promise<void> {
     { name: 'atlas', version: '1.0.0' },
     {
       instructions:
-        "Atlas is the canonical source of Pamac's academic data, including material synced from Google Classroom or linked through Google Drive that may not exist as local files. For any academic question, use Atlas tools before local file access: call atlas_overview, resolve the named course and material, then read the verified source. Do not create local copies, search the repository, or invent a substitute when Atlas is unavailable. If a course or material is ambiguous or missing, follow the resolver result and ask Pamac rather than guessing. When atlas_write_memory is available, automatically maintain course profiles from durable response preferences Pamac expresses or clearly establishes through correction; expressing the standing preference is authorization to record it, so do not ask for a separate save confirmation. Do not persist a one-off formatting request or infer a preference from silence. When atlas_create_note is available, a request for reusable academic notes, a study guide, revision material, or a similar note-like artifact authorizes saving it in Atlas in the same turn without a second save request; do not save ordinary question-and-answer responses as notes.",
+        "Atlas is the canonical source of Pamac's academic data, including material synced from Google Classroom or linked through Google Drive that may not exist as local files. For any academic question, use Atlas tools before local file access: call atlas_overview, resolve the named course and material, then read the verified source. Do not create local copies, search the repository, or invent a substitute when Atlas is unavailable. If a course or material is ambiguous or missing, follow the resolver result and ask Pamac rather than guessing. When atlas_write_memory is available, automatically maintain course profiles from durable response preferences Pamac expresses or clearly establishes through correction; expressing the standing preference is authorization to record it, so do not ask for a separate save confirmation. Do not persist a one-off formatting request or infer a preference from silence. When atlas_create_note is available, a request for reusable academic notes, a study guide, revision material, or a similar note-like artifact authorizes saving it in Atlas in the same turn without a second save request; when atlas_update_note is available, revise an existing agent-generated note in place rather than creating a duplicate. Use native Atlas math syntax in notes: `$...$` for inline maths and `$$...$$` for display maths. Do not save ordinary question-and-answer responses as notes.",
     }
   );
 
@@ -386,7 +387,7 @@ async function main(): Promise<void> {
     'atlas_create_note',
     {
       description:
-        'Create a new persistent Atlas note in a course, or omit/null `course` for General/unsorted. A request for reusable academic notes, a study guide, revision material, a lecture summary intended as notes, or a similar note-like artifact authorizes saving it in Atlas in the same turn; do not ask Pamac to separately say "save this". Do not save ordinary question-and-answer responses, transient drafts, or casual explanations unless Pamac asks for a note-like artifact. The note is saved and searchable later. This can only create a new note and can never edit or overwrite a note Pamac wrote.',
+        'Create a new persistent Atlas note in a course, or omit/null `course` for General/unsorted. A request for reusable academic notes, a study guide, revision material, a lecture summary intended as notes, or a similar note-like artifact authorizes saving it in Atlas in the same turn; do not ask Pamac to separately say "save this". Do not save ordinary question-and-answer responses, transient drafts, or casual explanations unless Pamac asks for a note-like artifact. The note is saved and searchable later. Use native Atlas math syntax in content_markdown: `$...$` for inline math and `$$...$$` for display math. Use atlas_update_note to revise an existing agent-generated note.',
       inputSchema: {
         course: z.union([z.string(), z.number()]).nullable().optional(),
         title: z.string(),
@@ -399,6 +400,30 @@ async function main(): Promise<void> {
       if (result.ok) {
         const noteRow = db.prepare('SELECT course_id FROM notes WHERE id = ?').get(result.noteId) as { course_id: number | null };
         indexNoteForSearch(db, result.noteId, noteRow.course_id, title, content_markdown);
+      }
+      return jsonResult(db, result);
+    }
+  );
+
+  server.registerTool(
+    'atlas_update_note',
+    {
+      description:
+        'Update an existing agent-generated Atlas note in place. This tool rejects user-authored notes and never edits canonical academic records. Pass the complete replacement Markdown body in content_markdown; omit title to preserve the current title, or pass title to set it manually. Use native Atlas math syntax: `$...$` for inline math and `$$...$$` for display math. A request to revise, correct, reformat, or otherwise maintain an agent-generated academic note authorizes this update in the same turn.',
+      inputSchema: {
+        note_id: z.number().int(),
+        content_markdown: z.string(),
+        title: z.string().optional(),
+      },
+    },
+    async ({ note_id, content_markdown, title }) => {
+      if (!agentAccessAllowed(db)) return jsonResult(db, null);
+      const result = updateAgentNote(db, note_id, content_markdown, title);
+      if (result.ok) {
+        const noteRow = db
+          .prepare('SELECT course_id, title FROM notes WHERE id = ?')
+          .get(result.noteId) as { course_id: number | null; title: string };
+        indexNoteForSearch(db, result.noteId, noteRow.course_id, noteRow.title, content_markdown);
       }
       return jsonResult(db, result);
     }

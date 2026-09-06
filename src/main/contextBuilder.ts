@@ -1096,9 +1096,9 @@ export function writeCourseOrGeneralMemory(db: Database.Database, course: string
   return { ok: true as const };
 }
 
-// Can only ever create — never overwrites or edits an existing note, so an
-// agent can add a study guide but never touch something the user wrote
-// (Phase 4 architecture §4, a boundary the user explicitly asked for).
+// Agent-owned notes can be revised in place, but user-authored notes remain
+// outside the MCP write boundary. This keeps the useful persistence workflow
+// editable without giving the external agent authority over Pamac's own notes.
 export function createAgentNote(
   db: Database.Database,
   course: string | number | null | undefined,
@@ -1117,4 +1117,41 @@ export function createAgentNote(
     .prepare('INSERT INTO notes (course_id, title, content_markdown, generated_by_agent) VALUES (?, ?, ?, 1)')
     .run(lookup.course.id, title, contentMarkdown);
   return { ok: true as const, noteId: Number(result.lastInsertRowid), courseId: lookup.course.id, courseName: lookup.course.name };
+}
+
+export function updateAgentNote(
+  db: Database.Database,
+  noteId: number,
+  contentMarkdown: string,
+  title?: string
+) {
+  const note = db
+    .prepare('SELECT id, course_id, title, generated_by_agent FROM notes WHERE id = ?')
+    .get(noteId) as
+    | { id: number; course_id: number | null; title: string; generated_by_agent: number }
+    | undefined;
+
+  if (!note) return { ok: false as const, error: `No note with id ${noteId}.` };
+  if (note.generated_by_agent !== 1) {
+    return { ok: false as const, error: `Note ${noteId} is user-authored and cannot be edited through Atlas MCP.` };
+  }
+
+  const nextTitle = title === undefined ? note.title : title.trim() || 'Untitled';
+  if (title === undefined) {
+    db.prepare("UPDATE notes SET content_markdown = ?, updated_at = datetime('now') WHERE id = ?").run(
+      contentMarkdown,
+      noteId
+    );
+  } else {
+    db.prepare(
+      "UPDATE notes SET content_markdown = ?, title = ?, title_is_manual = 1, updated_at = datetime('now') WHERE id = ?"
+    ).run(contentMarkdown, nextTitle, noteId);
+  }
+
+  return {
+    ok: true as const,
+    noteId,
+    courseId: note.course_id,
+    title: nextTitle,
+  };
 }

@@ -66,7 +66,7 @@ use `read-write`, because persistent course profiles and durable agent-created
 notes are core personal-use requirements.
 
 `ATLAS_MCP_MODE=notes-write` exposes the 11 read-only tools plus
-`atlas_create_note` for agent-owned study notes. It does not expose
+`atlas_create_note` and `atlas_update_note` for agent-owned study notes. It does not expose
 `atlas_write_memory` and remains useful for clients that should not adapt
 course profiles.
 
@@ -74,6 +74,7 @@ The full write-capable mode is separate:
 
 - `atlas_write_memory`
 - `atlas_create_note`
+- `atlas_update_note`
 
 A process may explicitly opt into the full surface with:
 
@@ -81,7 +82,7 @@ A process may explicitly opt into the full surface with:
 ATLAS_MCP_MODE=read-write
 ```
 
-`read-write` exposes all 13 tools. Pamac explicitly selected it as the normal
+`read-write` exposes all 14 tools. Pamac explicitly selected it as the normal
 Codex mode on 2026-09-06 so a request for reusable academic notes can save the
 artifact immediately and durable course-response preferences can update the
 relevant profile without an extra "save this" round trip. The `agentAccess`
@@ -101,8 +102,9 @@ local Codex client.
 own native MCP configuration.
 
 After it is connected with the project or shared Codex configuration, the
-client should list all 13 `atlas_*` tools. A restricted `read-only` connection
-lists 11; `notes-write` lists 12, adding only `atlas_create_note`.
+client should list all 14 `atlas_*` tools. A restricted `read-only` connection
+lists 11; `notes-write` lists 13, adding `atlas_create_note` and
+`atlas_update_note`.
 Clients that support standard MCP form elicitation can receive the resolver's
 blocking candidate question directly; other clients receive a structured
 fallback result.
@@ -125,8 +127,9 @@ shared, plus links discovered inside them — fetched and extracted without ever
 being downloaded into Atlas's local storage.
 
 Write operations are unavailable in the server's read-only fallback.
-`notes-write` enables only `atlas_create_note`. `read-write` additionally
-enables `atlas_write_memory`, which replaces course or general agent memory.
+`notes-write` enables `atlas_create_note` and `atlas_update_note` for
+agent-owned notes. `read-write` additionally enables `atlas_write_memory`,
+which replaces course or general agent memory.
 Under `MCP_AGENT_GUIDE.md`, a request for reusable academic notes is itself
 authorisation to create the finished note in Atlas, and a durable response
 preference is authorisation to update the relevant profile. Ordinary answers

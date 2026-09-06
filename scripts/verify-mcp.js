@@ -371,8 +371,9 @@ async function main() {
   const noteWriteClient = new Client({ name: 'atlas-verify-notes-write-mode', version: '1.0.0' });
   await noteWriteClient.connect(noteWriteTransport);
   const noteWriteTools = await noteWriteClient.listTools();
-  assert(noteWriteTools.tools.length === 12, `explicit notes-write mode registers 12 tools (found ${noteWriteTools.tools.length})`);
+  assert(noteWriteTools.tools.length === 13, `explicit notes-write mode registers 13 tools (found ${noteWriteTools.tools.length})`);
   assert(noteWriteTools.tools.some((tool) => tool.name === 'atlas_create_note'), 'notes-write mode exposes atlas_create_note');
+  assert(noteWriteTools.tools.some((tool) => tool.name === 'atlas_update_note'), 'notes-write mode exposes atlas_update_note');
   assert(!noteWriteTools.tools.some((tool) => tool.name === 'atlas_write_memory'), 'notes-write mode does not expose atlas_write_memory');
   const noteWriteResult = await noteWriteClient.callTool({
     name: 'atlas_create_note',
@@ -390,11 +391,13 @@ async function main() {
   const writeClient = new Client({ name: 'atlas-verify-write-mode', version: '1.0.0' });
   await writeClient.connect(writeTransport);
   const writeToolsList = await writeClient.listTools();
-  assert(writeToolsList.tools.length === 13, `explicit read-write mode registers all 13 tools (found ${writeToolsList.tools.length})`);
+  assert(writeToolsList.tools.length === 14, `explicit read-write mode registers all 14 tools (found ${writeToolsList.tools.length})`);
   assert(writeToolsList.tools.some((tool) => tool.name === 'atlas_write_memory'), 'explicit read-write mode exposes atlas_write_memory');
   assert(writeToolsList.tools.some((tool) => tool.name === 'atlas_create_note'), 'explicit read-write mode exposes atlas_create_note');
+  assert(writeToolsList.tools.some((tool) => tool.name === 'atlas_update_note'), 'explicit read-write mode exposes atlas_update_note');
   const memoryTool = writeToolsList.tools.find((tool) => tool.name === 'atlas_write_memory');
   const noteTool = writeToolsList.tools.find((tool) => tool.name === 'atlas_create_note');
+  const updateNoteTool = writeToolsList.tools.find((tool) => tool.name === 'atlas_update_note');
   assert(
     memoryTool?.description?.includes('durable response preference') &&
       memoryTool.description.includes('do not ask for a separate save confirmation'),
@@ -402,8 +405,15 @@ async function main() {
   );
   assert(
     noteTool?.description?.includes('reusable academic notes') &&
-      noteTool.description.includes('do not ask Pamac to separately say'),
+      noteTool.description.includes('do not ask Pamac to separately say') &&
+      noteTool.description.includes('native Atlas math syntax'),
     'atlas_create_note treats a note-like request as authorization to save it'
+  );
+  assert(
+    updateNoteTool?.description?.includes('agent-generated Atlas note') &&
+      updateNoteTool.description.includes('rejects user-authored notes') &&
+      updateNoteTool.description.includes('native Atlas math syntax'),
+    'atlas_update_note documents the protected in-place editing boundary and native math syntax'
   );
 
   const callWriteTool = async (name, args) => {
@@ -421,9 +431,22 @@ async function main() {
   const noteResult = await callWriteTool('atlas_create_note', {
     course: courseId,
     title: 'Agent-generated study guide',
-    content_markdown: '# Study guide\nCovers supply and demand.',
+    content_markdown: '# Study guide\n\n$$PV = \\frac{CF_t}{(1+r)^t}$$',
   });
   assert(noteResult.ok === true, 'explicit read-write mode allows atlas_create_note');
+
+  const updateResult = await callWriteTool('atlas_update_note', {
+    note_id: noteResult.noteId,
+    content_markdown: '# Updated study guide\n\n$$PV = \\frac{CF_t}{(1+r)^t}$$\n\nNow maintained in place.',
+  });
+  assert(updateResult.ok === true, 'explicit read-write mode allows atlas_update_note');
+  const updatedNote = await callWriteTool('atlas_read_note', { note_id: noteResult.noteId });
+  assert(
+    updatedNote.ok === true &&
+      updatedNote.note.content_markdown.includes('Updated study guide') &&
+      updatedNote.note.content_markdown.includes('$$PV'),
+    'atlas_update_note replaces the note body while preserving native display-math syntax'
+  );
 
   const generalNoteResult = await callWriteTool('atlas_create_note', {
     title: 'General study method',
@@ -454,6 +477,15 @@ async function main() {
   assert(createdGeneralNote.course_id === null && createdGeneralNote.generated_by_agent === 1, 'the General note is stored as an agent-generated note');
   const userNote = writeDbCheck.prepare("SELECT generated_by_agent FROM notes WHERE title = 'My own notes'").get();
   assert(userNote.generated_by_agent === 0, "the user's pre-existing note remains user-authored");
+  const userNoteId = writeDbCheck.prepare("SELECT id FROM notes WHERE title = 'My own notes'").get().id;
+  const protectedUpdate = await callWriteTool('atlas_update_note', {
+    note_id: userNoteId,
+    content_markdown: 'This must not overwrite the user note.',
+  });
+  assert(
+    protectedUpdate.ok === false && protectedUpdate.error.includes('user-authored'),
+    'atlas_update_note rejects edits to user-authored notes'
+  );
   const searchHitForNewNote = writeDbCheck
     .prepare("SELECT 1 FROM search_index WHERE entity_type = 'note' AND entity_id = ?")
     .get(noteResult.noteId);

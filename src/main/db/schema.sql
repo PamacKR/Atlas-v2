@@ -186,8 +186,8 @@ CREATE TABLE IF NOT EXISTS notes (
   -- Set when an AI agent created this note (Phase 4 Part B,
   -- Phase 4 architecture §4) rather than the user — typed, imported, and scanned
   -- notes are all "user-made" alike, so this is orthogonal to is_handwritten.
-  -- Drives a badge + filter; agent-created notes can never be edited by the
-  -- agent afterward, only created fresh.
+  -- Drives a badge + filter; agent-created notes may be revised in place by
+  -- the external agent, while user-authored notes remain protected.
   generated_by_agent INTEGER NOT NULL DEFAULT 0
 );
 

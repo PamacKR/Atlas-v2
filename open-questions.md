@@ -425,9 +425,21 @@ treated as evidence of a preference.
 
 Likewise, asking for reusable academic notes, a study guide, revision material,
 or a lecture summary intended as notes authorises creation of an agent-owned
-Atlas note without a second persistence request. Ordinary Q&A remains in chat
-and does not create clutter. Pamac's normal project and shared Codex MCP
-configuration therefore uses `ATLAS_MCP_MODE=read-write`, whose only write
-capabilities are replacing agent memory and creating a new agent-owned note. It
-cannot edit canonical academic records, overwrite user-authored notes, or
-delete data.
+Atlas note without a second persistence request. If the requested note already
+exists and is agent-generated, the agent may revise it in place with
+`atlas_update_note` rather than creating a duplicate. Ordinary Q&A remains in
+chat and does not create clutter. Pamac's normal project and shared Codex MCP
+configuration therefore uses `ATLAS_MCP_MODE=read-write`, whose write
+capabilities are replacing agent memory, creating agent-owned notes, and
+updating agent-owned notes. It cannot edit canonical academic records,
+overwrite user-authored notes, or delete data.
+
+### 33. In-place maintenance of agent notes and native equation formatting
+
+**Status:** Resolved/built (2026-09-06). Agent-generated notes are editable in
+place through `atlas_update_note`, which accepts a complete replacement body
+and optional title. The tool rejects notes authored by Pamac, so persistence is
+maintainable without widening the write boundary over the user's own material.
+Atlas note content should use the editor's native math syntax, `$...$` for
+inline maths and `$$...$$` for displayed equations, rather than raw
+LaTeX delimiters such as `\(...\)` or `\[...\]`.
