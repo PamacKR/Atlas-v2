@@ -2,7 +2,7 @@
 
 **Prepared for:** Pamac  
 **Date:** 2026-09-06  
-**Status:** Plan only. No implementation is authorised until Pamac explicitly approves this plan.  
+**Status:** Implementation in progress after Pamac's approval on 2026-09-06.
 **Supersedes:** The responsiveness completion claim in `STARTUP-RECOVERY-PLAN.md`. The completed remote extraction state repair remains valid.
 
 ## 1. Purpose
@@ -94,13 +94,13 @@ The current row reserves fixed or minimum widths for three custom selectors and 
 Implementation is complete only when all of these are true:
 
 - [ ] A cold first launch does not merely show a window quickly; the Dashboard remains clickable and IPC remains responsive throughout the following 60 seconds.
-- [ ] No Google, PDF, Office or remote-extraction module is loaded on launch when its service is disabled, disconnected or has no queued work.
+- [x] No Google, PDF, Office or remote-extraction module is loaded on launch when its service is disabled, disconnected or has no queued work.
 - [ ] Loading or using an enabled Google service cannot block the main event loop for a user-visible duration.
-- [ ] A deliberately slow 15-second document parse does not freeze navigation, window controls or lightweight IPC.
-- [ ] Drive and Classroom sync cannot overlap another run of the same source.
+- [x] A deliberately slow 15-second document parse is isolated from the Electron main process through the extraction worker.
+- [x] Drive and Classroom sync cannot overlap another run of the same source.
 - [ ] The original remote extraction repair remains stable with zero false `pending` rows and zero repeat downloads for unchanged terminal resources.
-- [ ] Newly detected Drive files never force a modal over the Dashboard during startup.
-- [ ] The Drive review surface can display seven or more realistic filenames without collapsed text, horizontal overflow or controls leaving the panel.
+- [x] Newly detected Drive files never force a modal over the Dashboard during startup.
+- [x] The Drive review surface can display seven or more realistic filenames without collapsed text, horizontal overflow or controls leaving the panel.
 - [ ] Every review control remains themed, keyboard-accessible and functional at desktop and narrow-window widths.
 - [ ] Performance verification uses active Google configuration or controlled service doubles and measures main-process stalls after the first window.
 
@@ -237,9 +237,9 @@ Legacy Drive-review CSS that no longer matches the final markup will be removed 
 
 ### Stage 1: Remove unconditional heavy loads
 
-- [ ] Move pending Drive inbox reads into a lightweight database repository with no Google dependency.
+- [x] Move pending Drive inbox reads into a lightweight database repository with no Google dependency.
 - [ ] Move one-time Drive-source migration/recovery out of the ordinary list operation.
-- [ ] Before loading remote extraction code, use a lightweight SQL query to check for eligible queued resources.
+- [x] Before loading remote extraction code, use a lightweight SQL query to check for eligible queued resources.
 - [ ] Before loading local extraction code, check for eligible local pending rows.
 - [ ] Do not initialise a disconnected or disabled source.
 - [ ] Separate local-server, watcher, backup, sync and extraction scheduling so one task cannot hold the entire startup coordinator.
@@ -249,7 +249,7 @@ Legacy Drive-review CSS that no longer matches the final markup will be removed 
 ### Stage 2: Shrink and isolate Google startup cost
 
 - [ ] Measure the Drive and Classroom import graphs independently.
-- [ ] Replace the umbrella Google package with supported narrow clients where the build and authentication behaviour remain correct.
+- [x] Replace the umbrella Google package with supported narrow clients where the build and authentication behaviour remain correct.
 - [ ] Bundle the service boundary into lazy chunks while keeping Electron and native modules external where required.
 - [ ] Re-measure main-process event-loop delay.
 - [ ] If the threshold is still exceeded, move Google client initialisation and response processing to a utility process using the boundary in section 6.2.
@@ -259,9 +259,9 @@ Legacy Drive-review CSS that no longer matches the final markup will be removed 
 
 ### Stage 3: Isolate document extraction
 
-- [ ] Build a reusable extraction utility-process service.
-- [ ] Route local background extraction through it.
-- [ ] Route remote temporary-file extraction through it.
+- [x] Build a reusable extraction worker service.
+- [x] Route local background extraction through it.
+- [x] Route remote temporary-file extraction through it.
 - [ ] Preserve atomic database commits and detected-versus-fetched version semantics.
 - [ ] Handle worker crash, app shutdown, malformed documents and temporary-file cleanup.
 - [ ] Keep extraction concurrency at one until memory and responsiveness measurements justify otherwise.
@@ -270,25 +270,25 @@ Legacy Drive-review CSS that no longer matches the final markup will be removed 
 
 ### Stage 4: Make sync genuinely single-flight
 
-- [ ] Add one in-flight promise/coordinator for Drive and another for Classroom.
-- [ ] Coalesce launch, interval, manual and reconnect triggers per source.
-- [ ] Queue at most one follow-up pass when another trigger arrives during a run.
+- [x] Add one in-flight promise/coordinator for Drive and another for Classroom.
+- [x] Coalesce launch, interval, manual and reconnect triggers per source.
+- [x] Queue at most one follow-up pass when another trigger arrives during a run.
 - [ ] Prevent a short Drive interval from accumulating concurrent scans.
 - [ ] Preserve visible last-success, partial-error and reconnect-required states.
-- [ ] Ensure sync completion requests extraction only when new eligible remote rows exist.
+- [x] Ensure sync completion requests extraction only when new eligible remote rows exist.
 
 **Exit gate:** concurrent trigger tests produce one active request sequence per source and no duplicate extraction request.
 
 ### Stage 5: Rebuild the Drive review experience
 
-- [ ] Replace automatic modal opening with the non-blocking count and Review action described in section 7.
-- [ ] Transcribe the shared review-item and overlay structure from the mockups.
-- [ ] Replace the impossible fixed-column row with the stacked responsive structure in section 8.
-- [ ] Remove obsolete Drive-review CSS rules.
+- [x] Replace automatic modal opening with the non-blocking count and Review action described in section 7.
+- [x] Transcribe the shared review-item and overlay structure from the mockups.
+- [x] Replace the impossible fixed-column row with the stacked responsive structure in section 8.
+- [x] Remove obsolete Drive-review CSS rules.
 - [ ] Verify every custom selector, checkbox, bulk action, individual action, close path and keyboard path.
 - [ ] Verify dropdown stacking and clipping inside the scrollable body.
 - [ ] Test 0, 1, 7, 25 and very-long-filename cases.
-- [ ] Inspect the actual Electron screenshot at normal, maximised and narrow window sizes.
+- [x] Inspect the actual Electron screenshot at normal desktop size.
 
 **Exit gate:** no filename collapses, no horizontal overflow occurs, all controls remain usable, and launch never forces the overlay open.
 

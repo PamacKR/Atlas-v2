@@ -2,9 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { google } from 'googleapis';
+import { drive as driveApi, auth as googleAuth } from 'googleapis/build/src/apis/drive';
 import { getClassroomClient, getDriveClient } from './googleAuth';
-import { extractDocumentParts, DocumentPart, DiscoveredLink } from './textExtraction';
+import type { DocumentPart, DiscoveredLink } from './textExtraction';
+import { extractDocumentPartsInWorker } from './extractionService';
 
 // Reads a Drive file's *content* without ever writing it under
 // Atlas-Storage/files/ (remote-attachment architecture §3.2) — bytes pass
@@ -23,7 +24,7 @@ export interface RemoteExtractResult {
   localTwinId?: number; // set when §3.3 found an existing local copy instead
 }
 
-type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
+type OAuth2Client = InstanceType<typeof googleAuth.OAuth2>;
 
 const GOOGLE_NATIVE_PREFIX = 'application/vnd.google-apps.';
 const GOOGLE_DOC = 'application/vnd.google-apps.document';
@@ -80,7 +81,7 @@ function candidateClients(): OAuth2Client[] {
 }
 
 async function getMetadata(
-  drive: ReturnType<typeof google.drive>,
+  drive: ReturnType<typeof driveApi>,
   fileId: string
 ): Promise<DriveMetadata> {
   const res = await drive.files.get({
@@ -103,7 +104,7 @@ async function getMetadata(
 }
 
 async function writeStreamToTemp(
-  drive: ReturnType<typeof google.drive>,
+  drive: ReturnType<typeof driveApi>,
   fileId: string,
   ext: string
 ): Promise<string> {
@@ -121,7 +122,7 @@ async function writeStreamToTemp(
 
 async function fetchExportText(
   client: OAuth2Client,
-  drive: ReturnType<typeof google.drive>,
+  drive: ReturnType<typeof driveApi>,
   fileId: string,
   exportMime: string
 ): Promise<string> {
@@ -149,7 +150,7 @@ async function fetchOneFile(
   client: OAuth2Client,
   fileId: string
 ): Promise<RemoteExtractResult> {
-  const drive = google.drive({ version: 'v3', auth: client });
+  const drive = driveApi({ version: 'v3', auth: client });
   const meta = await getMetadata(drive, fileId);
 
   if (meta.mimeType === GOOGLE_FOLDER) {
@@ -192,7 +193,7 @@ async function fetchOneFile(
     const tempPath = path.join(os.tmpdir(), `atlas-remote-${crypto.randomUUID()}.txt`);
     fs.writeFileSync(tempPath, text, 'utf-8');
     try {
-      const result = await extractDocumentParts('text', tempPath);
+      const result = await extractDocumentPartsInWorker('text', tempPath);
       return {
         status: result.status,
         parts: result.parts,
@@ -225,7 +226,7 @@ async function fetchOneFile(
     };
   }
   try {
-    const result = await extractDocumentParts(kind, tempPath);
+    const result = await extractDocumentPartsInWorker(kind, tempPath);
     return {
       status: result.status,
       parts: result.parts,

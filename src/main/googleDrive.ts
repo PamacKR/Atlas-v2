@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import Database from 'better-sqlite3';
-import { google } from 'googleapis';
+import { auth as googleAuth, drive as driveApi } from 'googleapis/build/src/apis/drive';
 import { getDb } from './db/database';
 import { getBackupsDir } from './paths';
 import { getClassroomClient, getDriveClient } from './googleAuth';
@@ -38,7 +38,7 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 // surfaced as an importable-then-failing item.
 const GOOGLE_NATIVE_MIME_PREFIX = 'application/vnd.google-apps.';
 
-type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
+type OAuth2Client = InstanceType<typeof googleAuth.OAuth2>;
 
 export interface DrivePendingFile {
   id: number;
@@ -186,9 +186,9 @@ export async function addDriveSource(
 
   let lastError: unknown;
   for (const client of clients) {
-    const drive = google.drive({ version: 'v3', auth: client });
+    const driveClient = driveApi({ version: 'v3', auth: client });
     try {
-      const res = await drive.files.get({ fileId: folderId, fields: 'id, name, mimeType' });
+      const res = await driveClient.files.get({ fileId: folderId, fields: 'id, name, mimeType' });
       if (res.data.mimeType !== 'application/vnd.google-apps.folder') {
         return { ok: false, error: 'That link is not a folder.' };
       }
@@ -246,7 +246,7 @@ interface DriveFileEntry {
 // guard against a pathological/cyclical folder structure, not a real
 // expected limit for a personal inbox folder.
 async function listDriveFilesRecursively(
-  drive: ReturnType<typeof google.drive>,
+  drive: ReturnType<typeof driveApi>,
   folderId: string,
   depth = 0
 ): Promise<DriveFileEntry[]> {
@@ -299,7 +299,7 @@ export async function scanDriveFolder(): Promise<boolean> {
     let lastError: unknown;
     for (const client of clients) {
       try {
-        const drive = google.drive({ version: 'v3', auth: client });
+      const drive = driveApi({ version: 'v3', auth: client });
         files = await listDriveFilesRecursively(drive, source.folder_id);
         break;
       } catch (err) {
@@ -363,7 +363,7 @@ export async function downloadDriveFileContent(driveFileId: string): Promise<Buf
   let lastError: unknown;
   for (const client of clients) {
     try {
-      const drive = google.drive({ version: 'v3', auth: client });
+        const drive = driveApi({ version: 'v3', auth: client });
       const res = await drive.files.get({ fileId: driveFileId, alt: 'media' }, { responseType: 'arraybuffer' });
       return Buffer.from(res.data as ArrayBuffer);
     } catch (err) {
@@ -414,7 +414,7 @@ function driveViewUrl(fileId: string): string {
 // than every later upload failing with a confusing "not found" against a
 // stale parent ID.
 async function ensureFolder(
-  drive: ReturnType<typeof google.drive>,
+  drive: ReturnType<typeof driveApi>,
   name: string,
   parentId: string | null,
   existingId: string | null
@@ -442,7 +442,7 @@ async function ensureFolder(
 
 // Created once, on first use — named and owned entirely by Atlas, unlike
 // the inbox folder (which the user points at by pasting a link).
-async function ensurePreviewFolder(drive: ReturnType<typeof google.drive>): Promise<string> {
+async function ensurePreviewFolder(drive: ReturnType<typeof driveApi>): Promise<string> {
   const folderId = await ensureFolder(drive, PREVIEW_FOLDER_NAME, null, getSetting(PREVIEW_FOLDER_ID_SETTING_KEY));
   setSetting(PREVIEW_FOLDER_ID_SETTING_KEY, folderId);
   return folderId;
@@ -456,7 +456,7 @@ async function ensurePreviewFolder(drive: ReturnType<typeof google.drive>): Prom
 // directly. Folder ID is remembered on the course row itself
 // (courses.drive_preview_folder_id), same pattern as the root folder.
 async function ensureCoursePreviewSubfolder(
-  drive: ReturnType<typeof google.drive>,
+  drive: ReturnType<typeof driveApi>,
   rootFolderId: string,
   courseId: number
 ): Promise<string> {
@@ -526,7 +526,7 @@ export async function uploadResourceForPreview(resourceId: number): Promise<Driv
     return { viewUrl: driveViewUrl(resource.drive_preview_file_id), uploaded: false };
   }
 
-  const drive = google.drive({ version: 'v3', auth: client });
+  const drive = driveApi({ version: 'v3', auth: client });
   const rootFolderId = await ensurePreviewFolder(drive);
   const folderId = await ensureCoursePreviewSubfolder(drive, rootFolderId, resource.course_id);
 
@@ -567,7 +567,7 @@ export async function uploadResourceForPreview(resourceId: number): Promise<Driv
 export async function deletePreviewCopy(driveFileId: string): Promise<void> {
   const client = getDriveClient();
   if (!client) return;
-  const drive = google.drive({ version: 'v3', auth: client });
+  const drive = driveApi({ version: 'v3', auth: client });
   try {
     await drive.files.delete({ fileId: driveFileId });
   } catch {

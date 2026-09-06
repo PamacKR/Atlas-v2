@@ -156,6 +156,8 @@ interface DrivePendingFile {
   detected_at: string;
 }
 
+let pendingDriveReviewCount = 0;
+
 interface ClassroomPendingCourse {
   id: number;
   classroom_course_id: string;
@@ -668,6 +670,8 @@ function showPage(page: AppPage): void {
     if (actions) actions.hidden = page !== name;
   }
   document.getElementById('main-area')!.dataset.page = page;
+  const driveNotice = document.getElementById('dashboard-drive-review-notice') as HTMLButtonElement | null;
+  if (driveNotice) driveNotice.hidden = page !== 'dashboard' || pendingDriveReviewCount === 0;
   document.querySelectorAll<HTMLElement>('.app-page').forEach((el) => {
     el.hidden = el.id !== `page-${page}`;
   });
@@ -2160,6 +2164,20 @@ async function addDriveSourceFromSettings(): Promise<void> {
   await renderDrivePendingStatus();
 }
 
+async function renderDriveReviewNotice(): Promise<void> {
+  const notice = document.getElementById('dashboard-drive-review-notice') as HTMLButtonElement | null;
+  if (!notice) return;
+  try {
+    const pending = await atlasApi.listPendingDriveFiles();
+    pendingDriveReviewCount = pending.length;
+    notice.textContent = pending.length === 1 ? 'Review 1 Drive file' : `Review ${pending.length} Drive files`;
+    notice.hidden = currentPage !== 'dashboard' || pending.length === 0;
+  } catch {
+    pendingDriveReviewCount = 0;
+    notice.hidden = true;
+  }
+}
+
 // --- Google Drive review panel ---
 // One row per pending file — course + Resource/Note + storage mode assignable
 // individually or, via the bulk controls, to every checked row at once. "Later" (the
@@ -2269,6 +2287,7 @@ async function renderDriveReviewList(courseOptions: DriveReviewOption[]): Promis
 // "No new files." placeholder once the list is actually empty.
 async function afterDriveRowResolved(): Promise<void> {
   await renderDrivePendingStatus();
+  await renderDriveReviewNotice();
   if (currentPage === 'resources') await renderResourcesPage();
   else if (currentPage === 'notes') await renderNotesPage();
   else if (currentPage === 'dashboard') await renderDashboard();
@@ -7389,13 +7408,14 @@ async function init(): Promise<void> {
     .addEventListener('click', () => void clearDrivePreviewCache());
   document.getElementById('drive-source-add')!.addEventListener('click', () => void addDriveSourceFromSettings());
   document.getElementById('drive-review-button')!.addEventListener('click', openDriveReviewPanel);
+  document.getElementById('dashboard-drive-review-notice')!.addEventListener('click', openDriveReviewPanel);
   document.getElementById('drive-review-close')!.addEventListener('click', closeDriveReviewPanel);
   document.getElementById('drive-review-select-all')!.addEventListener('click', toggleDriveReviewSelectAll);
   document.getElementById('drive-review-bulk-import')!.addEventListener('click', importSelectedDriveFiles);
   document.getElementById('drive-review-bulk-ignore')!.addEventListener('click', ignoreSelectedDriveFiles);
   atlasApi.onDriveChanged(() => {
     void renderDrivePendingStatus();
-    void openDriveReviewPanel();
+    void renderDriveReviewNotice();
   });
   atlasApi.onSyncStatusChanged((source) => {
     void renderSyncStatus();
@@ -7949,14 +7969,9 @@ async function init(): Promise<void> {
   });
 
   // The first scan can finish before renderer listeners receive its event.
-  // Check once after the initial page is usable so launch-time detection is
-  // still immediate and never depends on opening Settings manually.
-  setTimeout(async () => {
-    const pending = await atlasApi.listPendingDriveFiles();
-    if (pending.length > 0 && document.getElementById('drive-review-overlay')!.hidden) {
-      await openDriveReviewPanel();
-    }
-  }, 0);
+  // Show a quiet Dashboard notice after the initial page is usable; opening
+  // the full review panel remains an explicit user action.
+  void renderDriveReviewNotice();
 
   // Release main-process repair, sync and extraction work only after the
   // initial Dashboard is rendered and its event wiring is installed.

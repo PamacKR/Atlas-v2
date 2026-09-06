@@ -2,7 +2,7 @@ import { shell } from 'electron';
 import * as fs from 'fs';
 import * as http from 'http';
 import type { AddressInfo } from 'net';
-import { google } from 'googleapis';
+import { auth as googleAuth } from 'googleapis/build/src/apis/drive';
 import { getGoogleCredentialsPath } from './paths';
 
 // Avoid importing the `OAuth2Client` type directly from `google-auth-library`
@@ -10,7 +10,7 @@ import { getGoogleCredentialsPath } from './paths';
 // of that package, and TypeScript treats the two as structurally
 // incompatible. Deriving the type from `google.auth.OAuth2` itself sidesteps
 // the duplicate-package issue entirely.
-type OAuth2Client = InstanceType<typeof google.auth.OAuth2>;
+type OAuth2Client = InstanceType<typeof googleAuth.OAuth2>;
 import { getDb } from './db/database';
 
 const REFRESH_TOKEN_SETTING_KEY = 'google_drive_refresh_token';
@@ -123,7 +123,7 @@ export function getDriveClient(): OAuth2Client | null {
   const refreshToken = getStoredRefreshToken(REFRESH_TOKEN_SETTING_KEY);
   if (!refreshToken) return null;
   const { client_id, client_secret } = loadClientCredentials();
-  const client = new google.auth.OAuth2(client_id, client_secret);
+  const client = new googleAuth.OAuth2(client_id, client_secret);
   client.setCredentials({ refresh_token: refreshToken });
   return client;
 }
@@ -132,7 +132,7 @@ export function getClassroomClient(): OAuth2Client | null {
   const refreshToken = getStoredRefreshToken(CLASSROOM_REFRESH_TOKEN_SETTING_KEY);
   if (!refreshToken) return null;
   const { client_id, client_secret } = loadClientCredentials();
-  const client = new google.auth.OAuth2(client_id, client_secret);
+  const client = new googleAuth.OAuth2(client_id, client_secret);
   client.setCredentials({ refresh_token: refreshToken });
   return client;
 }
@@ -180,7 +180,7 @@ function authorize(settingKey: string, scopes: string[], connectedLabel: string)
         return;
       }
 
-      const client = new google.auth.OAuth2(client_id, client_secret, redirectUri);
+      const client = new googleAuth.OAuth2(client_id, client_secret, redirectUri);
       client
         .getToken(code)
         .then(({ tokens }) => {
@@ -202,7 +202,7 @@ function authorize(settingKey: string, scopes: string[], connectedLabel: string)
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as AddressInfo).port;
       redirectUri = `http://localhost:${port}`;
-      const client = new google.auth.OAuth2(client_id, client_secret, redirectUri);
+      const client = new googleAuth.OAuth2(client_id, client_secret, redirectUri);
       const authUrl = client.generateAuthUrl({
         access_type: 'offline',
         scope: scopes,

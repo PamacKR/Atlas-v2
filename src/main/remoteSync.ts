@@ -1,6 +1,6 @@
 import { getDb } from './db/database';
 import { fetchRemoteDriveFile } from './remoteFetch';
-import { DiscoveredLink } from './textExtraction';
+import type { DiscoveredLink } from './textExtraction';
 
 // Orchestrates remote-attachment reading (remote-attachment architecture) —
 // fetching a Classroom Drive attachment's text, and following links found

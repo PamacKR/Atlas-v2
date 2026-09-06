@@ -1,4 +1,5 @@
-import { google, classroom_v1 } from 'googleapis';
+import { classroom as googleClassroomApi } from 'googleapis/build/src/apis/classroom';
+import type { classroom_v1 } from 'googleapis/build/src/apis/classroom';
 import { getDb } from './db/database';
 import { getClassroomClient } from './googleAuth';
 
@@ -25,7 +26,7 @@ export interface ClassroomPendingCourse {
 function classroomApi(): classroom_v1.Classroom {
   const client = getClassroomClient();
   if (!client) throw new Error('Google Classroom is not connected.');
-  return google.classroom({ version: 'v1', auth: client });
+  return googleClassroomApi({ version: 'v1', auth: client });
 }
 
 // A name-match suggestion only — pre-fills the review panel's picker but is

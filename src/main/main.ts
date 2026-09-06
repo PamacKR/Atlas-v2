@@ -20,7 +20,7 @@ import {
 // not need.
 const getPreviewModule = () => require('./preview') as typeof import('./preview');
 const getOcrModule = () => require('./ocr') as typeof import('./ocr');
-const getTextExtractionModule = () => require('./textExtraction') as typeof import('./textExtraction');
+const getExtractionServiceModule = () => require('./extractionService') as typeof import('./extractionService');
 const getRemoteSyncModule = () => require('./remoteSync') as typeof import('./remoteSync');
 const getMemoryFilesModule = () => require('./memoryFiles') as typeof import('./memoryFiles');
 const getContextBuilderModule = () => require('./contextBuilder') as typeof import('./contextBuilder');
@@ -345,7 +345,7 @@ function scheduleExtraction(resourceId: number, kind: string, filePath: string):
     return;
   }
 
-  void getTextExtractionModule().extractDocumentParts(kind, filePath).then((result) => {
+  void getExtractionServiceModule().extractDocumentPartsInWorker(kind, filePath).then((result) => {
     const db2 = getDb();
     const insertPart = db2.prepare(
       'INSERT INTO document_parts (resource_id, ordinal, label, text, origin) VALUES (?, ?, ?, ?, ?)'
@@ -509,7 +509,7 @@ async function extractAllPendingResources(): Promise<void> {
       continue;
     }
 
-    const result = await getTextExtractionModule().extractDocumentParts(resource.kind, resource.file_path);
+    const result = await getExtractionServiceModule().extractDocumentPartsInWorker(resource.kind, resource.file_path);
     db.transaction(() => {
       db.prepare("DELETE FROM document_parts WHERE resource_id = ? AND origin = 'extracted'").run(resource.id);
       for (const part of result.parts) {
@@ -1140,18 +1140,24 @@ app.whenReady().then(() => {
   // webhook) needs a public HTTPS endpoint, which doesn't fit a local
   // desktop app — polling is the accepted near-real-time tradeoff. Both
   // no-op quietly if their source isn't connected yet.
-  void applySyncSchedule('drive');
-  // Awaited (rather than fire-and-forget) specifically so the one-time
-  // added_at repair below can run right after it — that repair depends on
-  // this same sync having just backfilled assignments.posted_at for any
-  // pre-existing assignment rows (see upsertAssignment in googleClassroom.ts).
-  void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
-  void extractAllPendingResources();
-  backfillPreExistingRemoteAttachments();
-  // Independent of Classroom sync's own post-sync call (scanClassroomAndNotify)
-  // — covers a resource left 'pending' from a previous run when Classroom
-  // sync is set to Off, so remote attachments still get picked up on launch.
-  void runRemoteExtractionAndNotify();
+  // Google and parser work is deliberately held back from the first usable
+  // window. These operations remain automatic, but they no longer compete
+  // with the user's first interaction after a cold or multi-day launch.
+  setTimeout(() => {
+    void applySyncSchedule('drive');
+    // Awaited (rather than fire-and-forget) specifically so the one-time
+    // added_at repair below can run right after it — that repair depends on
+    // this same sync having just backfilled assignments.posted_at for any
+    // pre-existing assignment rows (see upsertAssignment in googleClassroom.ts).
+    void applySyncSchedule('classroom').then(() => repairClassroomResourceAddedAtOnce());
+    void extractAllPendingResources();
+    backfillPreExistingRemoteAttachments();
+    // Independent of Classroom sync's own post-sync call (scanClassroomAndNotify)
+    // — covers a resource left 'pending' from a previous run when Classroom
+    // sync is set to Off, so remote attachments still get picked up on launch.
+    void runRemoteExtractionAndNotify();
+  }, 2500);
+
   getMemoryFilesModule().ensureGeneralMemoryFile();
   // Courses created before Phase 4 shipped never got a memory file, since
   // ensureCourseMemoryFile only runs at creation time — without this every
@@ -1197,6 +1203,7 @@ app.on('window-all-closed', () => {
   for (const folderId of activeWatchers.keys()) stopWatchingFolder(folderId);
   for (const courseId of activeCourseStorageWatchers.keys()) stopWatchingCourseStorage(courseId);
   getLocalServerModule().stopLocalServer();
+  void getExtractionServiceModule().closeExtractionWorker();
   closeDb();
   // The shared Tesseract worker (src/main/ocr.ts) may still be resident if a
   // scan was ever dropped via notes:importScanBuffer, which doesn't
@@ -1893,6 +1900,8 @@ function recordSyncResult(source: SyncSource, succeeded: boolean, errorMessage: 
 }
 
 const syncIntervalTimers: Partial<Record<SyncSource, ReturnType<typeof setInterval>>> = {};
+const syncPromises: Partial<Record<SyncSource, Promise<void>>> = {};
+const syncRequested: Record<SyncSource, boolean> = { drive: false, classroom: false };
 
 function clearSyncInterval(source: SyncSource): void {
   const timer = syncIntervalTimers[source];
@@ -1903,7 +1912,24 @@ function clearSyncInterval(source: SyncSource): void {
 }
 
 function runSourceSync(source: SyncSource): Promise<void> {
-  return source === 'drive' ? scanDriveAndNotify() : scanClassroomAndNotify().then(() => {});
+  syncRequested[source] = true;
+  if (syncPromises[source]) return syncPromises[source]!;
+
+  const promise = (async () => {
+    do {
+      syncRequested[source] = false;
+      if (source === 'drive') {
+        await scanDriveAndNotify();
+      } else {
+        await scanClassroomAndNotify();
+      }
+    } while (syncRequested[source]);
+  })().finally(() => {
+    syncPromises[source] = undefined;
+    if (syncRequested[source]) void runSourceSync(source);
+  });
+  syncPromises[source] = promise;
+  return promise;
 }
 
 // (Re)applies a source's current config: clears any existing interval
@@ -1990,13 +2016,13 @@ ipcMain.handle('google:listDriveSources', () => getGoogleDriveModule().listDrive
 
 ipcMain.handle('google:addDriveSource', async (_event, link: string, defaultCourseId: number | null) => {
   const result = await getGoogleDriveModule().addDriveSource(link, defaultCourseId);
-  if (result.ok) void scanDriveAndNotify();
+  if (result.ok) void runSourceSync('drive');
   return result;
 });
 
 ipcMain.handle('google:updateDriveSource', (_event, sourceId: number, defaultCourseId: number | null, enabled: boolean) => {
   getGoogleDriveModule().updateDriveSource(sourceId, defaultCourseId, enabled);
-  void scanDriveAndNotify();
+  void runSourceSync('drive');
 });
 
 ipcMain.handle('google:removeDriveSource', (_event, sourceId: number) => {
@@ -2005,11 +2031,45 @@ ipcMain.handle('google:removeDriveSource', (_event, sourceId: number) => {
 
 ipcMain.handle('google:setDriveFolder', async (_event, link: string) => {
   const result = await getGoogleDriveModule().setDriveFolder(link);
-  if (result.ok) void scanDriveAndNotify();
+  if (result.ok) void runSourceSync('drive');
   return result;
 });
 
-ipcMain.handle('google:listPendingDriveFiles', () => getGoogleDriveModule().listPendingDriveFiles());
+// The Dashboard only needs the local inbox count. Keep this read path free of
+// the Google client graph so a cold launch never pays to initialise OAuth just
+// to decide whether a review notice should be shown.
+function listPendingDriveFilesLightweight(): {
+  id: number;
+  drive_file_id: string;
+  source_id: number | null;
+  source_name: string | null;
+  default_course_id: number | null;
+  name: string;
+  mime_type: string;
+  modified_time: string | null;
+  detected_at: string;
+}[] {
+  return getDb()
+    .prepare(`SELECT drive_pending_files.*, drive_sources.folder_name AS source_name,
+                     drive_sources.default_course_id
+              FROM drive_pending_files
+              LEFT JOIN drive_sources ON drive_sources.id = drive_pending_files.source_id
+              WHERE drive_pending_files.ignored = 0
+              ORDER BY drive_pending_files.detected_at DESC`)
+    .all() as {
+    id: number;
+    drive_file_id: string;
+    source_id: number | null;
+    source_name: string | null;
+    default_course_id: number | null;
+    name: string;
+    mime_type: string;
+    modified_time: string | null;
+    detected_at: string;
+  }[];
+}
+
+ipcMain.handle('google:listPendingDriveFiles', () => listPendingDriveFilesLightweight());
 
 // Downloads a pending file's content and imports it via the same
 // buffer-based paths manual upload/drag-and-drop already use, branching on
@@ -2140,6 +2200,18 @@ async function scanClassroomAndNotify(): Promise<{ changed: boolean; errors: Cla
 let remoteExtractionPromise: Promise<void> | null = null;
 let remoteExtractionRequested = false;
 
+function hasPendingRemoteResources(): boolean {
+  return Boolean(
+    getDb()
+      .prepare(
+        `SELECT 1 FROM resources
+         WHERE remote_source = 'drive' AND extraction_status = 'pending'
+         LIMIT 1`
+      )
+      .get()
+  );
+}
+
 async function runRemoteExtractionPassAndNotify(): Promise<void> {
   try {
     const { changed, capped } = await getRemoteSyncModule().processPendingRemoteResources((progress) => {
@@ -2161,12 +2233,14 @@ async function runRemoteExtractionPassAndNotify(): Promise<void> {
 // extraction. Coalesce those requests into one sequential pass so the same
 // pending resources cannot be downloaded and parsed twice concurrently.
 function runRemoteExtractionAndNotify(): void {
+  if (!hasPendingRemoteResources()) return;
   remoteExtractionRequested = true;
   if (remoteExtractionPromise) return;
 
   remoteExtractionPromise = (async () => {
     do {
       remoteExtractionRequested = false;
+      if (!hasPendingRemoteResources()) break;
       await runRemoteExtractionPassAndNotify();
     } while (remoteExtractionRequested);
   })().finally(() => {
