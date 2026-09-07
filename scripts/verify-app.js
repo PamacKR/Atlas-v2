@@ -610,6 +610,12 @@ const fs = require('fs');
     throw new Error('FAIL: "View original scan" should be hidden for a typed (non-handwritten) note');
   }
 
+  const spellcheckStatus = await window.textContent('#note-spellcheck-status');
+  console.log('visible note spellcheck status:', spellcheckStatus);
+  if (spellcheckStatus !== 'Spelling: English (UK)') {
+    throw new Error(`FAIL: note spellcheck status was not visible, got "${spellcheckStatus}"`);
+  }
+
   const spellcheckState = await window.evaluate(() => {
     const editor = document.querySelector('#note-editor-root .milkdown [contenteditable="true"]');
     return {
