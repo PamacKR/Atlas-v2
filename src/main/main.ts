@@ -1005,6 +1005,34 @@ function saveWindowState(win: BrowserWindow): void {
   ).run('windowState', JSON.stringify(state), JSON.stringify(state));
 }
 
+function installSpellcheckContextMenu(win: BrowserWindow): void {
+  win.webContents.on('context-menu', (event, params) => {
+    if (!params.isEditable || !params.spellcheckEnabled || !params.misspelledWord) return;
+
+    const contents = win.webContents;
+    const suggestions = [...new Set(params.dictionarySuggestions)].filter(
+      (suggestion) => suggestion && suggestion !== params.misspelledWord
+    );
+    const template: Electron.MenuItemConstructorOptions[] = suggestions.length
+      ? suggestions.map((suggestion) => ({
+          label: suggestion,
+          click: () => contents.replaceMisspelling(suggestion),
+        }))
+      : [{ label: 'No spelling suggestions', enabled: false }];
+
+    template.push(
+      { type: 'separator' },
+      {
+        label: `Add “${params.misspelledWord}” to dictionary`,
+        click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+      }
+    );
+
+    event.preventDefault();
+    Menu.buildFromTemplate(template).popup({ window: win });
+  });
+}
+
 function createWindow(): void {
   const savedState = loadWindowState();
 
@@ -1026,8 +1054,13 @@ function createWindow(): void {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      spellcheck: true,
     },
   });
+
+  mainWindow.webContents.session.setSpellCheckerEnabled(true);
+  mainWindow.webContents.session.setSpellCheckerLanguages(['en-GB']);
+  installSpellcheckContextMenu(mainWindow);
 
   if (savedState === null || savedState.isMaximized) mainWindow.maximize();
 

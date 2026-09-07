@@ -97,6 +97,26 @@ function installLatexPreviewDefaults(root: HTMLElement): () => void {
   };
 }
 
+// Chromium only checks editable content when the element explicitly opts in.
+// Crepe may recreate the ProseMirror surface while editing, so keep the
+// attribute on the prose editor and deliberately leave LaTeX/code editors
+// unchecked: academic words should be checked, source syntax should not.
+function installNoteSpellcheck(root: HTMLElement): () => void {
+  const apply = (): void => {
+    root.querySelectorAll<HTMLElement>('.milkdown [contenteditable="true"]').forEach((editor) => {
+      const insideCodeBlock = Boolean(editor.closest('.milkdown-code-block'));
+      editor.setAttribute('spellcheck', insideCodeBlock ? 'false' : 'true');
+      if (!insideCodeBlock) editor.setAttribute('lang', 'en-GB');
+    });
+  };
+
+  const observer = new MutationObserver(apply);
+  observer.observe(root, { childList: true, subtree: true });
+  apply();
+
+  return () => observer.disconnect();
+}
+
 async function createNoteEditor(options: NoteEditorOptions): Promise<AtlasNoteEditor> {
   const crepe = new Crepe({
     root: options.root,
@@ -124,6 +144,7 @@ async function createNoteEditor(options: NoteEditorOptions): Promise<AtlasNoteEd
     listener.markdownUpdated(options.onMarkdownUpdated);
   });
   await crepe.create();
+  const removeNoteSpellcheck = installNoteSpellcheck(options.root);
   const removeLatexPreviewDefaults = options.latexPreviewOnlyByDefault
     ? installLatexPreviewDefaults(options.root)
     : null;
@@ -131,6 +152,7 @@ async function createNoteEditor(options: NoteEditorOptions): Promise<AtlasNoteEd
   return {
     getMarkdown: () => crepe.getMarkdown(),
     destroy: async () => {
+      removeNoteSpellcheck();
       removeLatexPreviewDefaults?.();
       return crepe.destroy();
     },

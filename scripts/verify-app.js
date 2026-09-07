@@ -610,6 +610,37 @@ const fs = require('fs');
     throw new Error('FAIL: "View original scan" should be hidden for a typed (non-handwritten) note');
   }
 
+  const spellcheckState = await window.evaluate(() => {
+    const editor = document.querySelector('#note-editor-root .milkdown [contenteditable="true"]');
+    return {
+      editorSpellcheck: editor?.getAttribute('spellcheck') ?? null,
+      editorLanguage: editor?.getAttribute('lang') ?? null,
+      titleSpellcheck: document.getElementById('note-title-input')?.getAttribute('spellcheck') ?? null,
+      titleLanguage: document.getElementById('note-title-input')?.getAttribute('lang') ?? null,
+    };
+  });
+  console.log('note spellcheck attributes:', spellcheckState);
+  if (
+    spellcheckState.editorSpellcheck !== 'true' ||
+    spellcheckState.editorLanguage !== 'en-GB' ||
+    spellcheckState.titleSpellcheck !== 'true' ||
+    spellcheckState.titleLanguage !== 'en-GB'
+  ) {
+    throw new Error(`FAIL: note editor spellcheck was not enabled correctly: ${JSON.stringify(spellcheckState)}`);
+  }
+
+  const nativeSpellcheckState = await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+    return {
+      enabled: contents?.session.isSpellCheckerEnabled() ?? false,
+      languages: contents?.session.getSpellCheckerLanguages() ?? [],
+    };
+  });
+  console.log('native spellcheck state:', nativeSpellcheckState);
+  if (!nativeSpellcheckState.enabled || !nativeSpellcheckState.languages.includes('en-GB')) {
+    throw new Error(`FAIL: native Electron spellcheck was not configured: ${JSON.stringify(nativeSpellcheckState)}`);
+  }
+
   await window.fill('#note-title-input', 'W1L1');
   const noteEditableSelector = '.milkdown [contenteditable="true"]';
   await window.click(noteEditableSelector, { force: true });
